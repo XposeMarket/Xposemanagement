@@ -1,0 +1,320 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Customers • Xpose Management</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .pill { display:inline-block; padding:2px 8px; border-radius:12px; font-size:.85em; background:#eee; color:#333; }
+    .pill.warn { background:#ffe7cc; color:#7a3d00; }
+    .veh-card-actions { display:flex; gap:8px; align-items:center; }
+    .veh-card { position: relative; }
+    .star-btn{
+      display:inline-flex; align-items:center; gap:6px;
+      border:1px solid var(--border,#ddd); padding:2px 8px; border-radius:999px;
+      cursor:pointer; font-size:.8em; background:var(--bg,#fff); color:inherit;
+    }
+    .star-btn:not(.is-primary){ color:var(--muted,#666); }
+    .star-icon{ font-size:14px; line-height:1; color:#888; }
+    .star-icon.primary{ color:#f5c518; }
+    .veh-card .star-btn{ position:absolute; top:8px; right:12px; }
+    .veh-card .veh-title{ padding-right:82px; }
+    .veh-sub { color:var(--muted,#666); font-size:.92em; }
+    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:70; }
+    .modal-card { width:min(520px,92vw); background:var(--card,#fff); color:inherit; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+    .modal-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border,#e5e5e5); }
+    .modal-body { padding:12px 14px; }
+    .modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 14px; border-top:1px solid var(--border,#e5e5e5); }
+    .hidden { display:none; }
+  </style>
+</head>
+<body>
+<header class="top">
+  <div class="container row top row">
+    <a class="brand" href="dashboard.html" aria-label="Home">
+      <img id="headerLogo" src="assets/XposeManagementCRMlogo.png" alt="Logo">
+    </a>
+    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    <nav id="mainNav">
+      <a href="dashboard.html">Dashboard</a>
+      <a href="appointments.html">Appointments</a>
+      <a href="jobs.html">Jobs</a>
+      <a href="messages.html">Messages</a>
+      <a href="invoices.html">Invoices</a>
+      <a href="customers.html" class="active">Customers</a>
+      <a href="settings.html">Settings</a>
+      <a href="profile.html">Profile</a>
+    </nav>
+    <div>
+      <button id="themeToggle" class="btn" aria-label="Toggle theme">Theme</button>
+      <button id="logoutBtn" class="btn" aria-label="Logout">Logout</button>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+  <div class="toolbar" style="gap:12px; align-items:center; margin-top:12px">
+    <h2 style="margin:0">Customers</h2>
+    <input id="custSearch" placeholder="Search name / phone / email / VIN" style="min-width:260px">
+    <button class="btn" id="btnExport">Export CSV</button>
+    <button class="btn" id="btnBackfill">Backfill from Data</button>
+    <button class="btn quick-create" id="btnNewCustomer">+ Customer</button>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <div class="table-wrap">
+      <table class="table" id="custTable">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Email</th>
+            <th>Vehicles</th>
+            <th>Total Visits</th>
+            <th>Last Visit</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="custTbody"></tbody>
+      </table>
+    </div>
+    <div id="custEmpty" class="muted" style="padding:12px">No customers yet. Use Backfill or create one from an appointment.</div>
+  </div>
+</main>
+
+<div id="custModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="custModalTitle">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="custModalTitle" style="margin:0">New Customer</h3>
+      <button class="btn" id="custModalClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid cols-2">
+        <div><label>First</label><input id="newCustFirst" placeholder="First name"></div>
+        <div><label>Last</label><input id="newCustLast" placeholder="Last name"></div>
+        <div><label>Phone</label><input id="newCustPhone" placeholder="(555) 555-0123"></div>
+        <div><label>Email</label><input id="newCustEmail" placeholder="name@example.com"></div>
+      </div>
+      <div style="margin-top:8px">
+        <label>Notes</label>
+        <textarea id="newCustNotes" rows="3" placeholder="Optional notes"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="newCustCancel">Cancel</button>
+  <button class="btn info" id="newCustSave">Create Customer</button>
+    </div>
+  </div>
+</div>
+
+<aside id="custDrawer" class="card hidden" style="position:fixed;right:20px;top:80px;bottom:20px;width:520px;max-width:92vw;overflow:auto;z-index:50">
+  <div class="toolbar" style="justify-content:space-between">
+    <h3 id="cdTitle">Customer</h3>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn info" id="cdNewApptBtn">New Appointment</button>
+      <button class="btn" id="cdClose">Close</button>
+    </div>
+  </div>
+  <div style="padding:12px">
+    <section>
+      <h4>Personal</h4>
+      <div class="grid cols-2">
+        <div><label>First</label><input id="cdFirst"></div>
+        <div><label>Last</label><input id="cdLast"></div>
+        <div><label>Phone</label><input id="cdPhone"></div>
+        <div><label>Email</label><input id="cdEmail"></div>
+      </div>
+      <div style="margin-top:8px">
+        <label>Notes</label>
+        <textarea id="cdNotes" rows="2"></textarea>
+      </div>
+      <div class="row" style="justify-content:flex-end; gap:8px; margin-top:8px">
+        <button class="btn" id="cdSave">Save</button>
+      </div>
+    </section>
+
+    <hr>
+
+    <section>
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h4>Vehicles</h4>
+        <button class="btn" id="cdAddVeh">+ Add Vehicle</button>
+      </div>
+      <div id="cdVehList" class="stack" style="gap:8px"></div>
+    </section>
+
+    <hr>
+
+    <section>
+      <h4>Appointments</h4>
+      <div class="table-wrap">
+        <table class="table" id="cdApptTable">
+          <thead><tr><th>Date</th><th>Time</th><th>Service</th><th>Status</th></tr></thead>
+          <tbody id="cdApptTbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <hr>
+
+    <section>
+      <h4>Invoices</h4>
+      <div class="table-wrap">
+        <table class="table" id="cdInvTable">
+          <thead><tr><th>Date</th><th>#</th><th>Total</th><th>Status</th></tr></thead>
+          <tbody id="cdInvTbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</aside>
+
+<div id="vehModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="vehTitle">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="vehTitle" style="margin:0">Add Vehicle</h3>
+      <button class="btn" id="vehClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid cols-2">
+        <div><label>VIN (optional)</label><input id="vehVin" maxlength="17" placeholder="17 characters"></div>
+        <div><label>Plate</label><input id="vehPlate" placeholder="e.g. ABC1234"></div>
+        <div><label>Year</label><input id="vehYear" type="number" min="1900" max="2100" placeholder="YYYY"></div>
+        <div><label>Make</label><input id="vehMake" placeholder="Toyota"></div>
+        <div><label>Model</label><input id="vehModel" placeholder="Camry"></div>
+        <div><label>Trim</label><input id="vehTrim" placeholder="XSE"></div>
+      </div>
+      <div style="margin-top:8px">
+        <label>Notes</label>
+        <textarea id="vehNotes" rows="2" placeholder="Any vehicle notes"></textarea>
+      </div>
+      <div style="margin-top:8px">
+        <label><input type="checkbox" id="vehPrimary"> Set as primary</label>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="vehCancel">Cancel</button>
+      <button class="btn" id="vehSave">Save Vehicle</button>
+    </div>
+  </div>
+</div>
+
+<div id="confirmModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="confTitle">
+  <div class="modal-card" style="max-width:440px">
+    <div class="modal-head">
+      <h3 id="confTitle" style="margin:0">Confirm</h3>
+      <button class="btn" id="confClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <p id="confMsg" class="muted">Are you sure?</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="confCancel">Cancel</button>
+      <button class="btn danger" id="confDelete">Delete</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ...existing code... -->
+<div id="notifBanner" class="notification hidden" style="position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#10b981;color:white;padding:10px 24px;border-radius:8px;font-size:16px;z-index:200;box-shadow:0 2px 8px rgba(0,0,0,0.15);transition:opacity .3s;min-width:220px;text-align:center"></div>
+
+<!-- Custom Delete Confirmation Modal -->
+<div id="deleteModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle">
+  <div class="modal-card" style="max-width:400px">
+    <div class="modal-head">
+      <h3 id="deleteModalTitle" style="margin:0">Delete Vehicle</h3>
+      <button class="btn" id="deleteModalClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <p id="deleteModalMsg" class="muted">Are you sure you want to delete this vehicle?</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="deleteModalCancel">Cancel</button>
+      <button class="btn danger" id="deleteModalConfirm">Delete</button>
+    </div>
+  </div>
+</div>
+
+<footer class="container">© Xpose Market</footer>
+
+<!-- Vehicle Selection Modal for New Appointment -->
+<div id="vehSelectModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="vehSelectTitle">
+  <div class="modal-card" style="max-width:440px">
+    <div class="modal-head">
+      <h3 id="vehSelectTitle" style="margin:0">Select Vehicle for Appointment</h3>
+      <button class="btn" id="vehSelectClose">Close</button>
+    </div>
+    <div class="modal-body" id="vehSelectBody">
+      <!-- Vehicle list will be injected here -->
+    </div>
+    <div class="modal-foot" id="vehSelectFoot">
+      <button class="btn" id="vehSelectCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/supabase.umd.js"></script>
+<script>
+// Basic page initialization (menu, theme, logout)
+document.addEventListener('DOMContentLoaded', () => {
+  const menuToggle = document.getElementById('menuToggle');
+  const mainNav = document.getElementById('mainNav');
+  if (menuToggle && mainNav) {
+    menuToggle.addEventListener('click', () => {
+      mainNav.classList.toggle('active');
+    });
+  }
+
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', () => {
+      if (confirm('Are you sure you want to logout?')) {
+        localStorage.removeItem('xm_session');
+        window.location.href = 'login.html';
+      }
+    });
+  }
+});
+</script>
+
+<script type="module" src="pages/customers.js"></script>
+<script>
+  // Defensive fallback: allow global/other +Customer buttons to open the customers modal
+  (function(){
+    const openIds = ['btnNewCust', 'btnNewCustomer'];
+    function openNewCustomerModal(){
+      const custModal = document.getElementById('custModal');
+      const first = document.getElementById('newCustFirst');
+      const last = document.getElementById('newCustLast');
+      const phone = document.getElementById('newCustPhone');
+      const email = document.getElementById('newCustEmail');
+      const notes = document.getElementById('newCustNotes');
+      if(!custModal) return;
+      if(first) first.value = '';
+      if(last) last.value = '';
+      if(phone) phone.value = '';
+      if(email) email.value = '';
+      if(notes) notes.value = '';
+      custModal.classList.remove('hidden');
+      setTimeout(()=>{ if(first) first.focus(); }, 60);
+    }
+
+    openIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', (e) => {
+        // If we're already on customers page, open modal directly
+        if (location.pathname.toLowerCase().endsWith('customers.html') || location.pathname.endsWith('/')) {
+          e.preventDefault();
+          openNewCustomerModal();
+        } else {
+          // otherwise navigate to customers page and set fragment so the page opens modal on load
+          location.href = 'customers.html#new';
+        }
+      });
+    });
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,1628 @@
+/* Add Labor pill: small, pill-shaped, matches status pill size */
+.add-labor-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 2px solid var(--line);
+  font-size: 12px;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
+  height: 22px;
+  font-weight: 500;
+  background: #f3f4f6;
+  color: #1e293b;
+  margin-top: 2px;
+  margin-bottom: 2px;
+  cursor: pointer;
+  transition: box-shadow 0.18s, border-color 0.18s, transform 0.14s, filter 0.12s;
+}
+.add-labor-pill:hover, .add-labor-pill:focus {
+  border-color: var(--accent);
+  box-shadow: 0 2px 12px rgba(16, 185, 129, 0.10);
+  filter: brightness(0.98);
+  transform: translateY(-2px) scale(1.04);
+}
+/* Remove button absolute right in invoice modal item row */
+.inv-abs-remove {
+  right: 0;
+  top: 50%;
+  position: absolute;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+/* Ensure item row has enough right padding for the button */
+.item-row {
+  padding-right: 90px !important;
+}
+/* Tighter block spacing for add-labor pill */
+.inv-item-block {
+  margin-bottom: 2px;
+}
+.tag.open {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #ef4444;
+}
+.tag.scheduled {
+  background: #e0ecff;
+  color: #1e40af;
+  border-color: #3b82f6;
+}
+.tag.in_progress {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #f59e0b;
+}
+.tag.awaiting_parts {
+  background: #e0e7ff;
+  color: #3730a3;
+  border-color: #6366f1;
+}
+.tag.completed, .tag.done {
+  background: #dcfce7;
+  color: #065f46;
+  border-color: #10b981;
+}
+/* Status badge clickable style for all pages */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 2px solid var(--line);
+  font-size: 12px;
+  min-width: 48px;
+  text-align: center;
+  white-space: nowrap;
+  height: 22px;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--card);
+  transition: box-shadow 0.18s, border-color 0.18s, transform 0.14s, filter 0.12s;
+}
+.tag:hover, .tag:focus {
+  border-color: var(--accent);
+  box-shadow: 0 2px 12px rgba(16, 185, 129, 0.10);
+  filter: brightness(0.98);
+  transform: translateY(-2px) scale(1.04);
+}
+.dashboard-layout .btn.quick-create#btnNewAppt {
+  background: #10b981;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+}
+.dashboard-layout .btn.quick-create#btnNewInv {
+  background: #f59e0b;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+}
+.dashboard-layout .btn.quick-create#btnNewCust {
+  background: #60a5fa;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+}
+/* Customers: hide action buttons, vehicles, total, and last column on mobile; make rows clickable */
+@media (max-width: 768px) {
+  #custTable .cust-actions,
+  #custTable th:last-child,
+  #custTable td:last-child,
+  #custTable .cust-veh,
+  #custTable th:nth-child(4),
+  #custTable .cust-total,
+  #custTable th:nth-child(5) {
+    display: none !important;
+  }
+  #custTable tr.cust-row-clickable {
+    cursor: pointer;
+    transition: background 0.13s;
+  }
+  #custTable tr.cust-row-clickable:hover,
+  #custTable tr.cust-row-clickable:active {
+    background: #f3f4f6;
+  }
+}
+/* Hide invoice number column on mobile */
+@media (max-width: 768px) {
+  #invTable th:first-child,
+  #invTable td:first-child {
+    display: none;
+  }
+}
+/* Hide invoice row action buttons and number column on mobile (show only in modal) */
+@media (max-width: 768px) {
+  #invTable .appt-actions-grid,
+  #prevTable .appt-actions-grid {
+    display: none !important;
+  }
+  #invTable th:first-child,
+  #invTable td:first-child,
+  #prevTable th:first-child,
+  #prevTable td:first-child {
+    display: none;
+  }
+}
+/* Jobs/Invoices: clickable row on mobile */
+@media (max-width: 768px) {
+  .job-row-clickable, .inv-row-clickable {
+    cursor: pointer;
+    transition: background 0.13s;
+  }
+  .job-row-clickable:hover, .job-row-clickable:active,
+  .inv-row-clickable:hover, .inv-row-clickable:active {
+    background: #f3f4f6;
+  }
+}
+/* Appointments: clickable row on mobile */
+@media (max-width: 768px) {
+  .appt-row-clickable {
+    cursor: pointer;
+    transition: background 0.13s;
+  }
+  .appt-row-clickable:hover,
+  .appt-row-clickable:active {
+    background: #f3f4f6;
+  }
+}
+:root{
+  --bg:#f3f4f6; --text:#111111; --muted:#6b7280; --card:#ffffff; --line:#e5e7eb; --accent:#e11d48;
+}
+:root.dark{
+  --bg:#002947;
+  --text:#fff;
+  --muted:#8a94a6;
+  --card:#003B5E;
+  --line:#003B5E;
+  --accent:#89C41F;
+}
+
+:root.dark input,
+:root.dark textarea,
+:root.dark select {
+  background: #003B5E !important;
+  color: #fff !important;
+  border: 1px solid #89C41F !important;
+}
+
+:root.dark input:focus,
+:root.dark textarea:focus,
+:root.dark select:focus {
+  outline: 2px solid #89C41F !important;
+}
+
+:root.dark .btn,
+:root.dark button {
+  background: #003B5E !important;
+  color: #fff !important;
+  border: 1px solid #89C41F !important;
+}
+:root.dark .btn.primary,
+:root.dark button.primary {
+  background: #89C41F !important;
+  color: #fff !important;
+  border: none !important;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+.main-header {
+  width: 100%;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  z-index: 100;
+  position: relative;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+body{background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;padding-bottom:0}
+a{color:inherit;text-decoration:none}
+.container{max-width:1200px;margin:0 auto;padding:0 40px}
+/* Dashboard-specific override - no max-width for full-width layout */
+body:has(main .dashboard-layout) .container,
+.dashboard-layout .container,
+body:has(main .dashboard-layout) header .container{max-width:100%}
+/* Keep footer constrained on dashboard pages so it aligns with the center column */
+body:has(main .dashboard-layout) footer.container{
+  /* constrain footer to the center column (match calendar/day panels)
+     left/right sidebars are 280px each in the dashboard grid, so
+     center column width = 100% - 560px */
+  width: calc(100% - 560px);
+  margin-left: 280px;
+  max-width: none;
+}
+
+/* General: when footer uses the .container class, keep it boxed to the same
+   width as other centered content and ensure matching horizontal padding */
+footer.container{
+  box-sizing: border-box;
+  max-width: 1200px;
+  margin: 24px auto 40px; /* small gap above, and bottom spacing */
+  padding-left: 40px;
+  padding-right: 40px;
+}
+header.top{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);z-index:10}
+.top .row{display:flex;align-items:center;justify-content:space-between;padding:12px 0}
+.brand{display:flex;align-items:center;gap:10px}.brand img{height:52px}
+nav a{padding:8px 10px;border-radius:8px} nav a.active, nav a:hover{background:var(--line)}
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--card);color:var(--text);padding:10px 14px;border-radius:10px;cursor:pointer;transition:transform .14s ease,box-shadow .14s ease,filter .12s ease}
+.btn.primary{background:#f59e0b;border-color:transparent;color:#fff;border-radius:18px;padding-left:18px;padding-right:18px;font-size:1em;min-height:38px}
+.btn.danger{background:#b91c1c;border-color:transparent;color:#fff}
+/* Info / blue accent used in dark theme */
+.btn.info{background:#60a5fa;border-color:transparent;color:#041014}
+/* New Appointment and New Invoice buttons: green from logo */
+#newAppt {
+  background: #10b981 !important;
+  color: #fff !important;
+  border: none;
+  border-radius: 6px !important;
+  font-size: 1em;
+  min-height: 38px;
+  padding: 0 18px;
+}
+#newInvoice {
+  background: #f59e0b !important;
+  color: #fff !important;
+  border: none;
+  border-radius: 6px !important;
+  font-size: 1em;
+  min-height: 38px;
+  padding: 0 18px;
+}
+/* Invoice-specific: orange edit/info button */
+#invTable .btn.info,
+#prevTable .btn.info {
+  background: #f59e0b;
+  color: #fff;
+}
+.btn.info:hover{filter:brightness(.95)}
+.btn.small{padding:5px 8px;font-size:13px;min-height:28px}
+.btn.quick-create{background:#ffffff;border:2px solid var(--line);color:var(--text);box-shadow:0 4px 8px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.06);transition:all 0.2s ease}
+.btn.quick-create:hover{transform:translateY(-1px);box-shadow:0 6px 12px rgba(0,0,0,0.15), 0 3px 6px rgba(0,0,0,0.1)}
+/* Unified btn hover for consistent interactions across pages */
+.btn:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,0.08);filter:brightness(.98)}
+
+/* Make the pill-style save button match the .btn hover behavior */
+.pill-save{transition:transform .14s ease,box-shadow .14s ease,filter .12s ease}
+.pill-save:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,0.08);filter:brightness(.98)}
+/* Appointment actions 2x2 grid */
+.appt-actions-grid{display:grid;grid-template-columns:repeat(2,minmax(68px,1fr));gap:2px;align-items:center}
+.appt-actions-grid .btn{width:100%;justify-content:center}
+
+/* Customer actions: align buttons horizontally and vertically */
+#custTable .cust-actions{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  justify-content:flex-end;
+}
+#custTable .cust-actions .btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  vertical-align:middle;
+}
+
+/* Stacked date/time for appointment table cells */
+.stacked-datetime{display:flex;flex-direction:column;align-items:flex-start}
+.stacked-datetime .dt-date{font-size:0.95em}
+.stacked-datetime .dt-time{font-size:0.78em;color:var(--muted)}
+
+/* Sortable headers visual hint */
+.sortable { position: relative; }
+.sortable::after { content: ""; position: absolute; right: 8px; font-size: 0.8em; }
+.sortable.asc::after { content: "▲"; }
+.sortable.desc::after { content: "▼"; }
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:24px}
+
+/* Make entire card appear clickable with same hover "lift" as .btn */
+.card.clickable{cursor:pointer;transition:transform .14s ease,box-shadow .14s ease,filter .12s ease,background .12s ease;position:relative;overflow:hidden}
+.card.clickable:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,0.08);filter:brightness(.98);background:linear-gradient(180deg, rgba(0,0,0,0.02), rgba(0,0,0,0.01));}
+
+/* Curved top-to-bottom reflection sweep (left-to-right) */
+.card.clickable::after{
+  content: "";
+  position: absolute;
+  top: -28%;
+  left: -80%;
+  width: 280%;
+  height: 220%;
+  pointer-events: none;
+  border-radius: 50% / 20%; /* creates a curved, elliptical band */
+  /* metallic silver-blue sweep (visible over white cards): center has cool tint, edges fade */
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(120,140,160,0.08) 14%,
+    rgba(200,215,230,0.14) 30%,
+    rgba(140,160,180,0.22) 48%,
+    rgba(200,215,230,0.12) 66%,
+    rgba(110,125,140,0.06) 82%,
+    rgba(255,255,255,0) 100%
+  );
+  transform: translateX(-120%) rotate(-18deg);
+  filter: blur(3px) saturate(1.05) contrast(1.02);
+  mix-blend-mode: multiply; /* tint the white card for visible metallic sheen */
+  opacity: 0;
+  will-change: transform, opacity;
+  /* Use linear timing so the sweep translates smoothly without pausing */
+  animation: reflect-sweep 2.6s linear infinite;
+}
+
+@keyframes reflect-sweep{
+  0% {
+    transform: translateX(-120%) rotate(-18deg);
+    opacity: 0;
+  }
+  12% {
+    transform: translateX(-70%) rotate(-18deg);
+    opacity: 0.45;
+  }
+  35% {
+    transform: translateX(-35%) rotate(-18deg);
+    opacity: 0.75;
+  }
+  60% {
+    transform: translateX(20%) rotate(-18deg);
+    opacity: 0.7;
+  }
+  85% {
+    transform: translateX(80%) rotate(-18deg);
+    opacity: 0.22;
+  }
+  100% {
+    transform: translateX(120%) rotate(-18deg);
+    opacity: 0;
+  }
+}
+
+/* Hoverable card variant: same lift + grey hover but no reflection sweep */
+.card.hoverable{cursor:pointer;transition:transform .14s ease,box-shadow .14s ease,filter .12s ease,background .12s ease}
+.card.hoverable:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,0,0,0.08);filter:brightness(.98);background:linear-gradient(180deg, rgba(0,0,0,0.02), rgba(0,0,0,0.01));}
+
+.grid{display:grid;gap:16px}.grid.cols-2{grid-template-columns:1fr 1fr}.grid.cols-3{grid-template-columns:1fr 1fr 1fr}
+label{font-size:13px;color:var(--muted)} input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);outline:none}
+.table{width:100%;border-collapse:collapse}.table th,.table td{border-bottom:1px solid var(--line);padding:10px 8px;text-align:left}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+@media (max-width:768px){ .kpis{grid-template-columns:repeat(2,1fr)} }
+@media (max-width:768px){ .kpis{grid-template-columns:1fr} }
+.badge{display:inline-flex;align-items:center;justify-content:center;padding:6px 12px;border-radius:999px;border:1px solid var(--line);font-size:12px;min-width:85px;text-align:center;white-space:nowrap;height:32px;font-weight:500}
+.notification { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 500; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.hidden { display:none; }
+.badge.open{background:#fee2e2;color:#991b1b}.badge.scheduled{background:#e0ecff;color:#1e40af}.badge.progress{background:#fef3c7;color:#92400e}.badge.parts{background:#e0e7ff;color:#3730a3}.badge.done{background:#dcfce7;color:#065f46}
+/* Color-coded job status select to match badges */
+.job-status { padding:6px 8px; border-radius:8px; border:1px solid var(--line); font-size:13px; }
+.job-status.status-new { background:#fee2e2; color:#991b1b; }
+.job-status.status-scheduled { background:#e0ecff; color:#1e40af; }
+.job-status.status-in_progress { background:#fef3c7; color:#92400e; }
+.job-status.status-awaiting_parts { background:#e0e7ff; color:#3730a3; }
+.job-status.status-completed { background:#dcfce7; color:#065f46; }
+/* Navigation notification badge */
+.nav-notification{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 6px;border-radius:9px;background:var(--accent);color:#fff;font-size:11px;font-weight:600;margin-left:4px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+footer{position:relative;background:var(--card);padding:80px 40px 160px 40px;color:var(--muted);margin-top:40px;margin-bottom:40px;border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 20px rgba(0,0,0,0.04);overflow:visible}
+
+/* Decorative thick lines above and below the footer panel */
+footer::before, footer::after{
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 4px; /* thickness of the lines (thinner) */
+  background: var(--line);
+  pointer-events: none;
+}
+/* hide the top line when requested (we'll remove it by setting display:none) */
+footer::before{ display: none; }
+/* keep the bottom line slightly below the panel */
+footer::after{ bottom: -6px; }
+.calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.day{border:1px solid var(--line);border-radius:10px;min-height: 110px;max-height:140px;padding:6px;position:relative;background:var(--card);cursor:pointer;overflow:hidden;display:flex;flex-direction:column}
+.day .date{font-size:11px;color:var(--muted);flex-shrink:0}
+.day .dotRow{flex:1;overflow:hidden}
+.dot{width:6px;height:6px;border-radius:999px;display:inline-block;margin-right:2px}
+.dot.open{background:#ef4444}.dot.scheduled{background:#3b82f6}.dot.progress{background:#f59e0b}.dot.done{background:#10b981}
+.tooltip{position:absolute;left:50%;transform:translateX(-50%);bottom:6px;background:#111;color:#fff;padding:6px 8px;border-radius:8px;font-size:12px;display:none;white-space:nowrap}.day:hover .tooltip{display:block}
+.notice{font-size:13px;color:var(--muted)} .hidden{display:none}
+/* KPIs centered container */
+.kpis-center{display:flex;justify-content:center;margin-bottom:0}.kpis-center .kpis{width:100%}
+/* Dashboard 3-column layout for calendar with side panels */
+.dashboard-layout{display:grid;grid-template-columns:280px 1fr 280px;gap:20px;align-items:start}
+.dashboard-layout:first-of-type{grid-template-columns:280px 1fr 280px}
+.sidebar{display:flex;flex-direction:column;gap:12px;width:280px;overflow:hidden;margin:0 auto}
+.left-sidebar{margin-right:auto}
+.right-sidebar{margin-left:auto}
+.sidebar .card{overflow:hidden}
+/* Open invoices list: limit to 5 cards before scrolling; card height can be adjusted via --invoice-card-height */
+#openInvoicesList{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  max-height: calc((var(--invoice-card-height,64px) * 5) + (8px * 4));
+  overflow-y:auto;
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: var(--line) var(--card);
+}
+
+/* Themed WebKit scrollbar for the open invoices panel */
+#openInvoicesList::-webkit-scrollbar{ width:10px; }
+#openInvoicesList::-webkit-scrollbar-track{ background: transparent; }
+#openInvoicesList::-webkit-scrollbar-thumb{ background: linear-gradient(180deg, var(--line), rgba(0,0,0,0.12)); border-radius:8px; border:2px solid transparent; background-clip: padding-box; }
+#openInvoicesList::-webkit-scrollbar-thumb:hover{ background: linear-gradient(180deg, var(--line), rgba(0,0,0,0.18)); }
+.calendar-center{display:flex;flex-direction:column}
+@media (max-width:768px){
+  /* Switch dashboard to a single-column flow on narrower screens
+     and explicitly order the three panels so the middle column (calendar)
+     appears first, the left sidebar (open invoices) second, and the
+     right sidebar (quick stats + chart) last. Using flex here simplifies
+     ordering across browsers. */
+  .dashboard-layout{
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+    align-items:stretch;
+  }
+
+  /* Ensure each panel stretches full-width in the stacked layout */
+  .dashboard-layout > div{ width:100%; max-width:none; margin:0; }
+
+  /* Ordering: middle column (child 2) first, left sidebar second, right sidebar third */
+  .dashboard-layout > div:nth-child(2){ order: 1; }
+  .dashboard-layout > .left-sidebar{ order: 2; }
+  .dashboard-layout > .right-sidebar{ order: 3; }
+
+  /* Make sidebars full width when stacked */
+  .sidebar{ width:100%; margin:0 auto; }
+
+  /* Tighten spacing for mobile */
+  .dashboard-layout .card{ margin-bottom:12px }
+}
+
+/* Reduce global container padding on smaller screens so content can use more horizontal space */
+@media (max-width:1200px){
+  .container{ padding-left:16px; padding-right:16px; }
+  header.top .container{ padding-left:12px; padding-right:12px; }
+  main{ padding-left:12px !important; padding-right:12px !important; }
+}
+
+/* Mobile: compact calendar cells — keep date numbers, hide chip text, show uniform colored dots */
+@media (max-width:480px){
+  /* Keep the date number visible and same size */
+  .calendar .day .date{ display:block; color:var(--muted); font-size:11px; font-weight:600; }
+
+  /* Hide the textual labels inside chips, keep the colored dots visible */
+  .calendar .day .chip span:not(.dot){ display:none !important; }
+
+  /* Flatten chips so they don't reserve extra space */
+  .calendar .day .chip{ padding:0; border:0; background:transparent; margin:0; }
+
+  /* Keep dots visible and a little larger on mobile for clarity */
+  .calendar .day .dot.big{ width:10px; height:10px; margin-right:6px }
+
+  /* Ensure the dotRow stays in place and centered without changing cell size */
+  .calendar .day .dotRow{ margin-top:6px; display:flex; gap:6px; align-items:center; justify-content:flex-start; }
+
+  /* Preserve the calendar cell dimensions so days don't resize */
+  .calendar .day{ min-height:110px; max-height:140px; padding:6px; }
+
+  /* Hide the tooltip on very small screens to avoid overlap */
+  .calendar .day .tooltip{ display:none !important; }
+
+  /* Hide unwanted columns in appointments table on mobile: show only Customer (with Vehicle), Status, Date */
+  #apptTable thead th:nth-child(1),
+  #apptTable tbody td:nth-child(1) { display: none; } /* Created Date */
+
+  #apptTable thead th:nth-child(3),
+  #apptTable tbody td:nth-child(3) { display: none; } /* Vehicle */
+
+  #apptTable thead th:nth-child(4),
+  #apptTable tbody td:nth-child(4) { display: none; } /* Service */
+
+  #apptTable thead th:nth-child(6),
+  #apptTable tbody td:nth-child(6) { display: none; } /* Preferred Time */
+
+  #apptTable thead th:nth-child(8),
+  #apptTable tbody td:nth-child(8) { display: none; } /* Actions */
+
+  /* Allow Customer column to expand on mobile for combined text */
+  #apptTable td:nth-child(2) { max-width: none; }
+  #apptTable { table-layout: fixed; }
+  #apptTable td:nth-child(2) { width: 45%; }
+  #apptTable td:nth-child(4) { width: 35%; vertical-align: top; }
+  #apptTable td:nth-child(5) { width: 20%; }
+  #apptTable td:nth-child(7) { width: 35%; }
+
+  /* Smaller text and tighter spacing on mobile */
+  #apptTable td { font-size: 13px; padding: 8px 6px; }
+  #apptTable th { font-size: 12px; padding: 8px 6px; }
+
+  /* Make toolbar select fit better on mobile */
+  .toolbar select { width: auto; min-width: 120px; max-width: 150px; }
+
+  /* Hide unwanted columns in jobs tables on mobile */
+  #jobsTable thead th:nth-child(1),
+  #jobsTable tbody td:nth-child(1),
+  #awaitTable thead th:nth-child(1),
+  #awaitTable tbody td:nth-child(1) { display: none; } /* Job # */
+
+  #jobsTable thead th:nth-child(6),
+  #jobsTable tbody td:nth-child(6),
+  #awaitTable thead th:nth-child(6),
+  #awaitTable tbody td:nth-child(6) { display: none; } /* Assigned To */
+
+  #jobsTable thead th:nth-child(7),
+  #jobsTable tbody td:nth-child(7),
+  #awaitTable thead th:nth-child(7),
+  #awaitTable tbody td:nth-child(7) { display: none; } /* Actions */
+
+  /* Adjust column widths for jobs tables on mobile */
+  #jobsTable, #awaitTable { table-layout: fixed; }
+  #jobsTable td:nth-child(2), #awaitTable td:nth-child(2) { width: 28%; } /* Customer */
+  #jobsTable td:nth-child(3), #awaitTable td:nth-child(3) { width: 25%; } /* Vehicle */
+  #jobsTable td:nth-child(4), #awaitTable td:nth-child(4) { width: 27%; } /* Service */
+  #jobsTable td:nth-child(5), #awaitTable td:nth-child(5) { width: 20%; } /* Status */
+
+  /* Smaller text for jobs tables on mobile */
+  #jobsTable th,
+  #awaitTable th { font-size: 13px; padding: 8px 2px; } /* Tighter headers */
+  #jobsTable td,
+  #awaitTable td { font-size: 13px; padding: 8px 2px; } /* Tighter data cells */
+}
+
+/* Tight mobile fixes for very narrow devices (e.g. iPhone 14 Pro Max viewport ~430px) */
+@media (max-width:1200px){
+  /* Prevent cards and tables from stretching beyond the viewport */
+  .card{ overflow:hidden; word-break:break-word; hyphens:auto; }
+
+  /* Make tables responsive inside cards */
+  .card .table, .card table{ width:100%; display:block; overflow-x:auto; }
+  .card table thead, .card table tbody, .card table tr{ display:table; width:100%; box-sizing:border-box; }
+  .card table{ table-layout:fixed; }
+  .card table th, .card table td{ white-space:normal; word-break:break-word; overflow-wrap:anywhere; }
+
+  /* Day details specific tweaks */
+  #dayTable { max-width:100%; }
+  #dayTable td, #dayTable th { min-width:0; }
+
+  /* Ensure calendar days don't grow horizontally */
+  .calendar{ grid-auto-flow:row; }
+  .calendar .day{ min-width:0; box-sizing:border-box; }
+
+  /* Remove forced min-width on month label that can push layout */
+  #monthLabel{ min-width:0 !important; max-width:60vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* Slightly reduce KPI padding so they fit comfortably */
+  .kpi{ padding:10px; }
+
+  /* Cap chart container height to avoid extreme stretching */
+  #revenueChartContainer{ height:120px !important; }
+  
+  /* Hide Time and Actions columns in Day details table on mobile, show toggle column */
+  #dayTable thead th:nth-child(1),
+  #dayTable tbody td:nth-child(1) { display: none; }
+
+  /* Hide the desktop actions column (7th) on mobile */
+  #dayTable thead th:nth-child(7),
+  #dayTable tbody td.actions-cell { display: none !important; }
+
+  /* Show the toggle column (8th) on mobile */
+  #dayTable thead th:nth-child(8),
+  #dayTable tbody td.mobile-toggle-cell { display: table-cell !important; width:40px; }
+
+  /* Ensure the header aligns with visible mobile columns: show a compact label for actions in the last (toggle) column) */
+  #dayTable thead th:last-child::after { content: "Actions"; display:inline-block; font-weight:600; font-size:12px; color:var(--muted); }
+
+  /* Style the toggle to float right */
+  .mobile-toggle-cell .toggle-actions{ padding:6px 8px; }
+
+  /* Details row styling */
+  .appt-details-row td{ background:var(--card); }
+
+  /* Reduce font sizes and paddings inside the Day details panel to avoid crowding */
+  #dayDateDisplay { font-size:12px; }
+  #dayTable th, #dayTable td { font-size:12px; padding:6px 8px; }
+  #dayTable td.actions-cell .btn,
+  .appt-details-row td .btn { font-size:12px; padding:6px 8px; }
+
+  /* Make the status badge smaller and tighter inside the day details table */
+  #dayTable .badge { font-size:10px; height:18px; min-width:36px; padding:3px 6px; line-height:1.1; }
+
+  /* Tighter button sizing on very narrow screens to reduce crowding */
+  .btn { padding:6px 8px; font-size:12px; min-height:32px; border-radius:8px; }
+  .btn.btn-sm, .btn.small, .mobile-detail-btn { padding:5px 8px; font-size:12px; min-height:28px; }
+  .mobile-toggle-cell .toggle-actions{ padding:4px 6px; font-size:13px; min-width:36px }
+
+  /* Make details row buttons slightly smaller */
+  .appt-details-row td .btn { font-size:12px; padding:6px 8px; }
+
+}
+@media (max-width:768px){}
+
+  /* === EDIT #6: Calendar dot/legend readability & overlap fix === */
+  .dotRow{display:flex;flex-wrap:wrap;gap:3px;align-items:center;margin-top:2px}
+.chip{display:inline-flex;align-items:center;gap:3px;border:0.5px solid var(--line);border-radius:999px;padding:1px 5px;font-size:10px;background:var(--card);transition:all 0.2s ease;white-space:nowrap}
+.chip.clickable{cursor:pointer;}
+.chip.clickable:hover{background:var(--line);transform:scale(1.05);}
+/* Larger pills specifically for Settings page service/labor lists */
+#svcList .chip, #labList .chip {
+  padding: 6px 12px;
+  font-size: 13px;
+  gap: 8px;
+  border-radius: 14px;
+}
+  .dot.big{width:8px;height:8px}
+  .tooltip{font-size:13px;padding:8px 10px}
+  .tooltip.show{display:block}
+
+/* Modal overlay for confirmation dialogs */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.2s ease;
+}
+
+.modal-overlay.hidden {
+  display: none;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-content {
+  animation: slideIn 0.3s ease;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  background: var(--card, #fff);
+  color: inherit;
+  border-radius: 12px;
+  width: min(900px, 94vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Newspaper-style layout for revenue modal */
+.rev-newspaper{display:flex;flex-direction:column;gap:12px}
+.rev-print-hero{display:flex;flex-direction:column;gap:4px}
+.rev-headline{font-family: 'Georgia', serif;font-size:22px;margin:0}
+.rev-lead{font-family: 'Georgia', serif;color:var(--muted);font-size:14px}
+.rev-columns{display:grid;grid-template-columns:1fr minmax(220px,320px);gap:20px;align-items:start}
+.rev-column{font-family: 'Georgia', serif;color:var(--text);line-height:1.45}
+.rev-side{background:transparent;padding:0;border:0;border-radius:0;box-sizing:border-box}
+.rev-section-title{font-family: 'Georgia', serif;font-weight:700;margin:6px 0}
+.rev-list{list-style:none;padding:0;margin:0}
+.rev-list li{padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
+.rev-cta-row{display:flex;justify-content:space-between;gap:8px}
+/* Small stat cards inside the newspaper modal */
+.rev-stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:8px}
+.rev-stat-card{background:var(--card);border:1px solid var(--line);padding:10px;border-radius:8px;font-family:'Georgia',serif}
+.rev-stat-card .label{font-size:12px;color:var(--muted);margin-bottom:6px}
+.rev-stat-card .value{font-size:18px;font-weight:800}
+
+/* Make modal body scrollable when content is tall */
+.modal-body{overflow:auto;max-height:calc(80vh - 140px);padding:12px}
+
+/* Constrain the right-side panel to avoid overflowing the modal */
+.rev-side{max-height:calc(80vh - 220px);overflow:auto}
+
+/* Responsive: stack columns on smaller widths to avoid horizontal overflow */
+@media (max-width:780px){
+  .rev-columns{grid-template-columns:1fr;}
+  .rev-side{max-height:none;overflow:visible}
+  .rev-stats-grid{grid-template-columns:repeat(2,1fr)}
+}
+
+/* Small helper: two-column lists inside rev-side when space allows */
+.rev-side .two-col { display:grid; grid-template-columns:1fr 1fr; gap:12px }
+.rev-side .two-col .rev-list{max-height:240px; overflow:auto}
+
+/* Rev-side panel tweaks for compact panels */
+.rev-side .rev-panel{background:linear-gradient(180deg,var(--card),#fafafa);padding:10px;border:1px solid var(--line);border-radius:8px;box-sizing:border-box}
+.rev-side .rev-panel.rev-mini .rev-list{max-height:160px;overflow:auto;padding-right:6px}
+
+/* General rev-panel styling so panels outside the aside also get card treatment */
+.rev-panel{background:linear-gradient(180deg,var(--card),#fafafa);padding:12px;border:1px solid var(--line);border-radius:10px;box-sizing:border-box}
+.rev-panel.rev-mini .rev-list{max-height:160px;overflow:auto;padding-right:6px}
+.rev-panel .rev-section-title{margin-bottom:8px}
+.rev-side .rev-panel .rev-section-title{margin-bottom:8px}
+
+/* Align the aside's top panel so it visually lines up with the left column's weekly panel
+   The left column includes a section title above its panel; add a top offset to the
+   aside panel so both panels appear level on wider screens. Remove the offset on
+   narrow screens where the layout stacks. */
+.rev-side .rev-panel { margin-top: 36px; }
+@media (max-width:780px) {
+  .rev-side .rev-panel { margin-top: 0; }
+}
+
+/* Horizontal container for two compact panels in the aside */
+.rev-side-inner{display:flex;gap:12px;align-items:flex-start}
+.rev-side-inner .rev-panel{min-width:0}
+@media (max-width:780px){
+  .rev-side-inner{flex-direction:column}
+}
+
+/* Panel row placed under Weekly Breakdown */
+.rev-panels-row{display:flex;gap:12px;align-items:flex-start}
+.rev-panels-row .rev-panel{min-width:0}
+@media (max-width:780px){
+  .rev-panels-row{flex-direction:column}
+}
+
+/* Constrain charts inside revenue modal so they don't expand vertically
+   like full-width flexible canvases. The Chart.js instances are created
+   with maintainAspectRatio:false so the canvas will fill the container. */
+.rev-chart-container{height:160px;max-height:220px;min-height:120px}
+.rev-chart-container canvas{width:100%;height:100%;display:block}
+
+/* Styles for the Last 7 days rows inside revenue modal */
+.rev-day-row{border-bottom:1px solid var(--line);padding:6px 0}
+.rev-day-toggle{display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:6px;border-radius:6px}
+.rev-day-toggle:hover{background:var(--line)}
+.rev-day-left{display:flex;align-items:center;gap:8px}
+.rev-day-badge{background:var(--line);border-radius:999px;padding:4px 8px;font-weight:700;font-size:12px}
+.rev-day-right{display:flex;align-items:center;gap:8px}
+.rev-chevron{transition:transform .22s ease;opacity:0.8}
+.rev-day-toggle.open .rev-chevron{transform:rotate(180deg)}
+.rev-day-details{padding:8px 4px 12px;max-height:0;overflow:hidden;transition:max-height .28s ease,opacity .2s ease;opacity:0}
+.rev-day-details.open{opacity:1}
+.rev-day-details .table{width:100%;margin:0}
+.rev-day-details .table th,.rev-day-details .table td{padding:6px 8px;font-size:13px}
+
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border, #e5e5e5);
+}
+
+.modal-body {
+  padding: 12px 14px;
+}
+
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border, #e5e5e5);
+}
+
+.btn-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--text);
+  padding: 4px;
+  line-height: 1;
+}
+
+@keyframes slideIn {
+  from { transform: translateY(-20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+/* === /EDIT #6 === */
+
+@media print{header.top, footer, nav, .no-print{ display:none !important; } body{ background:#fff; color:#000; } .card{ border:none; box-shadow:none; }}
+#invBrand{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px;}
+#invBrand .brand-left{ height:48px; } #invBrand .brand-right{ display:flex; align-items:center; gap:8px; } #invBrand .brand-right img{ height:60px; }
+.no-screen { display:none; }
+@media print{
+  .no-screen { display:initial; }
+  /* Center and slightly enlarge footer logo for printed invoices so the shop logo is obvious */
+  #printFooterLogo{
+    position:fixed;
+    left:50%;
+    transform:translateX(-50%);
+    bottom:20px;
+    height:28px;
+    width:auto;
+    display:block;
+    /* Keep the footer logo above the page background but ensure content doesn't overlap it. */
+    z-index: 1000;
+    pointer-events: none;
+  }
+
+  /* Reserve room at the bottom of the printed page so long tables don't flow under the footer logo. */
+  main.container, .container {
+    padding-bottom: 88px !important;
+  }
+}
+
+/* === EDIT #6b: Calendar tooltip stacking + theme look === */
+.day{ overflow: visible; }              /* prevent clipping inside the day box */
+.day.tip-open{ z-index: 999; }          /* raise the active day above neighbors */
+
+.tooltip{ 
+  z-index: 1000;                        /* ensure it sits above adjacent cells */
+  background: var(--card);              /* theme-friendly panel */
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.18); /* subtle depth, solid colors still */
+}
+
+.tooltip::after{                        /* little caret pointer */
+  content: "";
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: -6px;
+  border-width: 6px 6px 0 6px;
+  border-style: solid;
+  border-color: var(--card) transparent transparent transparent;
+  /* create a thin outline to match border */
+  box-shadow: 0 0 0 1px var(--line);
+}
+/* === /EDIT #6b === */
+/* ================================
+   CRMGR2 — Mobile Readability Fixes
+   Date: 2025-09-11
+   Scope: calendar legend/popover, header/dropdowns,
+          buttons hit area, tables, modals
+   NOTE: All rules below are surgical and wrapped in media queries
+=================================== */
+
+:root {
+  /* keep tokens neutral; adjust if you already have them */
+  --crmz-layer-popover: 9999;
+  --crmz-gap-xs: 6px;
+  --crmz-gap-sm: 10px;
+}
+
+/* Calendar popover should always float above neighbors */
+.crm-popover,
+.day-popover,
+.calendar-popover {
+  z-index: var(--crmz-layer-popover);
+}
+
+/* Make any calendar cell a safe stacking context */
+.calendar-day,
+.day,
+.cell,
+[data-calendar-day] {
+  position: relative;
+}
+
+/* Tables: allow horizontal scroll inside their card without breaking layout */
+.table-wrapper,
+.table-responsive,
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Large tap targets without re-theming */
+button,
+.btn,
+.button {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Modals: never exceed viewport on mobile */
+.modal,
+.dialog,
+[data-modal] {
+  max-height: 90vh;
+  overflow: auto;
+}
+
+/* Header dropdowns should not clip off-screen */
+.header .dropdown,
+.navbar .dropdown,
+[data-dropdown] {
+  max-width: 96vw;
+}
+
+/* =======================
+   Narrow screens only
+======================= */
+@media (max-width: 480px) {
+
+  /* Calendar legend: single row that wraps with gaps and bigger dots */
+  .calendar-legend,
+  .legend,
+  [data-calendar-legend] {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--crmz-gap-sm);
+    min-height: 38px; /* prevents overlap into grid */
+  }
+
+  .calendar-legend .dot,
+  .legend .dot,
+  [data-calendar-legend] .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+  }
+
+  .calendar-grid .day,
+  .calendar .day,
+  .calendar [data-calendar-day],
+  [data-calendar-grid] [data-calendar-day] {
+    min-height: 86px; /* a touch taller for stacked dots/labels */
+  }
+
+
+  /* Popover: fixed on mobile for safe viewport positioning */
+  .day-popover,
+  .calendar-popover,
+  .crm-popover {
+    position: fixed !important;
+    left: 12px !important;
+    right: 12px !important;
+    bottom: 12px !important;
+    top: auto !important;
+    max-height: 78vh;
+    overflow: auto;
+    border-radius: 12px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.25);
+  }
+
+  /* Header: wrap content, avoid horizontal scroll */
+  .header,
+  .navbar,
+  [data-header] {
+    display: flex;
+    flex-wrap: wrap;
+    row-gap: var(--crmz-gap-xs);
+  }
+
+  /* Optional compact labels if you use text next to icons */
+  .nav .label,
+  .navbar .label,
+  [data-nav] .label {
+    display: none; /* keep icons, drop long labels on tiny screens */
+  }
+
+  /* Ensure dropdown menus stay within viewport */
+  .dropdown-menu {
+    max-width: 96vw;
+    overflow-x: auto;
+  }
+
+  /* Table readability: soften wrapping and ensure paddings */
+  table th, table td {
+    padding: 10px 12px;
+    white-space: nowrap; /* keep cells tidy; scroll container handles overflow */
+  }
+}
+
+/* Subtle horizontal scroll affordance for wide tables (non-destructive) */
+.table-wrapper::after,
+.table-responsive::after {
+  content: "↔";
+  position: sticky;
+  right: 6px;
+  bottom: 6px;
+  font-size: 12px;
+  opacity: .35;
+  pointer-events: none;
+}
+
+/* === Labor Rate Picker === */
+.rate-picker{ position:fixed; inset:auto 20px 20px auto; max-width:640px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; box-shadow:0 10px 24px rgba(0,0,0,.25); z-index:1000;}
+.rate-row{ display:flex; align-items:center; justify-content:space-between; padding:10px 8px; border-radius:10px; cursor:pointer; }
+.rate-row:hover{ background:var(--line); }
+.rate-actions{ display:flex; gap:8px; }
+.rate-small{ font-size:12px; color:var(--muted); }
+
+/* ===== Appointments: compact action buttons ===== */
+.appt-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  width: 100%;
+}
+
+.appt-actions .btn,
+.appt-actions button { 
+  border-radius: 12px; 
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+  padding: 6px 8px !important;
+  margin: 0;
+  font-size: 0.85rem !important;
+  line-height: 1.2 !important;
+}
+
+.btn-sm { padding: 6px 10px !important; font-size: 0.9rem !important; line-height: 1.1 !important; }
+.btn-danger { background:#c62828; color:#fff; }
+.btn-secondary { background:#e9ecef; color:#111; }
+
+/* simple modal visibility toggles (optional if you already have) */
+.hidden { display: none; }
+.open   { display: block; }
+
+/* Invoices: compact item row */
+.item-row{
+  display:grid;
+  grid-template-columns: 1fr 90px 110px 44px; /* name | qty | price | remove */
+  gap:10px;
+  align-items:center;
+  margin-top:6px;
+}
+.item-row .itm-qty{ width:100%; }
+.item-row .itm-price{ width:100%; }
+.itm-remove{
+  min-width:44px;
+  padding:6px 0;
+  display:inline-flex; justify-content:center; align-items:center;
+}
+
+/* Invoice item block: meta line above and a subtle separator between items */
+.inv-item-block{
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+.inv-item-block:first-child{
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+.inv-item-meta{
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+/* Thinner controls for invoice modal: target a few placement variants so buttons shrink reliably */
+#invModal .inv-item-block .itm-remove,
+#invModal .item-row .itm-remove,
+#invModal .inv-item-block .btn.small,
+#invModal .modal-body .btn.small,
+#invModal .modal-body .itm-remove,
+#invModal .btn.small.inv-short {
+  min-width: 28px !important;
+  padding: 3px 6px !important;
+  font-size: 0.82rem !important;
+  line-height:1 !important;
+}
+#invModal .inv-item-block .itm-remove,
+#invModal .item-row .itm-remove {
+  padding-left: 6px !important;
+  padding-right: 6px !important;
+}
+
+/* === Appointments: Service dropdown === */
+.svc-toggle{
+  display:flex;
+  flex-direction:column;
+  gap:0px;
+  min-height: 32px;
+}
+
+/* clickable pill (like your invoice inputs) */
+.svc-label{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 10px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  cursor:pointer;
+  user-select:none;
+  line-height:1;
+  min-height: 32px;
+}
+
+/* caret */
+.svc-label::after{
+  content:"▾";
+  display:inline-block;
+  transform:rotate(0deg);
+  transition:transform .18s ease;
+  transform-origin:50% 45%;
+}
+
+/* rotate when open */
+.svc-toggle.open .svc-label::after{
+  transform:rotate(180deg);
+}
+
+/* dropdown panel */
+.svc-notes{
+  display:none;               /* hidden by default; JS toggles via .open or .hidden */
+  padding:10px 12px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--card);
+  color:var(--muted);
+  font-size:13px;
+  white-space:pre-wrap;
+}
+
+/* show when container has .open */
+.svc-toggle.open .svc-notes{
+  display:block;
+}
+
+/* keep your global helper */
+.hidden{ display:none !important; }
+
+/* Hamburger menu button (hidden by default) */
+.menu-toggle {
+  display: none;
+  flex-direction: column;
+  justify-content: space-around;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  z-index: 10;
+  margin-left: auto;
+}
+
+.menu-toggle span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background-color: currentColor;
+  border-radius: 3px;
+  transition: all 0.3s ease;
+}
+
+/* Responsive styles for small screens */
+@media (max-width: 768px) {
+  .menu-toggle {
+    display: flex;
+  }
+  
+  header nav {
+    position: fixed;
+    top: 60px;
+    left: -100%;
+    width: 100%;
+    background: var(--bg, #fff);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: left 0.3s ease;
+    flex-direction: column;
+    padding: 20px;
+    z-index: 9;
+  }
+  
+  header nav.active {
+    left: 0;
+  }
+  
+  header nav a {
+    padding: 8px 12px;
+    border-bottom: 1px solid #eee;
+    width: 100%;
+    text-align: left;
+    font-size: 14px;
+  }
+  
+  /* Hamburger animation when active */
+  .menu-toggle.active span:nth-child(1) {
+    transform: rotate(45deg) translate(6px, 6px);
+  }
+  
+  .menu-toggle.active span:nth-child(2) {
+    opacity: 0;
+  }
+  
+  .menu-toggle.active span:nth-child(3) {
+    transform: rotate(-45deg) translate(6px, -6px);
+  }
+  
+  /* Hide or adjust header actions on mobile */
+  header .container > div:last-child {
+    display: none;
+  }
+}
+
+
+/* Make action buttons in tables uniform size */
+.table td .btn {
+  width: 90px;
+  padding: 8px 12px;
+  text-align: center;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  white-space: nowrap;
+  gap: 4px;
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+.table td .btn:hover {
+  background: var(--line);
+  border-color: var(--muted);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+/* Invoice list in sidebar */
+#openInvoicesList {
+  overflow-y: auto;
+  max-height: 400px;
+  padding-right: 4px;
+}
+
+/* Responsive: 2x2 grid for buttons on small screens */
+@media (max-width: 768px) {
+  .table td {
+    white-space: normal;
+  }
+  
+  .table td:last-child {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  
+  .table td .btn {
+    width: 100%;
+    margin: 0;
+    text-align: center;
+  }
+}
+
+/* Appointments table: prevent wrapping to keep dates aligned */
+#apptTable td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#apptTable td:nth-child(2), /* Customer column */
+#apptTable td:nth-child(3), /* Vehicle column */
+#apptTable td:nth-child(4) { /* Service column */
+  max-width: 180px;
+  text-align: left !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#apptTable td:nth-child(4) .svc-toggle {
+  max-width: 100%;
+}
+
+/* ========================================
+   SHOP SWITCHER COMPONENT
+   ======================================== */
+
+.shop-switcher {
+  position: relative;
+  margin-right: 16px;
+  display: flex;
+  align-items: center;
+}
+
+.shop-switcher-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(42, 124, 255, 0.1);
+  border: 1px solid rgba(42, 124, 255, 0.3);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.shop-switcher-btn:hover {
+  background: rgba(42, 124, 255, 0.2);
+  border-color: rgba(42, 124, 255, 0.5);
+}
+
+.shop-switcher-btn svg {
+  flex-shrink: 0;
+}
+
+#currentShopName {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shop-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 280px;
+  max-width: 320px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.shop-dropdown.hidden {
+  display: none;
+}
+
+.shop-dropdown-loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.shop-dropdown-header {
+  padding: 12px 16px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+}
+
+.shop-dropdown-current {
+  padding: 12px 16px;
+  background: rgba(42, 124, 255, 0.1);
+  font-weight: 600;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shop-dropdown-current::before {
+  content: '✓';
+  font-size: 16px;
+}
+
+.shop-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: var(--text);
+  text-decoration: none;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-size: 14px;
+}
+
+.shop-dropdown-item:hover {
+  background: rgba(42, 124, 255, 0.05);
+}
+
+.shop-dropdown-item.active {
+  background: rgba(42, 124, 255, 0.1);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.shop-dropdown-item .shop-role {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: rgba(42, 124, 255, 0.2);
+  border-radius: 12px;
+  color: var(--accent);
+  text-transform: capitalize;
+}
+
+.shop-dropdown-item.admin-link {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.shop-dropdown-item.admin-link:hover {
+  background: rgba(42, 124, 255, 0.1);
+}
+
+.shop-dropdown hr {
+  margin: 0;
+  border: none;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 768px) {
+  .shop-switcher {
+    margin-right: 8px;
+  }
+  
+  .shop-switcher-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  
+  #currentShopName {
+    max-width: 100px;
+  }
+  
+  .shop-dropdown {
+    min-width: 240px;
+  }
+}
+
+/* ==================== PARTS CATALOG STYLES ==================== */
+
+.parts-results {
+  margin-top: 1.5rem;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.parts-list {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+.part-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem;
+  transition: all 0.2s ease;
+}
+
+.part-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-color: var(--accent);
+}
+
+.part-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.part-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.part-header .badge {
+  padding: 0.25rem 0.75rem;
+  background: var(--accent);
+  color: white;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.part-details {
+  margin-bottom: 0.75rem;
+}
+
+.part-details p {
+  margin: 0.25rem 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.part-details strong {
+  color: var(--text);
+}
+
+.vehicle-fit {
+  color: var(--accent) !important;
+  font-weight: 500 !important;
+  font-size: 0.85rem !important;
+}
+
+.part-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--muted);
+}
+
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  color: var(--muted);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.pricing-summary {
+  background: #f0f9ff;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-top: 1rem;
+}
+
+[data-theme="dark"] .pricing-summary {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.form-section {
+  margin-bottom: 1.5rem;
+}
+
+.form-section h4 {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.form-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (max-width: 768px) {
+  .form-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .parts-results {
+    max-height: 400px;
+  }
+}
+
+/* Modal overlay for pricing modal */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: none;
+}
+
+.modal.active, .modal[style*="display: flex"] {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}

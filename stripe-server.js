@@ -229,42 +229,245 @@ app.post('/get-session-subscription', async (req, res) => {
   }
 });
 
-// Webhook endpoint for Stripe events (optional but recommended)
+// Webhook endpoint for Stripe events
+// IMPORTANT: This needs raw body for signature verification
 app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (!webhookSecret) {
+    console.warn('⚠️ STRIPE_WEBHOOK_SECRET not set - webhooks will not be verified!');
+    return res.status(500).json({ error: 'Webhook secret not configured' });
+  }
 
   let event;
 
   try {
     event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
   } catch (err) {
-    console.error('Webhook signature verification failed:', err.message);
+    console.error('❌ Webhook signature verification failed:', err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Handle the event
-  switch (event.type) {
-    case 'checkout.session.completed':
-      const session = event.data.object;
-      console.log('Checkout session completed:', session.id);
-      // TODO: Update user's subscription status in Supabase
-      break;
-    case 'customer.subscription.deleted':
-      const subscription = event.data.object;
-      console.log('Subscription cancelled:', subscription.id);
-      // TODO: Update user's subscription status in Supabase
-      break;
-    default:
-      console.log(`Unhandled event type ${event.type}`);
-  }
+  console.log('🔔 Webhook received:', event.type);
 
-  res.json({ received: true });
+  // Handle the event
+  try {
+    switch (event.type) {
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated':
+        await handleSubscriptionUpdate(event.data.object);
+        break;
+        
+      case 'customer.subscription.deleted':
+        await handleSubscriptionCanceled(event.data.object);
+        break;
+        
+      case 'customer.subscription.trial_will_end':
+        await handleTrialEnding(event.data.object);
+        break;
+        
+      case 'invoice.payment_succeeded':
+        await handlePaymentSucceeded(event.data.object);
+        break;
+        
+      case 'invoice.payment_failed':
+        await handlePaymentFailed(event.data.object);
+        break;
+        
+      default:
+        console.log(`ℹ️ Unhandled event type: ${event.type}`);
+    }
+    
+    res.json({ received: true });
+  } catch (error) {
+    console.error('❌ Error handling webhook:', error);
+    res.status(500).json({ error: 'Webhook handler failed' });
+  }
 });
+
+// Webhook handlers
+async function handleSubscriptionUpdate(subscription) {
+  console.log('🔄 Handling subscription update:', subscription.id);
+  
+  const customerId = subscription.customer;
+  const status = subscription.status;
+  const priceId = subscription.items.data[0].price.id;
+  
+  // Map price ID to plan name
+  const PRICE_TO_PLAN = {
+    'price_1STABgQMIc1SOVFzyfZLVotW': 'Single Shop',
+    'price_1STACjQMIc1SOVFz1JmYq341': 'Multi Shop',
+    'price_1STADSQMIc1SOVFz6egyM0cR': 'Advanced Shop'
+  };
+  
+  const planName = PRICE_TO_PLAN[priceId] || 'Unknown';
+  
+  // Update Supabase
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  
+  if (!supabaseUrl || !supabaseKey) {
+    console.warn('⚠️ Supabase credentials not configured - skipping database update');
+    return;
+  }
+  
+  try {
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    // Find user by Stripe customer ID
+    const { data: users, error: findError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('stripe_customer_id', customerId)
+      .limit(1);
+    
+    if (findError) {
+      console.error('❌ Error finding user:', findError);
+      return;
+    }
+    
+    if (!users || users.length === 0) {
+      console.warn('⚠️ No user found with customer ID:', customerId);
+      return;
+    }
+    
+    const user = users[0];
+    
+    // Update user subscription info
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({
+        stripe_subscription_id: subscription.id,
+        subscription_status: status,
+        subscription_plan: planName,
+        trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
+        subscription_end: subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', user.id);
+    
+    if (updateError) {
+      console.error('❌ Error updating user:', updateError);
+    } else {
+      console.log('✅ User subscription updated:', user.email, '|', status, '|', planName);
+    }
+  } catch (error) {
+    console.error('❌ Error in handleSubscriptionUpdate:', error);
+  }
+}
+
+async function handleSubscriptionCanceled(subscription) {
+  console.log('❌ Handling subscription cancellation:', subscription.id);
+  
+  const customerId = subscription.customer;
+  
+  // Update Supabase
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  
+  if (!supabaseUrl || !supabaseKey) {
+    console.warn('⚠️ Supabase credentials not configured - skipping database update');
+    return;
+  }
+  
+  try {
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    // Find user by Stripe customer ID
+    const { data: users, error: findError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('stripe_customer_id', customerId)
+      .limit(1);
+    
+    if (findError || !users || users.length === 0) {
+      console.warn('⚠️ No user found with customer ID:', customerId);
+      return;
+    }
+    
+    const user = users[0];
+    
+    // Update user to canceled status
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({
+        subscription_status: 'canceled',
+        subscription_end: subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', user.id);
+    
+    if (updateError) {
+      console.error('❌ Error updating user:', updateError);
+    } else {
+      console.log('✅ User subscription canceled:', user.email);
+    }
+  } catch (error) {
+    console.error('❌ Error in handleSubscriptionCanceled:', error);
+  }
+}
+
+async function handleTrialEnding(subscription) {
+  console.log('⏰ Trial ending soon for subscription:', subscription.id);
+  // You can send an email notification here
+  // For now, just log it
+}
+
+async function handlePaymentSucceeded(invoice) {
+  console.log('✅ Payment succeeded for invoice:', invoice.id);
+  // Payment went through - subscription should already be active from subscription.updated event
+}
+
+async function handlePaymentFailed(invoice) {
+  console.log('❌ Payment failed for invoice:', invoice.id);
+  
+  const customerId = invoice.customer;
+  
+  // Update Supabase to mark subscription as past_due
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  
+  if (!supabaseUrl || !supabaseKey) return;
+  
+  try {
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    const { data: users } = await supabase
+      .from('users')
+      .select('*')
+      .eq('stripe_customer_id', customerId)
+      .limit(1);
+    
+    if (users && users.length > 0) {
+      await supabase
+        .from('users')
+        .update({
+          subscription_status: 'past_due',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', users[0].id);
+      
+      console.log('✅ User marked as past_due:', users[0].email);
+    }
+  } catch (error) {
+    console.error('❌ Error in handlePaymentFailed:', error);
+  }
+}
 
 const PORT = process.env.PORT || process.env.STRIPE_PORT || 3001;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✅ Stripe server running on port ${PORT}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-});
+
+// Only start server if not in Vercel (Vercel uses serverless functions)
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ Stripe server running on port ${PORT}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  });
+}
+
+// Export for Vercel serverless
+module.exports = app;

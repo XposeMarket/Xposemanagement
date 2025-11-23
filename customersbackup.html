@@ -1,0 +1,1076 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Customers • Xpose Management</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* tiny, surgical additions */
+    .pill { display:inline-block; padding:2px 8px; border-radius:12px; font-size:.85em; background:#eee; color:#333; }
+    .pill.warn { background:#ffe7cc; color:#7a3d00; }
+    .veh-card-actions { display:flex; gap:8px; align-items:center; }
+
+    /* vehicle card container so we can absolutely position the star button */
+    .veh-card { position: relative; }
+
+    /* smaller star button, theme-aware text, positioned top-right */
+    .star-btn{
+      display:inline-flex; align-items:center; gap:6px;
+      border:1px solid var(--border,#ddd); padding:2px 8px; border-radius:999px;
+      cursor:pointer; font-size:.8em; background:var(--bg,#fff); color:inherit;
+    }
+    .star-btn:not(.is-primary){ color:var(--muted,#666); }
+
+    /* keep the star yellow when primary */
+    .star-icon{ font-size:14px; line-height:1; color:#888; }
+    .star-icon.primary{ color:#f5c518; }
+
+    /* top-right placement inside each vehicle card */
+    .veh-card .star-btn{ position:absolute; top:8px; right:12px; }
+
+    /* add a little breathing room so the title doesn't sit under the button */
+    .veh-card .veh-title{ padding-right:82px; }
+
+    .veh-sub { color:var(--muted,#666); font-size:.92em; }
+
+    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:70; }
+    .modal-card { width:min(520px,92vw); background:var(--card,#fff); color:inherit; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+    .modal-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border,#e5e5e5); }
+    .modal-body { padding:12px 14px; }
+    .modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 14px; border-top:1px solid var(--border,#e5e5e5); }
+    .hidden { display:none; }
+  </style>
+</head>
+<body>
+<header class="top">
+  <div class="container row top row">
+    <a class="brand" href="dashboard.html" aria-label="Home">
+      <img id="headerLogo" src="XposeManagementCRMlogo.png" alt="Logo">
+    </a>
+    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button><nav id="mainNav">
+      <a href="dashboard.html">Dashboard</a>
+      <a href="appointments.html">Appointments</a>
+      <a href="jobs.html">Jobs</a>
+      <a href="messages.html">Messages</a>
+      <a href="invoices.html">Invoices</a>
+      <a href="customers.html" class="active">Customers</a>
+      <a href="settings.html">Settings</a>
+      <a href="profile.html">Profile</a>
+    </nav>
+    <div>
+      <button id="themeToggle" class="btn" aria-label="Toggle theme">Theme</button>
+      <button id="logoutBtn" class="btn" aria-label="Logout">Logout</button>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+  <div class="toolbar" style="gap:12px; align-items:center; margin-top:12px">
+    <h2 style="margin:0">Customers</h2>
+    <input id="custSearch" placeholder="Search name / phone / email / VIN" style="min-width:260px">
+    <button class="btn" id="btnExport">Export CSV</button>
+    <button class="btn" id="btnBackfill">Backfill from Data</button>
+    <button class="btn quick-create" id="btnNewCustomer">+ Customer</button>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <div class="table-wrap">
+      <table class="table" id="custTable">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Email</th>
+            <th>Vehicles</th>
+            <th>Total Visits</th>
+            <th>Last Visit</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="custTbody"></tbody>
+      </table>
+    </div>
+    <div id="custEmpty" class="muted" style="padding:12px">No customers yet. Use Backfill or create one from an appointment.</div>
+  </div>
+</main>
+
+  <!-- New Customer Modal -->
+  <div id="custModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="custModalTitle">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="custModalTitle" style="margin:0">New Customer</h3>
+        <button class="btn" id="custModalClose">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="grid cols-2">
+          <div><label>First</label><input id="newCustFirst" placeholder="First name"></div>
+          <div><label>Last</label><input id="newCustLast" placeholder="Last name"></div>
+          <div><label>Phone</label><input id="newCustPhone" placeholder="(555) 555-0123"></div>
+          <div><label>Email</label><input id="newCustEmail" placeholder="name@example.com"></div>
+        </div>
+        <div style="margin-top:8px">
+          <label>Notes</label>
+          <textarea id="newCustNotes" rows="3" placeholder="Optional notes"></textarea>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="newCustCancel">Cancel</button>
+        <button class="btn primary" id="newCustSave">Create Customer</button>
+      </div>
+    </div>
+  </div>
+
+<!-- Detail Drawer -->
+<aside id="custDrawer" class="card hidden" style="position:fixed;right:20px;top:80px;bottom:20px;width:520px;max-width:92vw;overflow:auto;z-index:50">
+  <div class="toolbar" style="justify-content:space-between">
+    <h3 id="cdTitle">Customer</h3>
+    <button class="btn" id="cdClose">Close</button>
+  </div>
+  <div style="padding:12px">
+    <section>
+      <h4>Personal</h4>
+      <div class="grid cols-2">
+        <div><label>First</label><input id="cdFirst"></div>
+        <div><label>Last</label><input id="cdLast"></div>
+        <div><label>Phone</label><input id="cdPhone"></div>
+        <div><label>Email</label><input id="cdEmail"></div>
+      </div>
+      <div style="margin-top:8px">
+        <label>Notes</label>
+        <textarea id="cdNotes" rows="2"></textarea>
+      </div>
+      <div class="row" style="justify-content:flex-end; gap:8px; margin-top:8px">
+        <button class="btn" id="cdSave">Save</button>
+      </div>
+    </section>
+
+    <hr>
+
+    <section>
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h4>Vehicles</h4>
+        <button class="btn" id="cdAddVeh">+ Add Vehicle</button>
+      </div>
+      <div id="cdVehList" class="stack" style="gap:8px"></div>
+    </section>
+
+    <hr>
+
+    <section>
+      <h4>Appointments</h4>
+      <div class="table-wrap">
+        <table class="table" id="cdApptTable">
+          <thead><tr><th>Date</th><th>Time</th><th>Service</th><th>Status</th></tr></thead>
+          <tbody id="cdApptTbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <hr>
+
+    <section>
+      <h4>Invoices</h4>
+      <div class="table-wrap">
+        <table class="table" id="cdInvTable">
+          <thead><tr><th>Date</th><th>#</th><th>Total</th><th>Status</th></tr></thead>
+          <tbody id="cdInvTbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</aside>
+
+<!-- Add/Edit Vehicle Modal -->
+<div id="vehModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="vehTitle">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="vehTitle" style="margin:0">Add Vehicle</h3>
+      <button class="btn" id="vehClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="grid cols-2">
+        <div><label>VIN (optional)</label><input id="vehVin" maxlength="17" placeholder="17 characters"></div>
+        <div><label>Plate</label><input id="vehPlate" placeholder="e.g. ABC1234"></div>
+        <div><label>Year</label><input id="vehYear" type="number" min="1900" max="2100" placeholder="YYYY"></div>
+        <div><label>Make</label><input id="vehMake" placeholder="Toyota"></div>
+        <div><label>Model</label><input id="vehModel" placeholder="Camry"></div>
+        <div><label>Trim</label><input id="vehTrim" placeholder="XSE"></div>
+      </div>
+      <div style="margin-top:8px">
+        <label>Notes</label>
+        <textarea id="vehNotes" rows="2" placeholder="Any vehicle notes"></textarea>
+      </div>
+      <div style="margin-top:8px">
+        <label><input type="checkbox" id="vehPrimary"> Set as primary</label>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="vehCancel">Cancel</button>
+      <button class="btn" id="vehSave">Save Vehicle</button>
+    </div>
+  </div>
+</div>
+
+<!-- Themed Confirm Modal (reused for vehicle or customer) -->
+<div id="confirmModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="confTitle">
+  <div class="modal-card" style="max-width:440px">
+    <div class="modal-head">
+      <h3 id="confTitle" style="margin:0">Confirm</h3>
+      <button class="btn" id="confClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <p id="confMsg" class="muted">Are you sure?</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="confCancel">Cancel</button>
+      <button class="btn danger" id="confDelete">Delete</button>
+    </div>
+  </div>
+</div>
+
+<footer class="container">© Xpose Market</footer>
+
+<script src="vendor/supabase.umd.js"></script>
+<script src="helpers/supabase.js" type="module"></script>
+<script src="app.js"></script>
+<script src="multi-tenant.js"></script>
+<script type="module">
+import { supabase } from './helpers/supabase.js';
+
+(async function(){
+  const LS = window.LS || {users:"xm_users",session:"xm_session",data:"xm_data"};
+  const $ = (sel, root) => (root||document).querySelector(sel);
+  const $$ = (sel, root) => Array.from((root||document).querySelectorAll(sel));
+  function readLS(k,f){try{const v=localStorage.getItem(k);return v?JSON.parse(v):(f??null);}catch(e){return f??null;}}
+  function writeLS(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
+  function newId(p){ return (p||'id') + Math.random().toString(36).slice(2,10); }
+  function normPhone(s){ return (s||'').replace(/\D+/g,''); }
+  function normEmail(s){ return (s||'').trim().toLowerCase(); }
+  function fmtDate(d){ if(!d) return ''; try{ return new Date(d).toLocaleDateString(); }catch(e){ return d || ''; } }
+  function fmtMoney(n){ n = Number(n||0); return n.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+  function currentUser(){
+    const sess = readLS(LS.session, {}) || {};
+    const users = readLS(LS.users, []) || [];
+    const me = users.find(u => u.id===sess.user_id || u.email===sess.email) || sess.user || {};
+    return me || {};
+  }
+  function currentShopId(){
+    const me = currentUser();
+    return me.shop_id || (readLS('xm_shops', [])[0]?.id) || 'shop_demo';
+  }
+  function myRole(){ return (currentUser().role||'').toLowerCase(); }
+  const canEdit = () => myRole() !== 'staff';
+
+  /* SUPABASE FUNCTIONS */
+  async function loadCustomersFromSupabase() {
+    try {
+      const shopId = currentShopId();
+      console.log('🔄 Loading customers for shop:', shopId);
+      
+      const { data, error } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('shop_id', shopId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error loading customers:', error);
+        return [];
+      }
+
+      console.log('✅ Loaded customers:', data?.length || 0);
+      return data || [];
+    } catch (err) {
+      console.error('❌ Exception loading customers:', err);
+      return [];
+    }
+  }
+
+  async function saveCustomerToSupabase(customer) {
+    try {
+      const shopId = currentShopId();
+      
+      // Prepare customer data for Supabase
+      const customerData = {
+        id: customer.id,
+        shop_id: shopId,
+        first_name: customer.first || customer.first_name || '',
+        last_name: customer.last || customer.last_name || '',
+        email: customer.email || '',
+        phone: customer.phone || '',
+        vehicle: customer.vehicle || '', // Combined vehicle string if any
+        vin: customer.vin || '',
+        zipcode: customer.zipcode || '',
+        notes: customer.notes || '',
+        created_at: customer.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      console.log('💾 Saving customer to Supabase:', customerData);
+
+      const { data, error } = await supabase
+        .from('customers')
+        .upsert(customerData, { onConflict: 'id' })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error saving customer:', error);
+        throw error;
+      }
+
+      console.log('✅ Customer saved:', data);
+      return data;
+    } catch (err) {
+      console.error('❌ Exception saving customer:', err);
+      throw err;
+    }
+  }
+
+  async function deleteCustomerFromSupabase(customerId) {
+    try {
+      console.log('🗑️ Deleting customer:', customerId);
+      
+      // First delete associated vehicles
+      const { error: vehError } = await supabase
+        .from('vehicles')
+        .delete()
+        .eq('customer_id', customerId);
+
+      if (vehError) {
+        console.warn('⚠️ Error deleting vehicles:', vehError);
+      }
+
+      // Then delete customer
+      const { error } = await supabase
+        .from('customers')
+        .delete()
+        .eq('id', customerId);
+
+      if (error) {
+        console.error('❌ Error deleting customer:', error);
+        throw error;
+      }
+
+      console.log('✅ Customer deleted');
+    } catch (err) {
+      console.error('❌ Exception deleting customer:', err);
+      throw err;
+    }
+  }
+
+  async function loadVehiclesForCustomer(customerId) {
+    try {
+      const { data, error } = await supabase
+        .from('vehicles')
+        .select('*')
+        .eq('customer_id', customerId)
+        .order('is_primary', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error loading vehicles:', error);
+        return [];
+      }
+
+      return data || [];
+    } catch (err) {
+      console.error('❌ Exception loading vehicles:', err);
+      return [];
+    }
+  }
+
+  async function saveVehicleToSupabase(customerId, vehicle) {
+    try {
+      const vehicleData = {
+        id: vehicle.id,
+        customer_id: customerId,
+        shop_id: currentShopId(),
+        vin: vehicle.vin || '',
+        year: vehicle.year || '',
+        make: vehicle.make || '',
+        model: vehicle.model || '',
+        trim: vehicle.trim || '',
+        plate: vehicle.plate || '',
+        notes: vehicle.notes || '',
+        is_primary: vehicle.is_primary || false,
+        created_at: vehicle.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      console.log('💾 Saving vehicle:', vehicleData);
+
+      const { data, error } = await supabase
+        .from('vehicles')
+        .upsert(vehicleData, { onConflict: 'id' })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('❌ Error saving vehicle:', error);
+        throw error;
+      }
+
+      console.log('✅ Vehicle saved:', data);
+      return data;
+    } catch (err) {
+      console.error('❌ Exception saving vehicle:', err);
+      throw err;
+    }
+  }
+
+  async function deleteVehicleFromSupabase(vehicleId) {
+    try {
+      console.log('🗑️ Deleting vehicle:', vehicleId);
+      
+      const { error } = await supabase
+        .from('vehicles')
+        .delete()
+        .eq('id', vehicleId);
+
+      if (error) {
+        console.error('❌ Error deleting vehicle:', error);
+        throw error;
+      }
+
+      console.log('✅ Vehicle deleted');
+    } catch (err) {
+      console.error('❌ Exception deleting vehicle:', err);
+      throw err;
+    }
+  }
+
+  // Local cache
+  let customersCache = [];
+  let vehiclesCache = {}; // { customerId: [vehicles] }
+
+  async function refreshCustomers() {
+    customersCache = await loadCustomersFromSupabase();
+    
+    // Load vehicles for all customers
+    for (const customer of customersCache) {
+      vehiclesCache[customer.id] = await loadVehiclesForCustomer(customer.id);
+    }
+    
+    return customersCache;
+  }
+
+  function listCustomersForShop() {
+    return customersCache;
+  }
+
+  async function upsertCustomer(cust) {
+    const shopId = currentShopId();
+    const keyPhone = normPhone(cust.phone);
+    const keyEmail = normEmail(cust.email);
+    
+    // Check if customer already exists
+    const existing = customersCache.find(c =>
+      (normPhone(c.phone) && normPhone(c.phone) === keyPhone) ||
+      (normEmail(c.email) && normEmail(c.email) === keyEmail)
+    );
+
+    const customerData = {
+      id: cust.id || existing?.id || newId('cust_'),
+      shop_id: shopId,
+      first: cust.first || cust.first_name || '',
+      last: cust.last || cust.last_name || '',
+      email: cust.email || '',
+      phone: cust.phone || '',
+      notes: cust.notes || '',
+      zipcode: cust.zipcode || '',
+      vehicle: cust.vehicle || '',
+      vin: cust.vin || '',
+      created_at: existing?.created_at || cust.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    // Save to Supabase
+    const saved = await saveCustomerToSupabase(customerData);
+    
+    // Update cache
+    if (existing) {
+      const idx = customersCache.findIndex(c => c.id === saved.id);
+      customersCache[idx] = saved;
+    } else {
+      customersCache.push(saved);
+    }
+
+    return saved;
+  }
+
+  async function removeCustomer(customerId) {
+    await deleteCustomerFromSupabase(customerId);
+    customersCache = customersCache.filter(c => c.id !== customerId);
+    delete vehiclesCache[customerId];
+  }
+
+  async function addVehicle(customerId, veh) {
+    const vehicleData = {
+      id: veh.id || newId('veh_'),
+      ...veh,
+      is_primary: veh.is_primary || false
+    };
+
+    // Check if this should be primary
+    const currentVehicles = vehiclesCache[customerId] || [];
+    const hasPrimary = currentVehicles.some(v => v.is_primary);
+    if (!hasPrimary) {
+      vehicleData.is_primary = true;
+    }
+
+    // If setting as primary, unset others
+    if (vehicleData.is_primary) {
+      for (const v of currentVehicles) {
+        if (v.is_primary) {
+          await saveVehicleToSupabase(customerId, { ...v, is_primary: false });
+        }
+      }
+    }
+
+    const saved = await saveVehicleToSupabase(customerId, vehicleData);
+    
+    // Update cache
+    if (!vehiclesCache[customerId]) {
+      vehiclesCache[customerId] = [];
+    }
+    vehiclesCache[customerId].push(saved);
+    vehiclesCache[customerId].sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
+
+    return saved;
+  }
+
+  async function removeVehicle(customerId, vehId) {
+    await deleteVehicleFromSupabase(vehId);
+    
+    if (vehiclesCache[customerId]) {
+      vehiclesCache[customerId] = vehiclesCache[customerId].filter(v => v.id !== vehId);
+      
+      // If no primary left, make first one primary
+      if (vehiclesCache[customerId].length && !vehiclesCache[customerId].some(v => v.is_primary)) {
+        vehiclesCache[customerId][0].is_primary = true;
+        await saveVehicleToSupabase(customerId, vehiclesCache[customerId][0]);
+      }
+    }
+  }
+
+  async function setPrimaryVehicle(customerId, vehId) {
+    const vehicles = vehiclesCache[customerId] || [];
+    
+    for (const v of vehicles) {
+      const shouldBePrimary = v.id === vehId;
+      if (v.is_primary !== shouldBePrimary) {
+        v.is_primary = shouldBePrimary;
+        await saveVehicleToSupabase(customerId, v);
+      }
+    }
+    
+    vehiclesCache[customerId].sort((a, b) => (b.is_primary ? 1 : 0) - (a.is_primary ? 1 : 0));
+  }
+
+  async function updateCustomer(customer) {
+    const existing = customersCache.find(c => c.id === customer.id);
+    if (!existing) return;
+    
+    const updated = { ...existing, ...customer, updated_at: new Date().toISOString() };
+    const saved = await saveCustomerToSupabase(updated);
+    
+    const idx = customersCache.findIndex(c => c.id === customer.id);
+    customersCache[idx] = saved;
+  }
+
+  /* backfill + name repair */
+  function parseName(s){
+    s = (s||'').trim();
+    if(!s) return {first:'', last:''};
+    const parts = s.split(/\s+/);
+    const first = parts.shift()||'';
+    const last = parts.join(' ')||'';
+    return {first, last};
+  }
+
+  async function backfillFromExisting(){
+    const sid = currentShopId();
+    const d = getData();
+    const apps = (d.appointments||[]).filter(a => !a.shop_id || a.shop_id===sid);
+    const invs = (d.invoices||[]).filter(i => !i.shop_id || i.shop_id===sid);
+    let added = 0;
+
+    async function ensureBy(contact){
+      let first = contact.first || '';
+      let last  = contact.last  || '';
+      if((!first && !last) && contact.name){ const n = parseName(contact.name); first = n.first; last = n.last; }
+      const cust = { first, last, phone: contact.phone||'', email: contact.email||'' };
+      const before = listCustomersForShop().length;
+      const created = await upsertCustomer(cust);
+      const after = listCustomersForShop().length;
+      if(after>before) added++;
+      return created;
+    }
+
+    for (const a of apps) {
+      const contact = {
+        first: a.customer_first || a.first || '',
+        last:  a.customer_last  || a.last  || '',
+        name:  a.customer || a.name || a.customer_name || '',
+        phone: a.phone || a.customer_phone || '',
+        email: a.email || a.customer_email || ''
+      };
+      const c = await ensureBy(contact);
+      const veh = {
+        vin: a.vin || a.vehicle_vin || '',
+        year: a.year || a.vehicle_year || '',
+        make: a.make || a.vehicle_make || '',
+        model: a.model || a.vehicle_model || '',
+        trim: a.trim || a.vehicle_trim || '',
+        plate: a.plate || a.vehicle_plate || '',
+        notes: a.vehicle || a.vehicle_desc || ''
+      };
+      const any = veh.vin || veh.year || veh.make || veh.model || veh.trim || veh.plate || veh.notes;
+      if(any) await addVehicle(c.id, veh);
+    }
+
+    for (const i of invs) {
+      const contact = {
+        first: i.customer_first || '',
+        last:  i.customer_last  || '',
+        name:  i.customer || i.customer_name || '',
+        phone: i.phone || i.customer_phone || '',
+        email: i.email || i.customer_email || ''
+      };
+      await ensureBy(contact);
+    }
+
+    alert(added + " customers added/merged for shop.");
+    await refreshCustomers();
+    render();
+  }
+
+  /* localStorage data accessor (for appointments/invoices) */
+  function getData(){ return readLS(LS.data, {}) || {}; }
+
+  /* renderers */
+  const tbody = $('#custTbody');
+  const empty = $('#custEmpty');
+  const search = $('#custSearch');
+
+  function latestTouch(c, apps, invs){
+    const name = ((c.first_name||c.first||'') + ' ' + (c.last_name||c.last||'')).trim().toLowerCase();
+    const phone = normPhone(c.phone);
+    const email = normEmail(c.email);
+    const stampApps = apps
+      .filter(a => (normPhone(a.phone||'')===phone) || (normEmail(a.email||'')===email) || (((a.customer||'').trim().toLowerCase())===name))
+      .map(a => Date.parse(a.preferred_date || a.date || a.created_at || 0) || 0);
+    const stampInvs = invs
+      .filter(i => (normPhone(i.phone||'')===phone) || (normEmail(i.email||'')===email) || (((i.customer||'').trim().toLowerCase())===name))
+      .map(i => Date.parse(i.date || i.created_at || 0) || 0);
+    return Math.max(0, ...(stampApps.concat(stampInvs)));
+  }
+
+  function totalVisits(c, apps){
+    const name = ((c.first_name||c.first||'') + ' ' + (c.last_name||c.last||'')).trim().toLowerCase();
+    const phone = normPhone(c.phone);
+    const email = normEmail(c.email);
+    return apps.filter(a => (normPhone(a.phone||'')===phone) || (normEmail(a.email||'')===email) || (((a.customer||'').trim().toLowerCase())===name)).length;
+  }
+
+  function render(){
+    const list = listCustomersForShop();
+    const d = getData();
+    const apps = d.appointments||[];
+    const invs = d.invoices||[];
+    const q = (search.value||'').toLowerCase();
+
+    const filtered = list.filter(c => {
+      const first = c.first_name || c.first || '';
+      const last = c.last_name || c.last || '';
+      const name = (first + ' ' + last).toLowerCase();
+      const phone = (c.phone||'').toLowerCase();
+      const email = (c.email||'').toLowerCase();
+      const vehicles = vehiclesCache[c.id] || [];
+      const vins = vehicles.map(v=>v.vin).join(' ').toLowerCase();
+      const ymm  = vehicles.map(v=>[v.year,v.make,v.model].filter(Boolean).join(' ')).join(' ').toLowerCase();
+      const hay = [name, phone, email, vins, ymm].join(' ');
+      return !q || hay.includes(q);
+    });
+
+    tbody.innerHTML = '';
+    filtered.forEach(c => {
+      const lastVisit = latestTouch(c, apps, invs);
+      const vehicles = vehiclesCache[c.id] || [];
+      const first = c.first_name || c.first || '';
+      const last = c.last_name || c.last || '';
+      const fullName = (first + ' ' + last).trim();
+      
+      const actions = canEdit()
+        ? `<div class="row" style="justify-content:flex-end; gap:8px">
+             <button class="btn" data-open="${c.id}">Open</button>
+             <button class="btn danger" data-remove-cust="${c.id}">Remove</button>
+           </div>`
+        : `<button class="btn" data-open="${c.id}">Open</button>`;
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${fullName || '<span class="muted">—</span>'}</td>
+        <td>${c.phone||''}</td>
+        <td>${c.email||''}</td>
+        <td>${vehicles.length}</td>
+        <td>${totalVisits(c, apps)}</td>
+        <td>${fmtDate(lastVisit)}</td>
+        <td style="text-align:right">${actions}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+    empty.style.display = filtered.length ? 'none' : 'block';
+  }
+
+  /* drawer + table actions */
+  const drawer = $('#custDrawer');
+  $('#cdClose').addEventListener('click', ()=> drawer.classList.add('hidden'));
+
+  // Handle Open / Remove (customer) from table
+  $('#custTbody').addEventListener('click', (e)=>{
+    const openId = e.target?.dataset?.open || e.target.closest('button')?.dataset?.open;
+    const delId  = e.target?.dataset?.removeCust || e.target.closest('button')?.dataset?.removeCust;
+    if(openId){ openDetail(openId); return; }
+    if(delId && canEdit()){ openConfirmCustomer(delId); }
+  });
+
+  function vehicleTitle(v){ return v.vin || [v.year,v.make,v.model].filter(Boolean).join(' ') || 'Vehicle'; }
+  function vehicleSub(v){
+    const parts = [];
+    const ymm = [v.year,v.make,v.model].filter(Boolean).join(' ');
+    if(ymm) parts.push(ymm);
+    if(v.trim) parts.push(v.trim);
+    if(v.plate) parts.push('Plate: '+v.plate);
+    return parts.join(' • ');
+  }
+
+  function openDetail(id){
+    const list = listCustomersForShop();
+    const c = list.find(x => x.id===id); if(!c) return;
+    drawer.classList.remove('hidden');
+    
+    const first = c.first_name || c.first || '';
+    const last = c.last_name || c.last || '';
+    
+    $('#cdTitle').textContent = (first + ' ' + last).trim() || 'Customer';
+    $('#cdFirst').value = first;
+    $('#cdLast').value = last;
+    $('#cdPhone').value = c.phone||'';
+    $('#cdEmail').value = c.email||'';
+    $('#cdNotes').value = c.notes||'';
+
+    const editVisible = canEdit();
+    $('#cdSave').style.display = editVisible ? 'inline-block' : 'none';
+    $('#cdAddVeh').style.display = editVisible ? 'inline-block' : 'none';
+
+    $('#cdSave').onclick = async ()=> {
+      if(!canEdit()) return;
+      await updateCustomer({
+        id: c.id,
+        first: $('#cdFirst').value,
+        last: $('#cdLast').value,
+        phone: $('#cdPhone').value,
+        email: $('#cdEmail').value,
+        notes: $('#cdNotes').value
+      });
+      await refreshCustomers();
+      render(); 
+      openDetail(c.id);
+    };
+
+    /* vehicles */
+    const vWrap = $('#cdVehList'); vWrap.innerHTML = '';
+    const vehicles = (vehiclesCache[c.id] || []).slice().sort((a,b)=>(b.is_primary?1:0)-(a.is_primary?1:0));
+    vehicles.forEach(v => {
+      const li = document.createElement('div');
+      li.className = 'card veh-card';
+      const starCls = v.is_primary ? 'star-icon primary' : 'star-icon';
+      const starLbl = v.is_primary ? 'Primary' : 'Set as primary';
+      const btnCls  = v.is_primary ? 'star-btn is-primary' : 'star-btn';
+      const badge   = v.is_primary ? '<span class="pill warn">Primary</span>' : '';
+
+      li.innerHTML = `
+        ${editVisible ? `
+          <button class="${btnCls}" data-primary="${v.id}" aria-label="${starLbl}">
+            <span class="${starCls}">★</span><span>${starLbl}</span>
+          </button>
+        ` : ``}
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <div>
+            <div class="veh-title">${vehicleTitle(v)} ${badge}</div>
+            <div class="veh-sub">${vehicleSub(v)}</div>
+            ${v.notes ? `<div class="muted">${(v.notes||'')}</div>` : ``}
+          </div>
+          <div class="veh-card-actions">
+            ${editVisible ? `<button class="btn danger" data-remove="${v.id}">Remove</button>` : ``}
+          </div>
+        </div>
+      `;
+      vWrap.appendChild(li);
+    });
+
+    vWrap.onclick = async (ev)=>{
+      const tgt = ev.target.closest('button');
+      if(!tgt || !canEdit()) return;
+      const vid = tgt.dataset.primary || null;
+      const rid = tgt.dataset.remove || null;
+      if(vid){
+        await setPrimaryVehicle(c.id, vid);
+        await refreshCustomers();
+        openDetail(c.id); 
+        render();
+      } else if(rid){
+        openConfirmVehicle(c.id, rid);
+      }
+    };
+
+    /* appointments */
+    const d = getData(); const apps = d.appointments||[];
+    const phone = normPhone(c.phone); const email = normEmail(c.email);
+    const fullName = (first + ' ' + last).trim().toLowerCase();
+    const aRows = apps.filter(a =>
+      (normPhone(a.phone||'')===phone) ||
+      (normEmail(a.email||'')===email) ||
+      (((a.customer||'').trim().toLowerCase())===fullName)
+    );
+    const aTb = $('#cdApptTbody'); aTb.innerHTML = '';
+    aRows.forEach(a => {
+      const date = a.preferred_date || a.date || a.created_at || '';
+      const time = a.preferred_time || a.time || '';
+      const svc  = a.service || a.service_name || '';
+      const st   = a.status || '';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${fmtDate(date)}</td><td>${time}</td><td>${svc}</td><td>${st}</td>`;
+      aTb.appendChild(tr);
+    });
+
+    /* invoices */
+    const invs = d.invoices||[];
+    const appById = Object.fromEntries((apps||[]).map(x => [x.id||x.appt_id||x.appointment_id, x]));
+    const iTb = $('#cdInvTbody'); iTb.innerHTML = '';
+
+    function invoiceMatchesCustomer(inv){
+      const matchDirect = (normPhone(inv.phone||'')===phone) ||
+                          (normEmail(inv.email||'')===email) ||
+                          (((inv.customer||'').trim().toLowerCase())===fullName);
+      const apptId = inv.appointment_id || inv.appt_id;
+      const appt = apptId ? appById[apptId] : null;
+      const matchViaAppt = appt && (
+        (normPhone(appt.phone||'')===phone) ||
+        (normEmail(appt.email||'')===email) ||
+        (((appt.customer||'').trim().toLowerCase())===fullName)
+      );
+      return matchDirect || matchViaAppt;
+    }
+    function computeInvoiceTotal(inv){
+      if(inv.grand_total!=null) return Number(inv.grand_total||0);
+      if(Array.isArray(inv.items)){ return inv.items.reduce((sum,it)=>sum + Number(it.price||0)*Number(it.qty||1), 0); }
+      return Number(inv.total||0);
+    }
+
+    invs.filter(invoiceMatchesCustomer).forEach(i => {
+      const total = computeInvoiceTotal(i);
+      const statusRaw = i.status || '';
+      let status;
+      if(statusRaw){ status = (/paid|closed/i.test(statusRaw)) ? 'Paid' : 'Unpaid'; }
+      else { status = (Number(i.paid_total||0) >= Number(total||0)) ? 'Paid' : 'Unpaid'; }
+      const appt = (i.appointment_id||i.appt_id) ? appById[i.appointment_id||i.appt_id] : null;
+      const date = i.date || (appt && (appt.preferred_date || appt.date)) || i.created_at || '';
+      const number = i.number || i.id || '';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${fmtDate(date)}</td><td>${number}</td><td>${fmtMoney(total)}</td><td>${status}</td>`;
+      iTb.appendChild(tr);
+    });
+  }
+
+  /* Add/Edit Vehicle modal */
+  const vehModal = $('#vehModal');
+  const vehClose = $('#vehClose');
+  const vehCancel = $('#vehCancel');
+  const vehSave = $('#vehSave');
+  let vehForCustomerId = null;
+
+  function openVehModal(custId){
+    vehForCustomerId = custId;
+    $('#vehTitle').textContent = 'Add Vehicle';
+    $('#vehVin').value=''; $('#vehYear').value=''; $('#vehMake').value=''; $('#vehModel').value='';
+    $('#vehTrim').value=''; $('#vehPlate').value=''; $('#vehNotes').value=''; $('#vehPrimary').checked=false;
+    vehModal.classList.remove('hidden');
+    setTimeout(()=> $('#vehVin').focus(), 10);
+  }
+  function closeVehModal(){ vehForCustomerId = null; vehModal.classList.add('hidden'); }
+  $('#vehClose').addEventListener('click', closeVehModal);
+  $('#vehCancel').addEventListener('click', closeVehModal);
+
+  $('#cdAddVeh').addEventListener('click', ()=>{
+    if(!canEdit()) return;
+    const name = $('#cdTitle').textContent.trim();
+    const id = listCustomersForShop().find(c => {
+      const first = c.first_name || c.first || '';
+      const last = c.last_name || c.last || '';
+      return ((first + ' ' + last).trim() === name);
+    })?.id;
+    if(!id){ alert('Open a customer first'); return; }
+    openVehModal(id);
+  });
+
+  $('#vehSave').addEventListener('click', async ()=>{
+    if(!vehForCustomerId) return;
+    const vin = $('#vehVin').value.trim();
+    if(vin && vin.length>0 && vin.length!==17){ alert('VIN must be 17 characters (or leave blank).'); return; }
+    const veh = {
+      vin,
+      year: $('#vehYear').value.trim(),
+      make: $('#vehMake').value.trim(),
+      model: $('#vehModel').value.trim(),
+      trim: $('#vehTrim').value.trim(),
+      plate: $('#vehPlate').value.trim(),
+      notes: $('#vehNotes').value.trim(),
+      is_primary: $('#vehPrimary').checked
+    };
+    await addVehicle(vehForCustomerId, veh);
+    const id = vehForCustomerId;
+    await refreshCustomers();
+    closeVehModal(); 
+    openDetail(id); 
+    render();
+  });
+
+  /* Themed confirm modal (vehicle or customer) */
+  const confModal = $('#confirmModal');
+  const confClose = $('#confClose');
+  const confCancel = $('#confCancel');
+  const confDelete = $('#confDelete');
+  const confTitle = $('#confTitle');
+  const confMsg = $('#confMsg');
+
+  // kind: 'vehicle' or 'customer'
+  let pendingRemove = { kind:null, customerId:null, vehId:null };
+
+  function openConfirmVehicle(customerId, vehId){
+    pendingRemove = { kind:'vehicle', customerId, vehId };
+    confTitle.textContent = 'Remove vehicle?';
+    confMsg.textContent = 'This action will remove the selected vehicle from the customer.';
+    confDelete.textContent = 'Remove';
+    confModal.classList.remove('hidden');
+  }
+  function openConfirmCustomer(customerId){
+    pendingRemove = { kind:'customer', customerId, vehId:null };
+    confTitle.textContent = 'Remove customer?';
+    confMsg.textContent = 'This will delete the saved customer and their stored vehicles. Appointments and invoices remain unchanged.';
+    confDelete.textContent = 'Delete';
+    confModal.classList.remove('hidden');
+  }
+  function closeConfirmModal(){
+    pendingRemove = { kind:null, customerId:null, vehId:null };
+    confModal.classList.add('hidden');
+  }
+  confClose.addEventListener('click', closeConfirmModal);
+  confCancel.addEventListener('click', closeConfirmModal);
+  confDelete.addEventListener('click', async ()=>{
+    if(pendingRemove.kind==='vehicle' && pendingRemove.customerId && pendingRemove.vehId){
+      await removeVehicle(pendingRemove.customerId, pendingRemove.vehId);
+      const id = pendingRemove.customerId;
+      await refreshCustomers();
+      closeConfirmModal(); 
+      openDetail(id); 
+      render();
+    } else if(pendingRemove.kind==='customer' && pendingRemove.customerId){
+      const deletingId = pendingRemove.customerId;
+      closeConfirmModal();
+      await removeCustomer(deletingId);
+      await refreshCustomers();
+      // If drawer is open for this customer, close it
+      const openName = $('#cdTitle')?.textContent?.trim() || '';
+      const stillExists = listCustomersForShop().some(c => c.id===deletingId);
+      if(!stillExists){ $('#custDrawer').classList.add('hidden'); }
+      render();
+    } else {
+      closeConfirmModal();
+    }
+  });
+
+  /* csv/export/backfill/search/boot */
+  $('#btnExport').addEventListener('click', ()=>{
+    const rows = [];
+    const list = listCustomersForShop();
+    list.forEach(c => {
+      const vehicles = vehiclesCache[c.id] || [];
+      const first = c.first_name || c.first || '';
+      const last = c.last_name || c.last || '';
+      
+      if(vehicles.length){
+        vehicles.forEach(v => rows.push([first, last, c.phone||'', c.email||'', c.notes||'', v.vin||'', v.year||'', v.make||'', v.model||'', v.trim||'', v.plate||'', v.is_primary?1:0]));
+      } else {
+        rows.push([first, last, c.phone||'', c.email||'', c.notes||'', '', '', '', '', '', '', 0]);
+      }
+    });
+    const header = ['first','last','phone','email','notes','vehicle_vin','vehicle_year','vehicle_make','vehicle_model','vehicle_trim','plate','is_primary'];
+    const csv = [header].concat(rows).map(r => r.map(x => (`${x}`).replaceAll('"','""')).map(x => '"'+x+'"').join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'customers_export.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  if(myRole() !== 'admin'){ $('#btnBackfill').style.display = 'none'; }
+  $('#btnBackfill').addEventListener('click', backfillFromExisting);
+  $('#custSearch').addEventListener('input', ()=> render());
+
+  /* New Customer modal wiring */
+  const custModalEl = $('#custModal');
+  const btnNewCust = $('#btnNewCustomer');
+  const newCustClose = $('#custModalClose');
+  const newCustCancel = $('#newCustCancel');
+  const newCustSave = $('#newCustSave');
+
+  function openNewCustomerModal(){
+    if(!custModalEl) return;
+    $('#newCustFirst').value = '';
+    $('#newCustLast').value = '';
+    $('#newCustPhone').value = '';
+    $('#newCustEmail').value = '';
+    $('#newCustNotes').value = '';
+    custModalEl.classList.remove('hidden');
+    setTimeout(()=> $('#newCustFirst').focus(), 50);
+  }
+  function closeNewCustomerModal(){ if(custModalEl) custModalEl.classList.add('hidden'); }
+
+  if(btnNewCust) btnNewCust.addEventListener('click', ()=> openNewCustomerModal());
+  if(newCustClose) newCustClose.addEventListener('click', ()=> closeNewCustomerModal());
+  if(newCustCancel) newCustCancel.addEventListener('click', ()=> closeNewCustomerModal());
+
+  if(newCustSave){
+    newCustSave.addEventListener('click', async ()=>{
+      const first = ($('#newCustFirst').value||'').trim();
+      const last  = ($('#newCustLast').value||'').trim();
+      const phone = ($('#newCustPhone').value||'').trim();
+      const email = ($('#newCustEmail').value||'').trim();
+      const notes = ($('#newCustNotes').value||'').trim();
+      if(!first && !last && !phone && !email){ alert('Enter at least a name, phone, or email.'); return; }
+      const created = await upsertCustomer({ first, last, phone, email, notes });
+      await refreshCustomers();
+      closeNewCustomerModal(); 
+      render();
+      // open the detail drawer for the created customer
+      if(created && created.id) setTimeout(()=> openDetail(created.id), 120);
+    });
+  }
+
+  // Initial load
+  await refreshCustomers();
+  render();
+
+  // Check for #new hash to open modal
+  if (window.location.hash === '#new') {
+    openNewCustomerModal();
+  }
+})();
+</script>
+</body>
+</html>

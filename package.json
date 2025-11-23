@@ -1,16 +1,19 @@
 {
     "name": "xpose-crm",
     "version": "1.0.0",
+    "type": "module",
     "description": "Xpose Management CRM - Stripe Payment Server",
     "main": "stripe-server.js",
     "scripts": {
-        "start": "node stripe-server.js",
-        "dev": "node stripe-server.js"
+        "start": "node server.js",
+        "dev": "node server.js",
+        "stripe": "node stripe-server.js"
     },
     "engines": {
         "node": ">=18.0.0"
     },
     "dependencies": {
+        "@supabase/supabase-js": "^2.83.0",
         "axios": "^1.13.1",
         "cors": "^2.8.5",
         "dotenv": "^17.2.3",

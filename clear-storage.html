@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Clear localStorage - Xpose Management</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="container" style="padding:16px 0">
+<div class="card" style="max-width:600px;margin:auto;text-align:center">
+  <h1>Clear localStorage</h1>
+  <p>This will clear all locally stored data including users, shops, and session data.</p>
+  <p style="color:red;font-weight:bold">⚠️ This action cannot be undone!</p>
+  <div style="margin-top:20px">
+    <button id="clearBtn" class="btn danger" style="margin-right:10px">Clear localStorage</button>
+    <a href="login.html" class="btn">Back to Login</a>
+  </div>
+  <p id="status" class="notice" style="margin-top:20px"></p>
+</div>
+</main>
+<script src="vendor/supabase.umd.js"></script>
+<script type="module" src="app.js"></script>
+<script src="multi-tenant.js"></script>
+<script>
+document.getElementById('clearBtn').addEventListener('click', function() {
+  if (confirm('Are you sure you want to clear all localStorage data? This will remove all users, shops, and login sessions.')) {
+    localStorage.clear();
+    document.getElementById('status').textContent = 'localStorage cleared successfully! You can now retry creating accounts.';
+    document.getElementById('status').style.color = 'green';
+  }
+});
+</script>
+</body>
+</html>

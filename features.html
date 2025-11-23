@@ -1,0 +1,217 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Features | Xpose Management</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body {
+      background: linear-gradient(120deg, #f6f8ff 0%, #eaf3ff 100%);
+      margin: 0;
+      font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+      color: #222;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 40px 0 40px;
+      background: #fff;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 2px 8px rgba(42,124,255,0.04);
+    }
+    .header-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #2a7cff;
+      text-decoration: none;
+    }
+    .header-nav {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      font-size: 1.08rem;
+    }
+    .header-nav a {
+      color: #222;
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .header-nav a:hover {
+      color: #2a7cff;
+    }
+    .header-actions {
+      display: flex;
+      gap: 12px;
+    }
+    .btn-secondary {
+      background: #fff;
+      color: #2a7cff;
+      border: 1.5px solid #e0e7ff;
+      border-radius: 7px;
+      padding: 12px 32px;
+      font-size: 1.08rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(42,124,255,0.07);
+      transition: border 0.2s;
+    }
+    .btn-secondary:hover {
+      border-color: #2a7cff;
+    }
+    .features-main {
+      max-width: 1100px;
+      margin: 48px auto 0 auto;
+      padding: 0 16px;
+    }
+    .features-title {
+      font-size: 2.5rem;
+      font-weight: 800;
+      text-align: center;
+      margin-bottom: 18px;
+    }
+    .features-desc {
+      text-align: center;
+      color: #4a5a6a;
+      font-size: 1.18rem;
+      margin-bottom: 38px;
+    }
+    .feature-section {
+      display: flex;
+      align-items: center;
+      gap: 40px;
+      margin-bottom: 56px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      padding: 32px 24px;
+    }
+    .feature-section.reverse {
+      flex-direction: row-reverse;
+    }
+    .feature-img {
+      flex: 1 1 340px;
+      max-width: 340px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(42,124,255,0.08);
+      object-fit: cover;
+      background: #f6f8ff;
+    }
+    .feature-content {
+      flex: 2 1 400px;
+    }
+    .feature-content h2 {
+      font-size: 1.45rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #2a7cff;
+    }
+    .feature-content p {
+      font-size: 1.08rem;
+      color: #444;
+      margin-bottom: 0;
+    }
+    .slideshow {
+      width: 100%;
+      max-width: 700px;
+      margin: 0 auto 48px auto;
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(42,124,255,0.08);
+      background: #fff;
+    }
+    .slideshow img {
+      width: 100%;
+      display: block;
+      object-fit: cover;
+      border-radius: 16px;
+    }
+    .footer {
+      margin-top: 80px;
+      background: #f6f8ff;
+      padding: 32px 0 16px 0;
+      text-align: center;
+      color: #7f5fff;
+      font-size: 1.08rem;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <a href="index.html" class="header-logo">
+      <img src="assets/XposeManagementCRMlogo.png" alt="CRM Official Logo" style="height:54px;vertical-align:middle;">
+    </a>
+    <nav class="header-nav">
+      <a href="index.html">Home</a>
+      <a href="features.html">Features</a>
+      <a href="paywall.html">Pricing</a>
+    </nav>
+    <div class="header-actions">
+      <a href="login.html"><button class="btn-secondary">Sign In</button></a>
+    </div>
+  </header>
+  <main class="features-main">
+    <div class="features-title">Explore Our Features</div>
+    <div class="features-desc">Discover how Xpose Management helps auto shops stay organized, save time, and deliver a better customer experience.</div>
+    <!-- Example slideshow section, replace with your images -->
+    <div class="slideshow">
+      <img src="assets/Dashboard Page.png" alt="Dashboard Overview">
+    </div>
+    <!-- Example feature sections, add more as needed -->
+    <div class="feature-section">
+      <img src="assets/AppointmentsPage.png" class="feature-img" alt="Appointments & Scheduling">
+      <div class="feature-content">
+        <h2>Appointments & Scheduling</h2>
+        <p>Book appointments easily, view your calendar at a glance, and keep track of every job. Automated reminders help reduce no-shows and keep your shop running smoothly.</p>
+      </div>
+    </div>
+    <div class="feature-section reverse">
+      <img src="assets/Invoicespage.png" class="feature-img" alt="Invoices & Payments">
+      <div class="feature-content">
+        <h2>Invoices & Payments</h2>
+        <p>Create professional invoices, track payments, and manage your shop’s revenue with ease. Everything is organized and accessible from one dashboard.</p>
+      </div>
+    </div>
+    <div class="feature-section">
+      <img src="assets/JobsPage.png" class="feature-img" alt="Jobs Page">
+      <div class="feature-content">
+        <h2>Jobs Management</h2>
+        <p>Track every job from start to finish, update statuses, assign staff, and keep your workflow organized. The jobs page makes it easy to manage work orders and ensure nothing falls through the cracks.</p>
+      </div>
+    </div>
+    <!-- Add more feature sections as needed, using your images and descriptions -->
+      <div class="feature-section reverse">
+        <img src="assets/Calendar Days Colors.png" class="feature-img" alt="Calendar Days Colors">
+        <div class="feature-content">
+          <h2>Calendar Day Colors</h2>
+          <p>Quickly see your shop's status at a glance! Color-coded calendar days show busy periods, appointments, and open slots so you can plan ahead and never miss a beat.</p>
+        </div>
+      </div>
+      <div class="feature-section">
+        <img src="assets/Calendar Day Details.png" class="feature-img" alt="Calendar Day Details">
+        <div class="feature-content">
+          <h2>Day Details</h2>
+          <p>Click any day to instantly view all jobs, appointments, and notes for that date. Stay organized and know exactly what's happening in your shop today—no more surprises!</p>
+        </div>
+      </div>
+  </main>
+  <footer class="footer" style="background:#f6f8ff;padding:32px 0 16px 0;text-align:center;color:#7f5fff;font-size:1.08rem;">
+    <span>© 2025 Xpose Management</span>
+    <div style="margin-top:18px;font-size:1.08rem;">
+      <a href="faq.html" style="margin-right:18px;color:#2a7cff;font-weight:600;">FAQ</a>
+      <a href="privacy.html" style="margin-right:18px;color:#2a7cff;font-weight:600;">Privacy Policy</a>
+      <a href="terms.html" style="margin-right:18px;color:#2a7cff;font-weight:600;">Terms of Service</a>
+      <a href="contact.html" style="color:#2a7cff;font-weight:600;">Contact/Support</a>
+    </div>
+  </footer>
+</body>
+</html>

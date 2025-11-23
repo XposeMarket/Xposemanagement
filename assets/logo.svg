@@ -1,0 +1,34 @@
+<!-- Place your actual SVG vector content here. Example below: -->
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Storefront icon">
+	<defs>
+		<style>
+			.body { fill:#0E2B4A; }
+			.outline { fill:#11385F; }
+			.window { fill:#1A4A7D; }
+			.door { fill:#A7E34A; }
+			.doorShade { fill:#7AD321; }
+			.knob { fill:#0E2B4A; }
+			.awningDark { fill:#11385F; }
+			.stripeOrange { fill:#FF8C1A; }
+			.stripeLime { fill:#7AD321; }
+		</style>
+	</defs>
+	<path class="outline" d="M88 168c0-13.3 10.7-24 24-24h288c13.3 0 24 10.7 24 24v240c0 13.3-10.7 24-24 24H104c-13.3 0-24-10.7-24-24V168z M64 416a16 16 0 0 0 16 16h24v-24H80a16 16 0 0 0-16 16zm368 0a16 16 0 0 1-16 16h-24v-24h24a16 16 0 0 1 16 16z"/>
+	<rect x="96" y="160" rx="24" ry="24" width="320" height="256" class="body"/>
+	<rect x="72" y="400" width="40" height="40" rx="10" class="body"/>
+	<rect x="400" y="400" width="40" height="40" rx="10" class="body"/>
+	<path class="awningDark" d="M88 144h336c9 0 16 7 16 16v20c0 8.8-7.2 16-16 16H88c-8.8 0-16-7.2-16-16v-20c0-9 7-16 16-16z"/>
+	<path class="stripeLime" d="M104 148h72v48a36 36 0 1 1-72 0v-48z"/>
+	<path class="stripeOrange" d="M176 148h72v48a36 36 0 1 1-72 0v-48z"/>
+	<path class="stripeLime" d="M248 148h72v48a36 36 0 1 1-72 0v-48z"/>
+	<path class="stripeOrange" d="M320 148h72v48a36 36 0 1 1-72 0v-48z"/>
+	<path class="stripeLime" d="M392 148h40c8.8 0 16 7.2 16 16v32a36 36 0 1 1-56-30v-18z"/>
+	<rect x="120" y="256" width="168" height="112" rx="20" class="window"/>
+	<g>
+		<rect x="312" y="236" width="80" height="176" rx="16" class="door"/>
+		<rect x="312" y="356" width="80" height="56" class="doorShade"/>
+		<circle cx="376" cy="324" r="10" class="knob"/>
+	</g>
+	<path class="outline" d="M120 128h272a12 12 0 0 1 12 12v8H108v-8a12 12 0 0 1 12-12z"/>
+</svg>
