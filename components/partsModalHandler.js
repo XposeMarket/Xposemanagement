@@ -233,14 +233,19 @@ class PartsModalHandler {
    */
   async loadCategories() {
     try {
-      const response = await fetch('/api/catalog/categories');
-      const data = await response.json();
-      
+      // Load categories directly from Supabase
+      const { supabase } = await import('../helpers/supabase.js');
+      const { data, error } = await supabase
+        .from('catalog_categories')
+        .select('*')
+        .order('name');
+
       const categorySelect = document.getElementById('catalogCategory');
       if (!categorySelect) return;
-      
+
       categorySelect.innerHTML = '<option value="">All Categories</option>';
-      data.categories.forEach(cat => {
+      if (error) throw error;
+      data.forEach(cat => {
         categorySelect.innerHTML += `<option value="${cat.id}">${cat.name}</option>`;
       });
     } catch (error) {
@@ -290,20 +295,24 @@ class PartsModalHandler {
     resultsDiv.innerHTML = '<p class="notice" style="text-align: center;">Searching...</p>';
 
     try {
-      const response = await fetch('/api/catalog/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          year: this.selectedYear,
-          make: this.selectedMake,
-          model: this.selectedModel,
-          category: category,
-          searchTerm: searchTerm
-        })
-      });
+      // Search parts directly from Supabase
+      const { supabase } = await import('../helpers/supabase.js');
+      let query = supabase
+        .from('catalog_parts')
+        .select(`*, category:catalog_categories(name)`);
 
-      const data = await response.json();
-      this.displayResults(data.parts);
+      if (this.selectedYear) query = query.eq('year', this.selectedYear);
+      if (this.selectedMake) query = query.eq('make', this.selectedMake);
+      if (this.selectedModel) query = query.eq('model', this.selectedModel);
+      if (category) query = query.eq('category_id', category);
+      if (searchTerm) {
+        query = query.or(`part_name.ilike.%${searchTerm}%,part_number.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+      }
+      query = query.order('part_name');
+
+      const { data, error } = await query;
+      if (error) throw error;
+      this.displayResults(data);
     } catch (error) {
       console.error('Error searching parts:', error);
       resultsDiv.innerHTML = '<p class="notice error">Search failed. Please try again.</p>';
