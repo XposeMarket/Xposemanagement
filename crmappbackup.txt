@@ -1,0 +1,4538 @@
+// Post-OAuth shop_staff creation logic (match signup button)
+document.addEventListener('DOMContentLoaded', async () => {
+  if (!window.supabase) return;
+  const params = new URLSearchParams(window.location.search);
+  const shopId = params.get('shop_id');
+  const role = params.get('role');
+  if (shopId && role === 'staff') {
+    try {
+      const { data: userData, error: userErr } = await supabase.auth.getUser();
+      if (userErr || !userData || !userData.user) return;
+      const user = userData.user;
+      // Check if already exists
+      const { data: staffExists, error: staffCheckErr } = await supabase.from('shop_staff').select('*').eq('shop_id', shopId).eq('email', user.email).single();
+      if (!staffExists) {
+        // Insert staff record
+        const { data: staffData, error: staffErr } = await supabase.from('shop_staff').insert({
+          shop_id: shopId,
+          first_name: user.user_metadata?.first_name || user.user_metadata?.first || '',
+          last_name: user.user_metadata?.last_name || user.user_metadata?.last || ''
+        });
+
+async function getCurrentShop() {
+  if (!supabase) {
+    const user = await getCurrentUser();
+    if (!user || !user.shop_id) return null;
+    const shops = JSON.parse(localStorage.getItem(LS.shops) || '[]');
+    return shops.find(s => s.id === user.shop_id) || null;
+  }
+
+  const user = await getCurrentUser();
+  if (!user || !user.shop_id) return null;
+  const { data, error } = await supabase.from('shops').select('*').eq('id', user.shop_id).single();
+  return error ? null : data;
+}
+
+async function getShopData(shopId) {
+  if (!supabase) {
+    const all = JSON.parse(localStorage.getItem(LS.data) || '{}');
+    return all || {};
+  }
+  const { data, error } = await supabase.from('data').select('settings, appointments, jobs, threads, invoices').eq('shop_id', shopId).single();
+  if (error) {
+    console.warn('getShopData error:', error);
+    // Return default structure if no data exists
+    return { settings: {}, appointments: [], jobs: [], threads: [], invoices: [] };
+  }
+  return data || { settings: {}, appointments: [], jobs: [], threads: [], invoices: [] };
+}
+
+async function saveShopData(shopId, data) {
+  if (!supabase) {
+    try { localStorage.setItem(LS.data, JSON.stringify(data)); } catch (e) { console.error(e); }
+    return;
+  }
+  const { error } = await supabase.from('data').upsert({ shop_id: shopId, ...data });
+  if (error) console.error('Save error:', error);
+}
+
+async function getUsers() {
+  if (!supabase) return JSON.parse(localStorage.getItem(LS.users) || '[]');
+  const { data, error } = await supabase.from('users').select('*');
+  return error ? [] : data;
+}
+
+async function getShops() {
+  if (!supabase) return JSON.parse(localStorage.getItem(LS.shops) || '[]');
+  const { data, error } = await supabase.from('shops').select('*');
+  return error ? [] : data;
+}
+
+// In-memory cache for shop-scoped data to let the UI read synchronously
+let APP_CACHE = null;
+let CACHE_LOADED = false;
+
+// Generic server/unavailable banner (user-facing; do not mention Supabase)
+function showServerBanner(msg){
+  try{
+    const text = msg || 'Our servers are temporarily unavailable. Please try again later.';
+    let b = document.getElementById('serverBanner');
+    if(!b){
+      b = document.createElement('div');
+      b.id = 'serverBanner';
+      b.style.position = 'fixed';
+      b.style.top = '0';
+      b.style.left = '0';
+      b.style.right = '0';
+      b.style.zIndex = '9999';
+      b.style.background = 'linear-gradient(90deg,#fffbeb,#fff1f2)';
+      b.style.color = '#111827';
+      b.style.padding = '10px 16px';
+      b.style.textAlign = 'center';
+      b.style.boxShadow = '0 2px 6px rgba(0,0,0,0.08)';
+      b.style.fontWeight = '600';
+      b.style.fontSize = '14px';
+      b.style.cursor = 'pointer';
+      b.addEventListener('click', ()=>{ b.remove(); });
+      document.body.appendChild(b);
+    }
+    b.textContent = text;
+    // auto-hide after 12s
+    setTimeout(()=>{ b?.remove(); }, 12000);
+  }catch(e){console.warn('showServerBanner failed',e);} }
+
+
+// Legacy localStorage fallbacks for development (kept for non-shop keys)
+function readLS(k,f){
+  try{
+    // For the main app data we prefer the in-memory cache (synchronous)
+    if(k === LS.data){
+      if(CACHE_LOADED) return APP_CACHE ?? (f ?? null);
+      // try to hydrate from localStorage immediately
+      const raw = localStorage.getItem(LS.data);
+      if(raw){ APP_CACHE = JSON.parse(raw); CACHE_LOADED = true; return APP_CACHE; }
+      return f ?? null;
+    }
+    const v = localStorage.getItem(k);
+    return v ? JSON.parse(v) : (f ?? null);
+  }catch(e){ return f ?? null; }
+}
+
+function writeLS(k,v){
+  try {
+    if (k === LS.data) {
+      APP_CACHE = v;
+      CACHE_LOADED = true;
+      localStorage.setItem(LS.data, JSON.stringify(v));
+      // Background sync to Supabase (don't block UI)
+      if (supabase) {
+        (async () => {
+          try {
+            const user = await getCurrentUser();
+            const shop = await getCurrentShop();
+            if (!user || !shop) return;
+
+            // Sync appointments
+            if (v.appointments) {
+              await supabase.from('appointments').upsert(
+                v.appointments.map(a => ({
+                  id: a.id,
+                  shop_id: shop.id,
+                  customer_first: a.customer_first,
+                  customer_last: a.customer_last,
+                  email: a.email,
+                  phone: a.phone,
+                  vehicle: a.vehicle,
+                  vin: a.vin,
+                  service: a.service,
+                  preferred_date: a.preferred_date,
+                  preferred_time: a.preferred_time,
+                  status: a.status,
+                  notes: a.notes
+                }))
+              );
+            }
+
+            // Sync jobs
+            if (v.jobs) {
+              await supabase.from('jobs').upsert(
+                v.jobs.map(j => ({
+                  id: j.id,
+                  shop_id: shop.id,
+                  appointment_id: j.appointment_id,
+                  assigned_to: j.assigned_to,
+                  status: j.status
+                }))
+              );
+            }
+
+            // Sync invoices
+            if (v.invoices) {
+              await supabase.from('invoices').upsert(
+                v.invoices.map(i => ({
+                  id: i.id,
+                  shop_id: shop.id,
+                  appointment_id: i.appointment_id,
+                  customer: i.customer,
+                  number: i.number,
+                  status: i.status,
+                  items: i.items,
+                  tax_rate: i.tax_rate,
+                  discount: i.discount,
+                  due: i.due,
+                  paid_date: i.paid_date
+                }))
+              );
+            }
+
+            // Sync threads
+            if (v.threads) {
+              await supabase.from('threads').upsert(
+                v.threads.map(t => ({
+                  id: t.id,
+                  shop_id: shop.id,
+                  appointment_id: t.appointment_id,
+                  type: t.type,
+                  title: t.title,
+                  meta: t.meta,
+                  messages: t.messages
+                }))
+              );
+            }
+
+            // Sync settings
+            if (v.settings) {
+              await supabase.from('shop_data').upsert({
+                shop_id: shop.id,
+                settings: v.settings
+              });
+            }
+
+            console.log('✅ Data persisted to Supabase');
+          } catch(e) {
+            console.warn('Background Supabase sync failed (non-blocking):', e);
+          }
+        })();
+      }
+      return;
+    }
+    localStorage.setItem(k, JSON.stringify(v));
+  } catch(e) {}
+}
+
+// For production, use Supabase; fallback to localStorage
+// REMOVED async readData/writeData. Use synchronous localStorage everywhere.
+
+// Removed async writeData function. Use synchronous localStorage everywhere.
+
+// Initialize Supabase client only if the library is loaded (graceful fallback)
+// Use the initSupabase flow above to attempt to initialize the client. If that
+// has not succeeded by this point, show a single warning and keep retrying in
+// the background when the UMD script loads.
+let supabaseClientAvailable = Boolean(supabaseInitialized || (typeof window !== 'undefined' && window.supabase));
+if (!supabaseClientAvailable) {
+  console.warn('Supabase client not available yet. Falling back to localStorage-only mode until connection is established.');
+  // keep trying to initialize a few more times in case the UMD script loads later
+  (function retryInit(tries){
+    if(supabaseInitialized || (typeof window !== 'undefined' && window.supabase)) return;
+    if(tries <= 0) return;
+    setTimeout(()=>{
+      try{ initSupabase(); }catch(e){}
+      if(supabaseInitialized || (typeof window !== 'undefined' && window.supabase)){
+        supabaseClientAvailable = true; console.log('Supabase client became available');
+      } else {
+        retryInit(tries-1);
+      }
+    }, 500);
+  })(6);
+}
+
+// Update functions: provide supabase-backed async functions, but DO NOT override the
+// synchronous readLS/writeLS that the rest of the app expects. We'll keep localStorage
+// synchronous functions for immediate reads and writes and provide async helpers
+// to persist to Supabase when available.
+function currentUser(){ return getCurrentUser(); } // async helper
+function currentShop(){ return getCurrentShop(); } // async helper
+
+// Keep localStorage synchronous helpers used by the app. These were defined later
+// in the file as well; make sure the localStorage variants remain the canonical ones.
+
+// Add CSS for scrollable parts results modal
+if (!document.getElementById("partsFinderCSS")) {
+  const style = document.createElement("style");
+  style.id = "partsFinderCSS";
+  style.textContent = `
+    #partsModal {
+      max-height: 95vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #partsModal .modal-content {
+      max-height: 95vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #pfResults {
+      max-height: calc(95vh - 200px);
+      overflow-y: auto;
+      padding-right: 8px;
+      flex-grow: 1;
+    }
+    #pfResults::-webkit-scrollbar {
+      width: 8px;
+    }
+    #pfResults::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 4px;
+    }
+    #pfResults::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 4px;
+    }
+    #pfResults::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function byId(id){return document.getElementById(id);} function todayISO(){return new Date().toISOString().slice(0,10);} function fmtMoney(n){return Number(n||0).toFixed(2);}
+
+// Short job label for display: prefer job.number (invoice number), otherwise a compact id
+function shortJobLabel(job) {
+  if (!job) return "";
+  if (job.number) return String(job.number);
+  const id = String(job.id || "");
+  if (!id) return "-";
+  // If id already shortish, show it; otherwise compress (J + last 4) or last 6
+  if (id.length <= 8) return id;
+  if (id[0] === 'J') return 'J' + id.slice(-4);
+  return id.slice(-6);
+}
+
+// Abbreviate a customer/full-name for narrow screens (mobile-friendly)
+function abbrName(name){
+  if(!name) return "-";
+  try{
+    const isMobile = (typeof window !== 'undefined') && window.matchMedia && window.matchMedia('(max-width:1200px)').matches;
+    if(!isMobile) return name;
+    const trimmed = String(name||"").trim();
+    const parts = trimmed.split(/\s+/).filter(Boolean);
+    if(parts.length >= 2){
+      return parts[0] + ' ' + parts[parts.length-1].charAt(0) + '.';
+    }
+    // fallback: shorten long single names
+    if(trimmed.length > 12) return trimmed.slice(0,12) + '...';
+    return trimmed;
+  }catch(e){ return name; }
+}
+/* === EDIT #7: Auto-invoice helper (create-or-reuse by appointment_id) === */
+function ensureInvoiceForAppt(apptId){
+  try{
+    const d = readLS(LS.data,{appointments:[],invoices:[]});
+    if(!d) return null;
+    // reuse existing (open or paid)
+    let inv = (d.invoices||[]).find(i => i.appointment_id === apptId);
+    if (inv) {
+      // If reusing an existing invoice, ensure related jobs are tagged with invoice number/id
+      try {
+        const jobs = d.jobs || [];
+        let updated = false;
+        jobs.forEach(j => {
+          if (j.appointment_id === apptId) {
+            if (!j.number || String(j.number) !== String(inv.number)) {
+              j.number = inv.number;
+              updated = true;
+            }
+            if (!j.invoice_id || j.invoice_id !== inv.id) {
+              j.invoice_id = inv.id;
+              updated = true;
+            }
+          }
+        });
+        if (updated) {
+          d.jobs = jobs;
+          writeLS(LS.data, d);
+        }
+      } catch (_e) {
+        console.warn('ensureInvoiceForAppt: could not tag jobs when reusing invoice', _e);
+      }
+      return inv;
+    }
+
+    const appt = (d.appointments||[]).find(a => a.id === apptId) || null;
+    const next = (d.invoices||[]).reduce((mx,i)=>Math.max(mx, Number(i.number||0)||0), 1000) + 1;
+    // Build invoice item from appointment service where possible
+    let initialItem = { name: "Item", qty: 1, price: 0 };
+    try {
+      if (appt) {
+        // Prefer service config (may be stored in settings.services)
+        const svcByName = getServiceConfigByName(appt.service);
+        const svcById = getServiceConfigById(appt.service);
+        const svc = svcByName || svcById || null;
+        if (svc) {
+          initialItem = { name: svc.name || (appt.service||""), qty: 1, price: Number(svc.price || svc.rate || 0) };
+        } else if (appt.service) {
+          // If appointment has a service string, use it; preserve a possible price field on the appointment
+          initialItem = { name: appt.service, qty: 1, price: Number(appt.price || 0) };
+        }
+      }
+    } catch (e) { console.warn('ensureInvoiceForAppt: could not determine service price', e); }
+
+    inv = {
+      id: "inv"+Date.now(),
+      number: String(next),
+      customer: appt ? (`${appt.customer_first||""} ${appt.customer_last||""}`.trim() || "Walk-in") : "Walk-in",
+      appointment_id: apptId,
+      status: "open",
+      due: todayISO(),
+      tax_rate: 6,
+      discount: 0,
+      items: [ initialItem ]
+    };
+    d.invoices = d.invoices || [];
+    // Collect related jobs (if any) and tag them; also record job ids/numbers on the invoice
+    try {
+      const jobs = d.jobs || [];
+      const related = jobs.filter(j => j.appointment_id === apptId);
+      if (related.length) {
+        inv.job_ids = related.map(j => j.id);
+        inv.job_numbers = related.map(j => j.number || null).filter(Boolean);
+        // Tag each job with invoice number/id
+        let updated = false;
+        related.forEach(j => {
+          if (!j.number || String(j.number) !== String(inv.number)) { j.number = inv.number; updated = true; }
+          if (!j.invoice_id || j.invoice_id !== inv.id) { j.invoice_id = inv.id; updated = true; }
+        });
+        if (updated) {
+          // ensure jobs are saved back into d.jobs
+          d.jobs = jobs;
+        }
+      }
+    } catch (_e) {
+      console.warn('ensureInvoiceForAppt: could not compute related jobs', _e);
+    }
+
+    d.invoices.push(inv);
+    writeLS(LS.data, d);
+    try {
+      const jobs = d.jobs || [];
+      let updated = false;
+      jobs.forEach(j => {
+        if (j.appointment_id === apptId) {
+          if (!j.number || String(j.number) !== String(inv.number)) {
+            j.number = inv.number;
+            updated = true;
+          }
+          // also store invoice id on job for two-way linkage
+          if (!j.invoice_id || j.invoice_id !== inv.id) {
+            j.invoice_id = inv.id;
+            updated = true;
+          }
+        }
+      });
+      if (updated) {
+        d.jobs = jobs;
+        writeLS(LS.data, d);
+      }
+      // Ensure the invoice itself records related job ids/numbers
+      try {
+        const related = (d.jobs || []).filter(j => j.appointment_id === apptId);
+        if (related.length) {
+          inv.job_ids = related.map(j => j.id);
+          inv.job_numbers = related.map(j => j.number || null).filter(Boolean);
+          // persist invoice updates
+          const idx = (d.invoices||[]).findIndex(x=>x.id===inv.id);
+          if (idx >= 0) { d.invoices[idx] = inv; writeLS(LS.data, d); }
+        }
+  } catch(_e) { console.warn("ensureInvoiceForAppt: couldn't attach job ids to reused invoice", _e); }
+    } catch(_e) {
+      console.warn('ensureInvoiceForAppt: could not tag jobs with invoice number', _e);
+    }
+    return inv;
+  }catch(_e){ return null; }
+}
+/* === /EDIT #7 === */
+
+function openApptModalWith(appt) {
+  const modal = document.getElementById('apptModal');
+  const form  = document.getElementById('apptForm');
+  if (!modal || !form) { console.warn('appt modal/form missing'); return; }
+
+  form.reset();
+  if (appt && appt.id) {
+    form.dataset.mode = 'edit';
+    form.dataset.apptId = appt.id;
+    const title = document.getElementById('apptModalTitle');
+    if (title) title.textContent = 'Edit Appointment';
+  } else {
+    form.dataset.mode = 'create';
+    form.dataset.apptId = '';
+    const title = document.getElementById('apptModalTitle');
+    if (title) title.textContent = 'Create Appointment';
+  }
+
+if (appt) {
+  console.log('openApptModalWith: populating form for appt id=', appt.id);
+  // Handle special field mappings (explicit mapping avoids name mismatches)
+  const fieldMappings = {
+    customer: `${appt.customer_first || ''} ${appt.customer_last || ''}`.trim(),
+    phone: appt.phone || '',
+    email: appt.email || '',
+    vehicle: appt.vehicle || '',
+    vin: appt.vin || appt.vin || '',
+    service: appt.service || '',
+    preferred_date: appt.preferred_date || '',
+    preferred_time: appt.preferred_time || '',
+    notes: appt.notes || ''
+  };
+
+  Object.keys(fieldMappings).forEach(k => {
+    const el = form.querySelector(`[name="${k}"]`);
+    if (el) {
+      if (el.type === 'checkbox') el.checked = !!fieldMappings[k];
+      else el.value = fieldMappings[k];
+    } else {
+      // log missing form fields to help debug
+      console.debug('openApptModalWith: form field missing ->', k);
+    }
+  });
+
+  // Populate service options and explicitly set service value
+  try { 
+    populateServiceOptions(); // reuse New Appt dropdown
+    const serviceInput = form.querySelector('[name="service"]');
+    if (serviceInput) serviceInput.value = appt.service || "";
+  } catch(e) {
+    console.warn("couldn't populate services", e);
+  }
+
+  console.log('openApptModalWith: populated values ->', fieldMappings);
+}
+
+modal.classList.remove('hidden');
+modal.classList.add('open');
+
+}
+
+function closeApptModal() {
+  const modal = document.getElementById('apptModal');
+  if (modal) { modal.classList.remove('open'); modal.classList.add('hidden'); }
+}
+
+function isEditingAppt(form) {
+  return form?.dataset.mode === 'edit' && form.dataset.apptId;
+}
+
+// Delegated submit handler for the appointment form.
+// Using delegation ensures the handler works even if the modal HTML
+// is added to the page after this script runs.
+document.addEventListener('submit', function(e) {
+  const form = e.target;
+  if (!form || form.id !== 'apptForm') return;
+  e.preventDefault();
+
+  try {
+    const data = Object.fromEntries(new FormData(form).entries());
+    console.log('delegated apptForm submit: raw form ->', data);
+
+    // Handle customer name splitting
+    if (data.customer) {
+      const nameParts = data.customer.trim().split(' ');
+      data.customer_first = nameParts[0] || '';
+      data.customer_last = nameParts.slice(1).join(' ') || '';
+      delete data.customer;
+    }
+
+    // Normalize
+    Object.keys(data).forEach(k => { if (data[k] === undefined || data[k] === null) data[k] = ''; });
+
+    const d = (typeof _getData === 'function') ? _getData() : readLS(LS.data, {});
+    const list = d.appointments || [];
+
+    if (isEditingAppt(form)) {
+      const id = form.dataset.apptId;
+      const idx = list.findIndex(a => String(a.id) === String(id));
+      if (idx !== -1) {
+        console.log('delegated apptForm submit: updating id=', id);
+        list[idx] = { ...list[idx], ...data };
+      } else {
+        console.warn('delegated apptForm submit: appointment id not found', id);
+      }
+    } else {
+      const id = crypto?.randomUUID?.() || String(Date.now());
+      console.log('delegated apptForm submit: creating id=', id);
+      list.push({ id, ...data });
+    }
+
+    if (typeof _setData === 'function') _setData({ ...d, appointments: list });
+    else writeLS(LS.data, { ...d, appointments: list });
+
+    console.log('delegated apptForm submit: saved appointments count=', (list||[]).length);
+
+    closeApptModal();
+    setupAppointments?.();
+  } catch (err) {
+    console.error('Error in delegated apptForm submit handler', err);
+  }
+
+
+
+/* === PARTS FINDER === */
+let __partsCtx = null;
+
+function openPartsFinder(ctx){
+  __partsCtx = ctx || __partsCtx || {};
+  const m = byId("partsModal");
+  if(!m) return;
+  const v = byId("pfVehicle");
+  const q = byId("pfQuery");
+  const r = byId("pfResults");
+  const n = byId("pfNote");
+  const vinI = byId("pfVin");                 
+  if(v) v.value = (__partsCtx.vehicle||"").trim();
+  if(q) q.value = "";
+  if(r) r.innerHTML = "";
+  if(n) n.textContent = "Type a keyword and click Search.";
+  if(vinI) vinI.value = (__partsCtx.vin||"").trim();
+  m.classList.remove("hidden");
+}
+function closePartsFinder(){
+  const m = byId("partsModal");
+  if(m) m.classList.add("hidden");
+  __partsCtx = null;
+}
+// One global click delegator for the parts modal
+document.addEventListener("click", async (e) => {
+  const id = e.target?.id;
+
+  if (id === "closeParts") {
+    closePartsFinder();
+    return;
+  }
+
+  if (id === "pfSearch") {
+    // SKIP: The new performSearch() function handles pfSearch now
+    // This old code was causing duplicate searches and clearing results
+    return;
+    const btn = e.target;
+    const v   = byId("pfVehicle")?.value || "";
+    const vin = byId("pfVin")?.value?.trim() || "";
+    const q   = byId("pfQuery")?.value?.trim() || "";
+    const n   = byId("pfNote");
+
+    if (!q && !vin) {
+      if (n) n.textContent = "Enter a keyword or VIN.";
+      return;
+    }
+
+    const vehicleToSend = vin || v;
+    if (n) n.textContent = "Searching…";
+    btn.disabled = true;
+
+    try {
+      let results = [];
+      let usedPublic = false;
+      let usedGrok = false;
+
+      // 1) Try public no-key lookup flow (NHTSA + CarQuery via local server)
+      try {
+        if (vin) {
+          const vinRes = await fetch(`http://localhost:3000/vin/${encodeURIComponent(vin)}`);
+          if (vinRes.ok) {
+            const vinJson = await vinRes.json();
+            const r0 = vinJson?.data?.Results?.[0] || {};
+            const make = (r0.Make || r0.Manufacturer || "").toString().trim();
+            const model = (r0.Model || r0.Trim || r0.Model || "").toString().trim();
+            if (make && model) {
+              const partsRes = await fetch(`http://localhost:3000/parts/${encodeURIComponent(make)}/${encodeURIComponent(model)}`);
+              if (partsRes.ok) {
+                const pj = await partsRes.json();
+                results = pj.matches || pj.Trims || pj.trims || [];
+                usedPublic = !!(results && results.length);
+              }
+            }
+          }
+        } else if (v) {
+          let yr=null, mk=null, md=null;
+          const m1 = v.match(/(\d{4})\s+([A-Za-z0-9]+)\s+(.+)/);
+          const m2 = v.match(/([A-Za-z0-9]+)\s+(.+)\s+(\d{4})/);
+          if (m1) { yr = m1[1]; mk = m1[2]; md = m1[3]; }
+          else if (m2) { mk = m2[1]; md = m2[2]; yr = m2[3]; }
+          if (mk && md) {
+            const partsRes = await fetch(`http://localhost:3000/parts/${encodeURIComponent(mk)}/${encodeURIComponent(md)}`);
+            if (partsRes.ok) {
+              const pj = await partsRes.json();
+              results = pj.matches || pj.Trims || pj.trims || [];
+              usedPublic = !!(results && results.length);
+            }
+          }
+        }
+      } catch (errPublic) {
+        console.warn("Public no-key lookup failed", errPublic);
+      }
+
+      // 2) If public lookup returned nothing, try the Grok backend (POST /search-parts)
+      if (!usedPublic) {
+        try {
+          const grokRes = await fetch(`/api/grok-parts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vehicle: vehicleToSend, query: q, vin })
+          });
+          if (grokRes.ok) {
+            const body = await grokRes.json();
+            if (Array.isArray(body) && body.length) {
+              // Map Grok items to UI format
+              results = body.map(it => ({
+                id: it.part_number || it.id || (typeof crypto!=='undefined' && crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
+                name: it.title || it.name || it.part || it.snippet || '',
+                brand: it.brand || '',
+                vendor: it.source_domain || it.vendor || 'Grok',
+                price: Number(it.estimated_price || it.price || 0),
+                part_number: it.part_number || '',
+                url: it.url || it.link || ''
+              }));
+              usedGrok = true;
+            }
+          } else {
+            console.warn('Grok backend responded', grokRes.status, await grokRes.text().catch(()=>''));
+          }
+        } catch (errGrok) {
+          console.warn('Grok backend call failed', errGrok);
+        }
+      }
+
+      // 3) No fallback mock - if no results, show empty
+      if (!(usedPublic || usedGrok) || !results.length) {
+        results = [];
+      }
+
+      renderPartsResults(results);
+      if (n) {
+        if (usedPublic) {
+          n.textContent = results.length ? "Showing results from public APIs (CarQuery/NHTSA)." : "No results from public sources.";
+        } else if (usedGrok) {
+          n.textContent = results.length ? "Showing results from Grok backend." : "Grok returned no results.";
+        } else {
+          n.textContent = results.length ? "" : "No results for that query.";
+        }
+      }
+    } catch (err) {
+      console.warn("Find Parts search error", err);
+      const results = [];
+      renderPartsResults(results);
+      if (n) {
+        const msg = err && err.message ? err.message : String(err);
+        n.textContent = `Search failed: ${msg}`;
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+/* === LABOR PER PART MODAL (add-before-invoice) === */
+let __laborCtx = null;
+
+function __ensureLaborRateSeed(){
+  const d = readLS(LS.data, { settings:{}, appointments:[], invoices:[] });
+  d.settings = d.settings || {};
+  if(!Array.isArray(d.settings.labor_rates)){
+    d.settings.labor_rates = [
+      { name: "Standard", rate: 120 },
+      { name: "Premium",  rate: 150 }
+    ];
+    writeLS(LS.data, d);
+  }
+  return d.settings.labor_rates;
+}
+function __getLaborRates(){ 
+  const d = readLS(LS.data, { settings:{}, appointments:[], invoices:[] });
+  // Return rates as-is WITHOUT re-seeding - let user control what's there
+  return Array.isArray(d.settings?.labor_rates) ? d.settings.labor_rates : [];
+}
+function __saveLaborRates(list){
+  const d = readLS(LS.data, { settings:{}, appointments:[], invoices:[] });
+  d.settings = d.settings || {};
+  d.settings.labor_rates = list;
+  writeLS(LS.data, d);
+}
+
+function openLaborModal(ctx){
+  __laborCtx = ctx; // { apptId, part }
+  const m = byId("laborModal");
+  if(!m) return;
+  // fill dropdown
+  const sel = byId("labRateSel");
+  const rateInput = byId("labRate");
+  const note = byId("labNote");
+  if(note) note.textContent = "";
+  const hrs = byId("labHours"); if(hrs) hrs.value = "1";
+  if(sel){
+    const rates = __getLaborRates();
+    sel.innerHTML = `<option value="">Custom</option>` + rates.map(r=>(
+      `<option value="${Number(r.rate)}">${r.name} ($${fmtMoney(r.rate)}/hr)</option>`
+    )).join("");
+  }
+  if(rateInput) rateInput.value = "";
+
+  m.classList.remove("hidden");
+}
+function closeLaborModal(){
+  const m = byId("laborModal");
+  if(m) m.classList.add("hidden");
+  __laborCtx = null;
+}
+
+document.addEventListener("click", (e)=>{
+  if(e.target && (e.target.id === "labCancel" || e.target.id === "labClose")){ 
+    closeLaborModal(); 
+  }
+  if(e.target && e.target.id === "labAddRate"){
+    const name = prompt("Name this rate (e.g., Standard):", "");
+    if(!name) return;
+    const val = prompt("Rate amount (per hour):", "120");
+    const rate = Number(val);
+    if(isNaN(rate) || rate < 0){ alert("Enter a valid non-negative number."); return; }
+    // add the new rate and persist
+    list.push({ name: String(name).trim(), rate });
+    __saveLaborRates(list);
+
+    // refresh dropdown and select the new one
+    const sel = byId("labRateSel");
+    if(sel){
+      sel.innerHTML = `<option value="">Custom</option>` + list.map(r=>(
+        `<option value="${Number(r.rate)}">${r.name} ($${fmtMoney(r.rate)}/hr)</option>`
+      )).join("");
+      sel.value = String(rate);
+      const rateInput = byId("labRate");
+      if(rateInput) rateInput.value = String(rate);
+    }
+  }
+  if(e.target && e.target.id === "labConfirm"){
+    const hrs = Number((byId("labHours")||{}).value||0);
+    const rateInput = byId("labRate");      // may not exist in jobs.html
+   const rateSel   = byId("labRateSel");
+    const rate = Number(rateInput ? rateInput.value : (rateSel ? rateSel.value : 0));
+    const note = byId("labNote");
+
+    if(!( __laborCtx && __laborCtx.apptId && __laborCtx.part )){
+      alert("Missing context."); return;
+    }
+    if(isNaN(hrs) || hrs <= 0){ if(note) note.textContent = "Hours must be > 0."; return; }
+    if(isNaN(rate) || rate < 0){ if(note) note.textContent = "Rate must be a non-negative number."; return; }
+
+    // Add part + labor lines in one atomic write
+    const ok = addPartAndLaborToInvoice(__laborCtx.apptId, __laborCtx.part, { hours: hrs, rate });
+    if(ok){
+      if(note) note.textContent = `Added part + labor to invoice for appointment ${__laborCtx.apptId}.`;
+      setTimeout(()=>{ closeLaborModal(); closePartsFinder(); }, 500);
+    }else{
+      if(note) note.textContent = "Unable to add to invoice. Try again.";
+    }
+  }
+});
+
+document.addEventListener("change", (e)=>{
+  if(e.target && e.target.id === "labRateSel"){
+    const v = e.target.value;
+    const r = byId("labRate");
+    if(r) r.value = v || r.value; // when "Custom" selected, leave whatever is typed
+  }
+});
+/* === /LABOR PER PART MODAL === */
+
+// PartsTech removed: we use public no-key endpoints (NHTSA/CarQuery) and the Grok backend
+// (POST /search-parts). No PartsTech client code remains.
+
+
+
+function renderPartsResults(list){
+  const r = byId("pfResults");
+  const n = byId("pfNote");
+  if(!r) return;
+  if(!list || !list.length){
+    r.innerHTML = "";
+    if(n) n.textContent = "No results for that keyword.";
+    return;
+  }
+  if(n) n.textContent = "";
+  r.innerHTML = "";
+  const table = document.createElement("table");
+  table.className = "table";
+  const thead = document.createElement("thead");
+  thead.innerHTML = "<tr><th>Part</th><th>Brand</th><th>Price</th><th>Vendor</th><th>Actions</th></tr>";
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  list.forEach(p => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${(p.name||"").toString()}</td>
+      <td>${(p.brand||"-").toString()}</td>
+      <td>$${fmtMoney(p.price||0)}</td>
+      <td>${(p.vendor||"-").toString()}</td>
+      <td><button class="btn" data-add-part="${p.id}">Add to Invoice</button></td>`;
+    // attach handler
+    tr.querySelector("[data-add-part]").addEventListener("click", ()=>{
+      if(!__partsCtx || !__partsCtx.apptId){
+        alert("Missing appointment context."); return;
+      }
+      // hand off to Labor modal with the selected part + appt
+      openLaborModal({ apptId: __partsCtx.apptId, part: p });
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  r.appendChild(table);
+}
+// Add BOTH a Part line AND a Labor line (qty = hours, price = rate)
+function addPartAndLaborToInvoice(apptId, part, labor) {
+  try {
+    const d   = readLS(LS.data, { appointments:[], invoices:[] });
+    const inv = getOrCreateOpenInvoice(apptId);
+    if (!inv) return false;
+
+    const idx = (d.invoices||[]).findIndex(i => i.id === inv.id);
+    if (idx < 0) return false;
+
+    const items = d.invoices[idx].items = d.invoices[idx].items || [];
+
+    // 1) Part line
+    const partLine = {
+      name: `Part: ${(part.name||"").toString()}${part.brand ? (" · " + part.brand) : ""}`,
+      qty: 1,
+      price: Number(part.price||0)
+    };
+    items.push(partLine);
+
+    // 2) Labor line (qty = hours, price = rate)
+    const hours = Number(labor && labor.hours || 0);
+    const rate  = Number(labor && labor.rate  || 0);
+    const laborLine = {
+      name: `Labor - ${(part.name||"").toString()}`,
+      qty: hours,
+      price: rate
+    };
+    items.push(laborLine);
+
+    writeLS(LS.data, d);
+    return true;
+  } catch(e) {
+    console.warn("addPartAndLaborToInvoice error", e);
+    return false;
+  }
+}
+
+// Create or reuse an OPEN invoice for this appt; if paid, create a new one.
+function getOrCreateOpenInvoice(apptId){
+  const d = readLS(LS.data,{appointments:[],invoices:[]});
+  let inv = (d.invoices||[]).find(i => i.appointment_id===apptId && (i.status||"open")!=="paid");
+  if(inv) return inv;
+  // fall back: any invoice by appt
+  inv = (d.invoices||[]).find(i => i.appointment_id===apptId);
+  if(inv && (inv.status||"open")==="paid"){
+    // create a new one
+    const next = (d.invoices||[]).reduce((mx,i)=>Math.max(mx, Number(i.number||0)||0), 1000) + 1;
+    const appt = (d.appointments||[]).find(a => a.id===apptId) || null;
+    inv = {
+      id: "inv"+Date.now(),
+      number: String(next),
+      customer: appt ? (`${appt.customer_first||""} ${appt.customer_last||""}`.trim() || "Walk-in") : "Walk-in",
+      appointment_id: apptId,
+      status: "open",
+      due: todayISO(),
+      tax_rate: 6,
+      discount: 0,
+      items: []
+    };
+    d.invoices.push(inv);
+    writeLS(LS.data, d);
+    return inv;
+  }
+  // else create new
+  return ensureInvoiceForAppt(apptId);
+}
+
+
+// --- Service helpers (top of app.js) ---
+function _getDataSafe(){ try { return readLS(LS.data, {}) || {}; } catch(e){ return {}; } }
+function _curShopId(){ try { const s=currentShop&&currentShop(); return s&&s.id; } catch(e){ return null; } }
+
+function getServiceConfigById(sid){
+  if(!sid) return null;
+  const d=_getDataSafe(); const list=(d.settings&&d.settings.services)||[]; const cur=_curShopId();
+  return list.find(s=>String(s.id)===String(sid)&&(!s.shop_id||s.shop_id===cur))||null;
+}
+
+function getServiceConfigByName(name){
+  if(!name) return null;
+  const d=_getDataSafe(); const list=(d.settings&&d.settings.services)||[]; const cur=_curShopId();
+  const lower=String(name).toLowerCase();
+  return list.find(s=>String(s.name||"").toLowerCase()===lower&&(!s.shop_id||s.shop_id===cur))||null;
+}
+
+function _apptPrefillKey(apptId){ return `nx_appt_prefilled_${String(apptId)}`; }
+
+
+function addPartToInvoice(apptId, part){
+  try{
+    const d = readLS(LS.data,{appointments:[],invoices:[]});
+    const inv = getOrCreateOpenInvoice(apptId);
+    if(!inv) return false;
+    const idx = (d.invoices||[]).findIndex(i => i.id===inv.id);
+    if(idx<0) return false;
+    const line = {
+      name: `Part: ${(part.name||"").toString()}${part.brand?(" · "+part.brand):""}`,
+      qty: 1,
+      price: Number(part.price||0)
+    };
+    d.invoices[idx].items = d.invoices[idx].items || [];
+    d.invoices[idx].items.push(line);
+    writeLS(LS.data, d);
+    return true;
+  }catch(e){ return false; }
+}
+// Add BOTH a Part line AND a Labor line (qty = hours, price = rate)
+function addPartAndLaborToInvoice(apptId, part, labor) {
+  try {
+    const d   = readLS(LS.data, { appointments:[], invoices:[] });
+    const inv = getOrCreateOpenInvoice(apptId);
+    if (!inv) return false;
+
+    const idx = (d.invoices||[]).findIndex(i => i.id === inv.id);
+    if (idx < 0) return false;
+
+    const items = d.invoices[idx].items = d.invoices[idx].items || [];
+
+    // 1) Part line
+    const partLine = {
+      name: `Part: ${(part.name||"").toString()}${part.brand ? (" · " + part.brand) : ""}`,
+      qty: 1,
+      price: Number(part.price||0)
+    };
+    items.push(partLine);
+
+    // 2) Labor line (qty = hours, price = rate)
+    const hours = Number(labor && labor.hours || 0);
+    const rate  = Number(labor && labor.rate  || 0);
+    const laborLine = {
+      name: `Labor - ${(part.name||"").toString()}`,
+      qty: hours,
+      price: rate
+    };
+    items.push(laborLine);
+
+    writeLS(LS.data, d);
+    return true;
+  } catch(e) {
+    console.warn("addPartAndLaborToInvoice error", e);
+    return false;
+  }
+}
+
+/* === /PARTS FINDER === */
+
+
+const ROLE_PAGES={admin:["dashboard","invoice","appointments","jobs","messages","invoices","customers","settings","profile"],service_writer:["dashboard","invoice","customers","appointments","messages","invoices","profile"],receptionist:["dashboard","messages","customers","appointments","profile"],staff:["dashboard","appointments","jobs","profile"]};
+function currentUser(){const s=readLS(LS.session,null);if(!s)return null;return readLS(LS.users,[]).find(x=>x.email===s.email)||null;}
+function currentShop(){const u=currentUser();const shops=readLS(LS.shops,[])||[];return u?shops.find(s=>s.id===u.shop_id)||shops[0]||null:shops[0]||null;}
+async function __ensureSeedBase(){if(readLS(LS.seeded,false))return;writeLS(LS.users,[{id:"u1",first:"Owner",last:"User",email:"owner@demo.local",password:"admin123",role:"admin",shop_id:"s1"}]);writeLS(LS.shops,[{id:"s1",name:"Demo Shop",type:"Mechanic",join_code:"ABCD12",staff_limit:3}]);writeLS(LS.data,{settings:{shop:{name:"Demo Shop",phone:"",email:""}},appointments:[{id:"a1",created_at:new Date().toISOString(),customer_first:"Evan",customer_last:"Ramos",email:"evan.ramos@example.com",phone:"(301) 555-0182",vehicle:"2014 BMW 335i",service:"Brake inspection",preferred_date:todayISO(),preferred_time:"10:00",status:"scheduled",source:"inquiry",shop_id:"s1"}],jobs:[{id:"J1001",appointment_id:"a1",status:"scheduled",shop_id:"s1"}],threads:[{id:"t1",type:"inquiry",title:"New Inquiry · Evan Ramos",meta:{name:"Evan Ramos",phone:"(301) 555-0182",email:"evan.ramos@example.com",vehicle:"2014 BMW 335i",service:"Brake inspection",date:todayISO(),time:"10:00",notes:"Grinding noise on front left."},messages:[{from:"system",body:"New inquiry submitted from website.",created_at:new Date().toISOString()}],shop_id:"s1"}],invoices:[{id:"inv1001",number:"1001",customer:"Evan Ramos",appointment_id:"a1",status:"open",due:todayISO(),tax_rate:6,discount:0,items:[{name:"Labor",qty:1,price:120},{name:"Parts",qty:1,price:45}],shop_id:"s1"}]});writeLS(LS.seeded,true);}
+function setThemeFromUser(){const u=currentUser();const t=(u&&u.theme)||"light";document.documentElement.classList.toggle("dark",t==="dark");}
+function toggleTheme(){const html=document.documentElement;html.classList.toggle("dark");const dark=html.classList.contains("dark");const u=currentUser();if(!u)return;const users=readLS(LS.users,[]);const i=users.findIndex(x=>x.id===u.id);if(i>=0){users[i].theme=dark?"dark":"light";writeLS(LS.users,users);}}
+function pageName(){const p=(location.pathname.split("/").pop()||"index.html").toLowerCase();return p.replace(".html","");}
+function applyNavPermissions(){const u=currentUser();if(!u)return;const allowed=ROLE_PAGES[u.role]||[];document.querySelectorAll("header nav a").forEach(a=>{const href=(a.getAttribute("href")||"").toLowerCase();const pn=href.replace(".html","").replace("./","");if(href&&pn&&!allowed.includes(pn)){a.style.display="none";}});}
+function enforcePageAccess(){const u=currentUser();if(!u)return;const allowed=ROLE_PAGES[u.role]||[];const pn=pageName();const open=["index","signup","create-shop"];if(!allowed.includes(pn)&&!open.includes(pn)){if(allowed.includes("dashboard"))location.href="dashboard.html";else location.href="index.html";}}
+async function requireAuth(){
+  if (!supabase) {
+    console.warn('Supabase client not available. Falling back to localStorage-only mode.');
+    // For localStorage mode, check if user is logged in
+    const user = currentUser();
+    const pn = pageName();
+    const open = ["index", "signup", "create-shop", ""];
+    if (!user && !open.includes(pn)) location.href = "index.html";
+    if (user) {
+      applyNavPermissions();
+      enforcePageAccess();
+    }
+    return;
+  }
+
+  const { data: { user } } = await supabase.auth.getUser();
+  const pn=pageName();
+  const open=["index","signup","create-shop",""];
+  if(!user&&!open.includes(pn))location.href="index.html";
+  if(user){
+    applyNavPermissions();
+    enforcePageAccess();
+  }
+}
+async function logout(){
+  try{
+    if(supabase && supabase.auth && typeof supabase.auth.signOut === 'function'){
+      await supabase.auth.signOut();
+    }
+  }catch(e){ console.warn('logout supabase signOut failed', e); }
+  // Clear local session and cached shop data so another user doesn't see previous data
+  try{ localStorage.removeItem(LS.session); }catch(e){}
+  APP_CACHE = { settings: {}, appointments: [], jobs: [], threads: [], invoices: [] };
+  CACHE_LOADED = true;
+  try{ localStorage.setItem(LS.data, JSON.stringify(APP_CACHE)); }catch(e){}
+  location.href = "index.html";
+}
+function updateMessageNotifications() {
+  // Small delay to ensure DOM is ready
+  setTimeout(() => {
+    const data = readLS(LS.data, { threads: [] });
+    const newInquiries = (data.threads || []).filter(t => t.type === 'inquiry').length;
+    
+    // Update only navigation Messages links (exclude individual message buttons)
+    const messageLinks = document.querySelectorAll('nav a[href*="messages"]');
+    console.log('Found message links:', messageLinks.length, 'New inquiries:', newInquiries);
+    
+    messageLinks.forEach(link => {
+      // Remove existing notification badge
+      const existingBadge = link.querySelector('.nav-notification');
+      if (existingBadge) existingBadge.remove();
+      
+      // Add new badge if there are new inquiries
+      if (newInquiries > 0) {
+        const badge = document.createElement('span');
+        badge.className = 'nav-notification';
+        badge.textContent = newInquiries;
+        link.appendChild(badge);
+        console.log('Added badge to link:', link.href);
+      }
+    });
+  }, 100);
+}
+async function ensureSeed(){await __ensureSeedBase();}
+async function __mainBase(){
+  await ensureSeed();
+  // Wait for shops/users from multi-tenant sync if available so pages relying on getCurrentShop() don't race
+  try{
+    if(typeof window !== 'undefined'){
+      if(window._syncLocalPromise) await window._syncLocalPromise;
+      else {
+        // give the multi-tenant module a short window to kick off its sync
+        let waited = 0;
+        while(!window._syncLocalPromise && waited < 3000){ await new Promise(r => setTimeout(r, 200)); waited += 200; }
+        if(window._syncLocalPromise) await window._syncLocalPromise;
+      }
+    }
+  }catch(e){ console.warn('Waiting for initial shop sync failed', e); }
+  setThemeFromUser();
+  if(byId("themeToggle"))byId("themeToggle").addEventListener("click",toggleTheme);
+  if(byId("logoutBtn"))byId("logoutBtn").addEventListener("click", async () => { await logout(); });
+  const p=pageName();
+  if(p==="index"||p==="")setupLogin();
+  else{
+    await requireAuth();
+    if(p==="dashboard")await setupDashboard();
+    if(p==="appointments")setupAppointments();
+    if(p==="jobs")setupJobs();
+    if(p==="messages")setupMessages();
+    if(p==="invoices")setupInvoices();
+    if(p==="settings")setupSettings();
+    if(p==="profile")setupProfile();
+  }
+  updateMessageNotifications();
+}
+function makeSortable(table,rowBuilder){if(!table)return;const thead=table.querySelector("thead");const tbody=table.querySelector("tbody");let sortKey=null,sortDir=1;if(!thead)return;thead.querySelectorAll("th").forEach(th=>{th.style.cursor="pointer";th.addEventListener("click",()=>{const key=th.getAttribute("data-key")||th.textContent.toLowerCase().trim();sortDir=(sortKey===key)?-sortDir:1;sortKey=key;const rows=rowBuilder();rows.sort((a,b)=>{const va=a[key],vb=b[key];const na=!isNaN(parseFloat(va))&&isFinite(va);const nb=!isNaN(parseFloat(vb))&&isFinite(vb);if(na&&nb)return(parseFloat(va)-parseFloat(vb))*sortDir;if(/^\\d{4}-\\d{2}-\\d{2}$/.test(va||"")&&/^\\d{4}-\\d{2}-\\d{2}$/.test(vb||""))return(va.localeCompare(vb))*sortDir;return String(va||"").localeCompare(String(vb||""))*sortDir;});tbody.innerHTML="";rows.forEach(r=>tbody.appendChild(r.__tr));});});}
+function setupLogin(){
+  const form=byId("loginForm");
+  if(!form)return;
+  form.addEventListener("submit",async(e)=>{
+    e.preventDefault();
+    const email=byId("loginEmail").value.trim().toLowerCase();
+    const pass=byId("loginPass").value;
+
+    if (supabase) {
+      // Try Supabase authentication
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+      if(error){
+        byId("loginErr").textContent="Invalid credentials.";
+        return;
+      }
+      // After successful sign-in, attempt to load authoritative server data for the user's shop
+      try{
+        const serverData = await readData();
+        if(serverData && Object.keys(serverData).length){
+          writeLS(LS.data, serverData);
+        }
+      }catch(ex){
+        console.warn('Failed to fetch server data after login', ex);
+        showServerBanner();
+      }
+      location.href="dashboard.html";
+    } else {
+      // Fallback to localStorage authentication
+      const users = JSON.parse(localStorage.getItem(LS.users) || '[]');
+      const user = users.find(u => u.email === email);
+      if (!user || user.password !== pass) {
+        byId("loginErr").textContent="Invalid credentials.";
+        return;
+      }
+      // Create session
+      writeLS(LS.session, { email: user.email, at: Date.now() });
+      location.href="dashboard.html";
+    }
+  });
+}
+async function setupDashboard(){
+  const data = readLS(LS.data, {});
+  const ref=new Date();function calcInvTotal(inv){const sub=(inv.items||[]).reduce((a,i)=>a+((i.qty||0)*(i.price||0)),0);const tax=sub*(inv.tax_rate||0)/100;const disc=inv.discount||0;return sub+tax-disc;}let invSortBy="date";function renderOpenInvoices(){const openInvList=byId("openInvoicesList");const openInvTotal=byId("openInvTotal");if(!openInvList)return;let openInv=data.invoices.filter(i=>i.status!=="paid");if(invSortBy==="date"){openInv.sort((a,b)=>(b.due||"").localeCompare(a.due||""));}else if(invSortBy==="amount-high"){openInv.sort((a,b)=>calcInvTotal(b)-calcInvTotal(a));}else if(invSortBy==="amount-low"){openInv.sort((a,b)=>calcInvTotal(a)-calcInvTotal(b));}else if(invSortBy==="name-az"){openInv.sort((a,b)=>(a.customer||"").localeCompare(b.customer||""));}else if(invSortBy==="name-za"){openInv.sort((a,b)=>(b.customer||"").localeCompare(a.customer||""));}const total=openInv.reduce((a,i)=>a+calcInvTotal(i),0);openInvTotal&&(openInvTotal.textContent="$"+fmtMoney(total));if(!openInv.length){openInvList.innerHTML='<p class="notice" id="invoicesEmpty">No open invoices</p>';return;}openInvList.innerHTML="";openInv.forEach(inv=>{const row=document.createElement("div");row.style.cssText="padding:8px;border:1px solid var(--line);border-radius:8px;cursor:pointer;transition:all 0.2s ease;background:var(--card)";row.innerHTML=`<div style="display:flex;justify-content:space-between;font-size:13px"><div><b>${inv.customer||"N/A"}</b><br><span class="notice">${inv.due||""}</span></div><div style="text-align:right;font-weight:700">$${fmtMoney(calcInvTotal(inv))}</div></div>`;row.addEventListener("click",()=>{location.href=`invoices.html?inv=${inv.id}`;});row.addEventListener("mouseenter",()=>{row.style.background="var(--line)";row.style.transform="translateX(4px)";});row.addEventListener("mouseleave",()=>{row.style.background="var(--card)";row.style.transform="translateX(0)";});openInvList.appendChild(row);});}const invFilterEl=byId("invSortFilter");if(invFilterEl){invFilterEl.addEventListener("change",(e)=>{invSortBy=e.target.value;renderOpenInvoices();});}function kpis(){const ym=ref.toISOString().slice(0,7);const appts=data.appointments.filter(a=>(a.preferred_date||"").startsWith(ym));const leads=data.appointments.filter(a=>(a.created_at||"").slice(0,7)===ym);const jobs=data.jobs.filter(j=>j.status!=="completed");const openInv=data.invoices.filter(i=>i.status!=="paid");byId("kpiLeads").textContent=leads.length;byId("kpiAppts").textContent=appts.length;byId("kpiJobs").textContent=jobs.length;byId("kpiInv").textContent=openInv.length;const today=new Date().toISOString().slice(0,10);const paidInvAll=data.invoices.filter(i=>i.status==="paid");const paidInvMonth=paidInvAll.filter(i=>(i.paid_date||i.due||"").startsWith(ym));const paidInvToday=paidInvAll.filter(i=>(i.paid_date||i.due||"")===today);const totalRev=paidInvAll.reduce((a,i)=>a+calcInvTotal(i),0);const monthRev=paidInvMonth.reduce((a,i)=>a+calcInvTotal(i),0);byId("totalRevenueQuick")&&(byId("totalRevenueQuick").textContent="$"+fmtMoney(totalRev));byId("monthRevenueQuick")&&(byId("monthRevenueQuick").textContent="$"+fmtMoney(monthRev));renderOpenInvoices();}function renderCal(){byId("monthLabel").textContent=ref.toLocaleString(undefined,{month:"long",year:"numeric"});const grid=byId("calGrid");grid.innerHTML="";const y=ref.getFullYear(),m=ref.getMonth();const first=new Date(y,m,1),start=first.getDay();const days=new Date(y,m+1,0).getDate();for(let i=0;i<start;i++){const d=document.createElement("div");grid.appendChild(d);}for(let d=1;d<=days;d++){const cell=document.createElement("div");cell.className="day";const iso=new Date(y,m,d).toISOString().slice(0,10);const appts=data.appointments.filter(a=>a.preferred_date===iso);const counts={new:0,scheduled:0,in_progress:0,awaiting_parts:0,completed:0};appts.forEach(a=>counts[a.status]=(counts[a.status]||0)+1);cell.innerHTML=`<div class="date">${d}</div>
+
+<div class="dotRow">
+  ${counts.new?'<span class="chip"><span class="dot big open"></span><span>New</span></span>':''}
+  ${counts.scheduled?'<span class="chip"><span class="dot big scheduled"></span><span>Sch</span></span>':''}
+  ${counts.in_progress?'<span class="chip"><span class="dot big progress"></span><span>Prog</span></span>':''}
+  ${counts.awaiting_parts?'<span class="chip"><span class="dot big progress"></span><span>Parts</span></span>':''}
+  ${counts.completed?'<span class="chip"><span class="dot big done"></span><span>Done</span></span>':''}
+</div>
+<div class="tooltip" role="tooltip" aria-hidden="true">New:${counts.new||0} · Sch:${counts.scheduled||0} · Prog:${counts.in_progress||0} · Parts:${counts.awaiting_parts||0} · Done:${counts.completed||0}</div>`;cell.setAttribute('tabindex','0');
+cell.setAttribute('role','button');
+cell.addEventListener("click",()=>{
+  renderDay(appts, iso);
+  const tip = cell.querySelector('.tooltip');
+  if(tip){
+    const open = document.querySelector('.day .tooltip.show');
+    if(open && open!==tip){ open.classList.remove('show'); open.setAttribute('aria-hidden','true'); }
+    const now = tip.classList.toggle('show');
+    tip.setAttribute('aria-hidden', now ? 'false' : 'true');
+  }
+});
+cell.addEventListener('keydown',(ev)=>{
+  if(ev.key==='Enter' || ev.key===' '){
+    ev.preventDefault();
+    const tip = cell.querySelector('.tooltip');
+    if(tip){
+      const open = document.querySelector('.day .tooltip.show');
+      if(open && open!==tip){ open.classList.remove('show'); open.setAttribute('aria-hidden','true'); }
+      const now = tip.classList.toggle('show');
+      tip.setAttribute('aria-hidden', now ? 'false' : 'true');
+    }
+  }
+});grid.appendChild(cell);}}function badge(st){const map={new:"open",scheduled:"scheduled",in_progress:"progress",awaiting_parts:"parts",completed:"done"};const c=map[st]||"";return `<span class="badge ${c}">${st}</span>`;}function renderDay(appts, dateStr){const tb=document.querySelector("#dayTable tbody");tb.innerHTML="";const empty=byId("dayEmpty");const dateDisplay=byId("dayDateDisplay");const freshData=readLS(LS.data,{appointments:[],jobs:[],invoices:[]});if(dateStr){const parts=dateStr.split("-");const d=new Date(parseInt(parts[0]),parseInt(parts[1])-1,parseInt(parts[2]));const apptIds=appts.map(a=>a.id);const paidInvForDay=freshData.invoices.filter(i=>apptIds.includes(i.appointment_id)&&i.status==="paid");const dayRev=paidInvForDay.reduce((a,i)=>a+calcInvTotal(i),0);const dateStr2=d.toLocaleDateString(undefined,{weekday:"long",year:"numeric",month:"long",day:"numeric"});dateDisplay.innerHTML=dateStr2+" · Total Revenue: <b>$"+fmtMoney(dayRev)+"</b>";dateDisplay.style.fontWeight="normal";const dayRevEl=byId("dayRevenueQuick");if(dayRevEl){dayRevEl.textContent="$"+fmtMoney(dayRev);}}if(!appts.length){empty.textContent="No appointments for this day.";return;}empty.textContent="";appts.forEach(a=>{const tr=document.createElement("tr");const apptInv=freshData.invoices.find(i=>i.appointment_id===a.id);const invAmount=apptInv?calcInvTotal(apptInv):0;const invStatus=apptInv?apptInv.status:"open";const revColor=invStatus==="paid"?"#10b981":"#ef4444";tr.innerHTML=`<td>${a.preferred_time||""}</td><td>${a.customer_first||""} ${a.customer_last||""}</td><td>${a.vehicle||""}</td><td>${a.service||""}</td><td style="font-weight:700;color:${revColor}">$${fmtMoney(invAmount)}</td><td>${badge(a.status)}</td><td><a class="btn" href="messages.html?appt=${a.id}">Message</a> <a class="btn" href="invoices.html?appt=${a.id}">Invoice</a></td>`;tb.appendChild(tr);});}// === Month navigation (must live inside setupDashboard so it sees ref/kpis/renderCal) ===
+
+
+// === /Month navigation ===
+
+kpis();renderCal();resetDayPanel();
+setupQuickCreateButtons();
+renderRevenueChart();
+updateMessageNotifications();}
+
+// --- Mobile-friendly override for renderDay ---
+// This overrides the earlier renderDay implementation to abbreviate names on small screens
+// and provide a mobile toggle that reveals action buttons per appointment row.
+function renderDay(appts, dateStr){
+  const tb = document.querySelector("#dayTable tbody");
+  if(!tb) return;
+  tb.innerHTML = "";
+  const empty = byId("dayEmpty");
+  const dateDisplay = byId("dayDateDisplay");
+  const freshData = readLS(LS.data,{appointments:[],jobs:[],invoices:[]});
+
+  if(dateStr){
+    const parts = dateStr.split("-");
+    const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    const apptIds = appts.map(a => a.id);
+    const paidInvForDay = freshData.invoices.filter(i => apptIds.includes(i.appointment_id) && i.status === "paid");
+    const dayRev = paidInvForDay.reduce((a,i) => a + calcInvTotal(i), 0);
+    const dateStr2 = d.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    if(dateDisplay) dateDisplay.innerHTML = dateStr2 + " · Total Revenue: <b>$" + fmtMoney(dayRev) + "</b>";
+    if(dateDisplay) dateDisplay.style.fontWeight = "normal";
+    const dayRevEl = byId("dayRevenueQuick"); if(dayRevEl) dayRevEl.textContent = "$"+fmtMoney(dayRev);
+  }
+
+  if(!appts.length){ if(empty) empty.textContent = "No appointments for this day."; return; }
+  if(empty) empty.textContent = "";
+
+  appts.forEach(a => {
+    const tr = document.createElement('tr');
+    const apptInv = freshData.invoices.find(i => i.appointment_id === a.id);
+    const invAmount = apptInv ? calcInvTotal(apptInv) : 0;
+    const invStatus = apptInv ? apptInv.status : 'open';
+    const revColor = invStatus === 'paid' ? '#10b981' : '#ef4444';
+
+    // Use actual mobile detection
+    const isMobile = (typeof window !== 'undefined') && window.matchMedia && window.matchMedia('(max-width:480px)').matches;
+    console.log('Day details row:', {isMobile, width: window.innerWidth, customer: a.customer_first, actionsCell: isMobile ? 'toggle' : 'buttons'});
+    debugger;
+    let custLabel = `${a.customer_first||''} ${a.customer_last||''}`.trim();
+    if(isMobile){
+      const first = (a.customer_first||'').split(' ')[0] || '';
+      const lastInitial = (a.customer_last||'').trim() ? (a.customer_last.trim().charAt(0) + '.') : '';
+      custLabel = `${first} ${lastInitial}`.trim();
+    }
+
+    tr.innerHTML = `
+      <td>${a.preferred_time||''}</td>
+      <td>${custLabel}</td>
+      <td>${a.vehicle||''}</td>
+      <td>${a.service||''}</td>
+      <td style="font-weight:700;color:${revColor}">$${fmtMoney(invAmount)}</td>
+      <td>${badge(a.status)}</td>
+      ${isMobile ? '<td class="mobile-toggle-cell"><button class="btn btn-sm toggle-actions" data-appt="${a.id}">Actions</button></td>' : '<td class="actions-cell"><a class="btn" href="messages.html?appt=${a.id}">Message</a> <a class="btn" href="invoices.html?appt=${a.id}">Invoice</a></td>'}
+    `;
+
+    tb.appendChild(tr);
+
+    const detailsTr = document.createElement('tr');
+  detailsTr.className = 'appt-details-row hidden';
+  // Details row shows the time and the two action buttons on mobile; it pushes content down when revealed
+  const colspan = isMobile ? 7 : 8;
+  detailsTr.innerHTML = `<td colspan="${colspan}" style="padding:8px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="mobile-time" style="font-weight:600">${a.preferred_time||''}</div><div style="display:flex;gap:8px"><a class="btn mobile-detail-btn" href="messages.html?appt=${a.id}">Message</a><a class="btn mobile-detail-btn" href="invoices.html?appt=${a.id}">Invoice</a></div></div></td>`;
+    tb.appendChild(detailsTr);
+
+    // Make the toggle button clickable to show details on mobile
+    const toggleBtn = tr.querySelector('.toggle-actions');
+    if(toggleBtn){
+      toggleBtn.addEventListener('click', (e)=>{
+        e.stopPropagation(); // prevent row click if any
+        detailsTr.classList.toggle('hidden');
+      });
+    }
+  });
+}
+
+// Helper: reset the day details/tooltip when month changes
+function resetDayPanel(){
+  const tb = document.querySelector("#dayTable tbody");
+  if (tb) tb.innerHTML = "";
+  const empty = byId("dayEmpty");
+  if (empty) empty.textContent = "Click a day to view appointments.";
+  const dateDisplay=byId("dayDateDisplay");
+  if(dateDisplay)dateDisplay.textContent="Select a day";
+  const open = document.querySelector(".day .tooltip.show");
+  if (open){ open.classList.remove("show"); open.setAttribute("aria-hidden","true"); }
+  const dayRevEl=byId("dayRevenueQuick");
+  if(dayRevEl){dayRevEl.textContent="$0";}
+}
+
+// EDIT #6: Close open calendar tooltip on outside click / ESC
+document.addEventListener('click', (ev)=>{
+  const open = document.querySelector('.day .tooltip.show');
+  if(!open) return;
+  const day = open.closest('.day');
+  if(day && day.contains(ev.target)) return;
+  open.classList.remove('show'); open.setAttribute('aria-hidden','true');
+  // Reset day revenue when clicking outside calendar
+  resetDayPanel();
+});
+document.addEventListener('keydown', (ev)=>{
+  if(ev.key==='Escape'){
+    const open = document.querySelector('.day .tooltip.show');
+    if(open){ open.classList.remove('show'); open.setAttribute('aria-hidden','true'); }
+  }
+});
+// /EDIT #6
+
+// === Quick Create Buttons and Revenue Chart ===
+function setupQuickCreateButtons() {
+  const btnAppt = byId("btnNewAppt");
+  const btnInv = byId("btnNewInv");
+  const btnCust = byId("btnNewCust");
+  
+  if (btnAppt) btnAppt.addEventListener("click", () => {
+    location.href = "appointments.html#new";
+  });
+  
+  if (btnInv) btnInv.addEventListener("click", () => {
+    location.href = "invoices.html#new";
+  });
+  
+  if (btnCust) btnCust.addEventListener("click", () => {
+    location.href = "customers.html#new";
+  });
+}
+
+function renderRevenueChart() {
+  const canvas = byId("revenueChart");
+  if (!canvas || typeof Chart === 'undefined') return;
+  
+  const data = readLS(LS.data, { invoices: [] });
+  const today = new Date();
+  const labels = [];
+  const revenues = [];
+  
+  // Get last 30 days
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    labels.push(d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+    
+    // Sum paid invoices for this day
+    const dayRev = (data.invoices || [])
+      .filter(inv => inv.status === 'paid' && (inv.paid_date || inv.due || '') === dateStr)
+      .reduce((sum, inv) => {
+        const sub = (inv.items || []).reduce((a, i) => a + ((i.qty || 0) * (i.price || 0)), 0);
+        const tax = sub * (inv.tax_rate || 0) / 100;
+        const disc = inv.discount || 0;
+        return sum + sub + tax - disc;
+      }, 0);
+    revenues.push(Math.round(dayRev * 100) / 100);
+  }
+  
+  const ctx = canvas.getContext('2d');
+  if (window.revenueChartInstance) {
+    window.revenueChartInstance.destroy();
+  }
+  
+  window.revenueChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Daily Revenue',
+        data: revenues,
+        borderColor: 'var(--accent)',
+        backgroundColor: 'rgba(225, 29, 72, 0.05)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4,
+        pointRadius: 4,
+        pointBackgroundColor: 'var(--accent)',
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { callback: (v) => '$' + v.toFixed(0) }
+        }
+      }
+    }
+  });
+}
+
+// /EDIT #7
+
+function viewAppt(id) {
+  const store = readLS(LS.data, {appointments: []});
+  const appt = store.appointments.find(a => a.id == id);
+  if (!appt) return;
+  const content = `
+    <p><strong>Customer:</strong> ${appt.customer_first} ${appt.customer_last}</p>
+    <p><strong>Email:</strong> ${appt.email || ''}</p>
+    <p><strong>Phone:</strong> ${appt.phone || ''}</p>
+    <p><strong>Vehicle:</strong> ${appt.vehicle}</p>
+    <p><strong>Service:</strong> ${appt.service}</p>
+    <p><strong>Date:</strong> ${appt.preferred_date}</p>
+    <p><strong>Time:</strong> ${appt.preferred_time}</p>
+    <p><strong>Status:</strong> ${appt.status}</p>
+    <p><strong>Notes:</strong> ${appt.notes || 'No notes'}</p>
+    <p><strong>Created:</strong> ${appt.created_at ? appt.created_at.slice(0,10) : ''}</p>
+  `;
+  byId('viewApptContent').innerHTML = content;
+  byId('editFromViewBtn').onclick = () => { openApptModalWith(appt); closeViewApptModal(); };
+  byId('viewApptModal').classList.remove('hidden');
+}
+
+function closeViewApptModal() {
+  byId('viewApptModal').classList.add('hidden');
+}
+
+let currentStatusApptId = null;
+
+function getStatusColor(status) {
+  const colors = {
+    new: '#6b7280',
+    scheduled: '#3b82f6',
+    in_progress: '#f59e0b',
+    awaiting_parts: '#eab308',
+    completed: '#10b981'
+  };
+  return colors[status] || '#6b7280';
+}
+
+function openStatusModal(apptId) {
+  currentStatusApptId = apptId;
+  const statuses = [
+    {value: 'new', label: 'New', color: '#6b7280'},
+    {value: 'scheduled', label: 'Scheduled', color: '#3b82f6'},
+    {value: 'in_progress', label: 'In Progress', color: '#f59e0b'},
+    {value: 'awaiting_parts', label: 'Awaiting Parts', color: '#eab308'},
+    {value: 'completed', label: 'Completed', color: '#10b981'}
+  ];
+  const pillsHtml = statuses.map(s => `
+    <div class="status-pill" style="background: ${s.color}; color: white; padding: 16px 20px; border-radius: 12px; text-align: center; cursor: pointer; font-weight: 600; font-size: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); transition: all 0.2s ease; border: 2px solid transparent;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.2)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.15)';" onclick="setStatus('${s.value}')">
+      ${s.label}
+    </div>
+  `).join('');
+  byId('statusPills').innerHTML = pillsHtml;
+  byId('statusModal').classList.remove('hidden');
+}
+
+function setStatus(newStatus) {
+  if (!currentStatusApptId) return;
+  const st = readLS(LS.data, {appointments:[],jobs:[]});
+  const i = st.appointments.findIndex(x => x.id === currentStatusApptId);
+  if (i >= 0) {
+    st.appointments[i].status = newStatus;
+    if (newStatus === "in_progress") {
+      if (!(st.jobs||[]).some(j => j.appointment_id === currentStatusApptId)) {
+        (st.jobs = st.jobs || []).push({id: "J" + Date.now(), appointment_id: currentStatusApptId, status: "in_progress"});
+      }
+    }
+    const ji = (st.jobs||[]).findIndex(j => j.appointment_id === currentStatusApptId);
+    if (ji >= 0) {
+      st.jobs[ji].status = newStatus;
+    }
+    /* INJECT: auto-invoice + merge-safe write */
+    let __inv = null;
+    if (newStatus === "completed") {
+      try {
+        __inv = ensureInvoiceForAppt(currentStatusApptId);
+      } catch(_e) {}
+    }
+    const __latestA = readLS(LS.data, {appointments:[],jobs:[],threads:[],invoices:[]});
+    __latestA.appointments = st.appointments;
+    __latestA.jobs = st.jobs;
+    writeLS(LS.data, __latestA);
+  }
+  closeStatusModal();
+  draw();
+  // Show confirmation notification
+  const notification = document.getElementById('notification');
+  if (notification) {
+    notification.textContent = `Appointment status updated to ${newStatus.replace('_', ' ')}`;
+    notification.classList.remove('hidden');
+    setTimeout(() => {
+      notification.classList.add('hidden');
+    }, 3000);
+  }
+}
+
+function closeStatusModal() {
+  byId('statusModal').classList.add('hidden');
+  currentStatusApptId = null;
+}
+
+let currentStatusJobId = null;
+
+function openJobStatusModal(jobId) {
+  console.log('openJobStatusModal called with jobId:', jobId);
+  currentStatusJobId = jobId;
+  const statuses = [
+    {value: 'new', label: 'New', color: '#6b7280'},
+    {value: 'scheduled', label: 'Scheduled', color: '#3b82f6'},
+    {value: 'in_progress', label: 'In Progress', color: '#f59e0b'},
+    {value: 'awaiting_parts', label: 'Awaiting Parts', color: '#eab308'},
+    {value: 'completed', label: 'Completed', color: '#10b981'}
+  ];
+  const pillsHtml = statuses.map(s => `
+    <div class="status-pill" style="background: ${s.color}; color: white; padding: 16px 20px; border-radius: 12px; text-align: center; cursor: pointer; font-weight: 600; font-size: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); transition: all 0.2s ease; border: 2px solid transparent;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.2)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.15)';" onclick="setJobStatus('${s.value}')">
+      ${s.label}
+    </div>
+  `).join('');
+  const statusPillsEl = byId('statusPills');
+  console.log('statusPillsEl:', statusPillsEl);
+  if (statusPillsEl) {
+    statusPillsEl.innerHTML = pillsHtml;
+    console.log('Set pills HTML');
+  } else {
+    console.error('statusPillsEl not found');
+  }
+  const statusModalEl = byId('statusModal');
+  console.log('statusModalEl:', statusModalEl);
+  if (statusModalEl) {
+    statusModalEl.classList.remove('hidden');
+    console.log('Removed hidden class from modal');
+  } else {
+    console.error('statusModalEl not found');
+  }
+}
+
+// Unified UI: on mobile open modal, on desktop show inline select dropdown
+function openJobStatusUI(jobId, el) {
+  const isMobile = (typeof window !== 'undefined') && window.matchMedia && window.matchMedia('(max-width:480px)').matches;
+  if (isMobile) {
+    // mobile: keep modal behavior
+    return openJobStatusModal(jobId);
+  }
+
+  // desktop: create an inline select to replace the clicked box
+  try {
+    const dataStore = readLS(LS.data, { jobs: [], appointments: [] });
+    const job = (dataStore.jobs || []).find(j => j.id === jobId) || {};
+    const current = job.status || 'new';
+
+    const sel = document.createElement('select');
+    sel.className = 'job-status-inline';
+    const opts = ['new','scheduled','in_progress','awaiting_parts','completed'];
+    opts.forEach(v => {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = v; if (v === current) o.selected = true;
+      sel.appendChild(o);
+    });
+
+    // style to match small select
+    sel.style.padding = '6px 8px';
+    sel.style.borderRadius = '8px';
+    sel.style.fontSize = '12px';
+    sel.style.minWidth = '110px';
+
+    // replace element with select
+    el.replaceWith(sel);
+    sel.focus();
+    // Open dropdown immediately for one-click experience
+    if (typeof sel.showPicker === 'function') {
+      sel.showPicker();
+    } else {
+      // fallback: simulate click for browsers that support it
+      try { sel.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); } catch(e) {}
+    }
+
+    let finished = false;
+    const finish = (newStatus) => {
+      if (finished) return;
+      finished = true;
+      // write change
+      const d = readLS(LS.data, { jobs: [], appointments: [] });
+      const i = (d.jobs || []).findIndex(j => j.id === jobId);
+      if (i >= 0) {
+        d.jobs[i].status = newStatus;
+        const ai = (d.appointments || []).findIndex(a => a.id === d.jobs[i].appointment_id);
+        if (ai >= 0) d.appointments[ai].status = newStatus;
+        writeLS(LS.data, d);
+      }
+
+      // create new box
+      const box = document.createElement('div');
+      box.className = 'status-box';
+      box.textContent = newStatus.replace('_',' ').toUpperCase();
+      box.style.background = getStatusColor(newStatus);
+      box.style.color = 'white';
+      box.style.padding = '4px 8px';
+      box.style.borderRadius = '6px';
+      box.style.fontSize = '10px';
+      box.style.fontWeight = '600';
+      box.style.textAlign = 'center';
+      box.style.cursor = 'pointer';
+      box.style.border = '1px solid rgba(255,255,255,0.2)';
+      box.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+      box.setAttribute('onclick', `event.stopPropagation(); openJobStatusUI('${jobId}', this)`);
+
+      sel.replaceWith(box);
+
+      // Remove the current row to prevent duplication
+      const row = box.closest('tr');
+      if (row) row.remove();
+
+      // Re-render jobs page so job moves between panels
+      setupJobs();
+
+      // notification
+      const notification = document.getElementById('notification');
+      if (notification) {
+        notification.textContent = `Job status updated to ${newStatus.replace('_', ' ')}`;
+        notification.classList.remove('hidden');
+        setTimeout(() => notification.classList.add('hidden'), 3000);
+      }
+    };
+
+    sel.addEventListener('change', () => finish(sel.value));
+    sel.addEventListener('blur', () => finish(sel.value || current));
+  } catch (e) {
+    console.error('openJobStatusUI error', e);
+  }
+}
+
+function setJobStatus(newStatus) {
+  if (!currentStatusJobId) return;
+  const st = readLS(LS.data, {appointments:[],jobs:[]});
+  const i = st.jobs.findIndex(x => x.id === currentStatusJobId);
+  if (i >= 0) {
+    st.jobs[i].status = newStatus;
+    // Keep appointment status in sync with job
+    const job = st.jobs[i];
+    const ai = (st.appointments||[]).findIndex(a => a.id === job.appointment_id);
+    if (ai >= 0) {
+      st.appointments[ai].status = newStatus;
+    }
+    // EDIT #7: when staff marks completed, create/reuse invoice by appointment_id
+    if (newStatus === "completed") {
+      try {
+        ensureInvoiceForAppt(job.appointment_id);
+      } catch(_e) {}
+    }
+    // Merge-safe write to avoid clobbering invoices created by ensureInvoiceForAppt
+    const __latestJ = readLS(LS.data, {appointments:[],jobs:[],threads:[],invoices:[]});
+    __latestJ.jobs = st.jobs;
+    __latestJ.appointments = st.appointments;
+    writeLS(LS.data, __latestJ);
+  }
+  closeJobStatusModal();
+  // Re-render jobs page so job moves between panels
+  setupJobs();
+  // Show confirmation notification
+  const notification = document.getElementById('notification');
+  if (notification) {
+    notification.textContent = `Job status updated to ${newStatus.replace('_', ' ')}`;
+    notification.classList.remove('hidden');
+    setTimeout(() => {
+      notification.classList.add('hidden');
+    }, 3000);
+  }
+}
+
+function closeJobStatusModal() {
+  byId('statusModal').classList.add('hidden');
+  currentStatusJobId = null;
+}
+
+function setupAppointments(){
+  const modal = byId("newApptModal"); // open/close/save still use this create-only modal
+  const openBtn=byId("newAppt");
+  const closeBtn=byId("closeAppt");
+  const saveBtn=byId("saveAppt");
+// after
+if (openBtn) openBtn.onclick = () => {
+  try { populateServiceOptions(); } catch(e) { console.warn("svc options", e); }
+  modal.classList.remove("hidden");
+};
+
+// Auto-open modal if URL has #new
+if (window.location.hash === '#new') {
+  setTimeout(() => {
+    try { populateServiceOptions(); } catch(e) { console.warn("svc options", e); }
+    modal.classList.remove("hidden");
+  }, 100);
+}
+
+if(closeBtn)closeBtn.onclick=()=>modal.classList.add("hidden");if(saveBtn)saveBtn.onclick=()=>{const store=readLS(LS.data,{appointments:[]});const first=(byId("naFirst")||{}).value?.trim()||"";const last=(byId("naLast")||{}).value?.trim()||"";const phone=(byId("naPhone")||{}).value?.trim()||"";const vehicle=(byId("naVehicle")||{}).value?.trim()||"";const
+vin=(byId("naVin") || {}).value?.trim() || "";const
+service=(byId("naService")||{}).value?.trim()||"";const date=(byId("naDate")||{}).value||"";const time=(byId("naTime")||{}).value||"";const email=(byId("naEmail")||{}).value?.trim()||"";if(!first||!last||!phone||!vehicle||!service){alert("Please fill required fields.");return;}store.appointments.push({id:"a"+Date.now(),created_at:new Date().toISOString(),customer_first:first,customer_last:last,email,phone,vehicle,service,preferred_date:date,preferred_time:time,status:"new",source:"walk-in", vin});writeLS(LS.data,store);modal.classList.add("hidden");draw();};function badge(st){const map={new:"open",scheduled:"scheduled",in_progress:"progress",awaiting_parts:"parts",completed:"done"};const sel=tr.querySelector(".statusSel");
+sel.addEventListener("change",()=>{
+  const st=readLS(LS.data,{appointments:[],jobs:[]});
+  const i=st.appointments.findIndex(x=>x.id===a.id);
+  if(i>=0){st.appointments[i].status=sel.value;}
+  if(sel.value==="in_progress"){
+    if(!(st.jobs||[]).some(j=>j.appointment_id===a.id)){
+      (st.jobs=st.jobs||[]).push({id:"J"+Date.now(),appointment_id:a.id,status:"in_progress"});
+    }
+  }
+  const ji=(st.jobs||[]).findIndex(j=>j.appointment_id===a.id);
+  if(ji>=0){st.jobs[ji].status=sel.value;}
+
+  /* INJECT: auto-invoice + merge-safe write */
+  let __inv = null;
+  if (sel.value === "completed") {
+    try { 
+      __inv = ensureInvoiceForAppt(a.id);
+      // NEW: also push the appointment’s service into it
+      prefillInvoiceFromAppointment(a);
+    } catch(_e) {}
+  }
+
+  const __latestA = readLS(LS.data,{appointments:[],jobs:[],threads:[],invoices:[]});
+  __latestA.appointments = st.appointments;
+  __latestA.jobs = st.jobs;
+  writeLS(LS.data, __latestA);
+  draw();
+});
+const c=map[st]||"";return `<span class="badge ${c}">${st}</span>`;}function draw(){const store=readLS(LS.data,{appointments:[]});const q=(byId("apptSearch")||{}).value?.toLowerCase()||"";const status=(byId("apptStatus")||{}).value||"";const rows=(store.appointments||[]).filter(a=>{const hay=`${a.customer_first} ${a.customer_last} ${a.vehicle} ${a.service}`.toLowerCase();const okQ=!q||hay.includes(q);const okS=(!status? a.status!=="completed":a.status===status);return okQ&&okS;});const tbody=document.querySelector("#apptTable tbody");tbody.innerHTML="";if(!rows.length){byId("apptEmpty").textContent="No appointments match.";return;}byId("apptEmpty").textContent="";// Close button for the EDIT modal
+document.getElementById('closeApptModal')?.addEventListener('click', closeApptModal);
+
+// Note: submit handling for #apptForm is delegated near the top of this file
+// to ensure it works even if the modal is injected after script load.
+// The delegated handler prevents default submit and performs the save.
+const rowObjs=rows.map(a=>{const tr=document.createElement("tr");const isMobile = (typeof window !== 'undefined') && window.matchMedia && window.matchMedia('(max-width:480px)').matches;tr.innerHTML = 
+`
+
+  <td>${(a.created_at||"").slice(0,10)}</td>
+  <td>${isMobile ? `${(a.customer_first||'').split(' ')[0] || ''} ${(a.customer_last||'').trim().charAt(0) || ''}. - <strong>${a.vehicle}</strong>` : `${a.customer_first} ${a.customer_last}`}</td>
+  <td>${a.vehicle}</td>
+<td>
+  <div class="svc-toggle" data-id="${a.id}">
+    <span class="svc-label">${a.service || ""}</span>
+    <div class="svc-notes hidden">${a.notes || "No notes"}</div>
+  </div>
+</td>
+  <td>${a.preferred_date||""}</td>
+  <td>${a.preferred_time||""}</td>
+  <td>${isMobile ? `<div class="status-box" style="background: ${getStatusColor(a.status)}; color: white; padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 600; text-align: center; cursor: pointer; border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 1px 3px rgba(0,0,0,0.1);" onclick="event.stopPropagation(); openStatusModal('${a.id}')">${a.status.replace('_', ' ').toUpperCase()}</div>` : `
+
+    <select class="statusSel">
+
+      <option value="new"${a.status==='new'?' selected':''}>new</option>
+
+      <option value="scheduled"${a.status==='scheduled'?' selected':''}>scheduled</option>
+
+      <option value="in_progress"${a.status==='in_progress'?' selected':''}>in_progress</option>
+
+      <option value="awaiting_parts"${a.status==='awaiting_parts'?' selected':''}>awaiting_parts</option>
+
+      <option value="completed"${a.status==='completed'?' selected':''}>completed</option>
+
+    </select>
+
+  `}</td>
+  <td class="appt-actions">
+    <a class="btn btn-sm" href="messages.html?appt=${a.id}">Message</a>
+    <a class="btn btn-sm" href="invoices.html?appt=${a.id}">Invoice</a>
+    <button class="btn btn-sm danger" data-remove="${a.id}">Remove</button>
+    <button class="btn btn-sm btn-secondary edit-appt" data-id="${a.id}">Edit</button>
+  </td>
+
+`;
+// Toggle notes on Service click (Appointments table)
+const svcWrap = tr.querySelector(".svc-toggle");
+const notesEl = svcWrap?.querySelector(".svc-notes");
+if (svcWrap && notesEl) {
+  svcWrap.addEventListener("click", (e) => {
+    // don't let clicks on links/buttons above bubble if any
+    e.stopPropagation?.();
+    const isOpen = svcWrap.classList.toggle("open");
+    // keep .hidden in sync in case other CSS relies on it
+    notesEl.classList.toggle("hidden", !isOpen);
+  });
+}
+
+const sel=tr.querySelector(".statusSel");if(sel){sel.addEventListener("change",()=>{const st=readLS(LS.data,{appointments:[],jobs:[]});const i=st.appointments.findIndex(x=>x.id===a.id);if(i>=0){st.appointments[i].status=sel.value;}if(sel.value==="in_progress"){if(!(st.jobs||[]).some(j=>j.appointment_id===a.id)){(st.jobs=st.jobs||[]).push({id:"J"+Date.now(),appointment_id:a.id,status:"in_progress"});} }const ji=(st.jobs||[]).findIndex(j=>j.appointment_id===a.id);if(ji>=0){st.jobs[ji].status=sel.value;}/* INJECT: auto-invoice + merge-safe write */let __inv = null; if (sel.value === "completed") { try { __inv = ensureInvoiceForAppt(a.id); } catch(_e) {} } const __latestA = readLS(LS.data,{appointments:[],jobs:[],threads:[],invoices:[]}); __latestA.appointments = st.appointments; __latestA.jobs = st.jobs; writeLS(LS.data, __latestA); draw();});sel.addEventListener("click", (e) => e.stopPropagation());}tr.querySelector('button[data-remove]').addEventListener('click',()=>{const st=readLS(LS.data,{appointments:[]});st.appointments=(st.appointments||[]).filter(x=>x.id!==a.id);writeLS(LS.data,st);draw();});
+// NEW: Edit button -> open the edit modal prefilled
+const editBtn = tr.querySelector('.edit-appt');
+if (editBtn) {
+  editBtn.addEventListener('click', () => {
+    openApptModalWith(a);  // uses the second modal (#apptModal with <form id="apptForm">)
+  });
+}
+if(isMobile) tr.onclick = () => viewAppt(a.id);
+
+tbody.appendChild(tr);return {__tr:tr,created:(a.created_at||"").slice(0,10),customer:`${a.customer_first} ${a.customer_last}`,vehicle:a.vehicle,service:a.service,date:a.preferred_date||"",time:a.preferred_time||"",status:a.status||"new"};});document.querySelectorAll("#apptTable thead th").forEach((th,i)=>{const map=["created","customer","vehicle","service","date","time","status","actions"];th.setAttribute("data-key",map[i]||"");});makeSortable(document.getElementById("apptTable"),()=>rowObjs);}
+
+window.draw = draw;
+
+if(byId("apptFilter"))byId("apptFilter").onclick=draw;draw();window.addEventListener('resize', draw);
+  // Handle save for edit modal
+  const saveEditBtn = byId("saveApptEdit");
+  if(saveEditBtn) saveEditBtn.addEventListener('click', () => {
+    const form = byId("apptForm");
+    if(form) form.requestSubmit();
+  });
+}
+function populateServiceOptions(){
+  const dl = document.getElementById('svcOptions');
+  if(!dl) return;
+
+  const d   = readLS(LS.data, { settings:{ services:[] } });
+  const sid = (currentShop()||{}).id || null;
+  const list = (d.settings?.services || []).filter(s => !s.shop_id || s.shop_id === sid);
+
+  // de-dupe by name (case-insensitive)
+  const seen = new Set();
+  const unique = [];
+  list.forEach(s => {
+    const key = String(s.name||'').trim().toLowerCase();
+    if(!key || seen.has(key)) return;
+    seen.add(key);
+    unique.push(s);
+  });
+
+  dl.innerHTML = "";
+  unique.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.name || "";
+    dl.appendChild(opt);
+  });
+}
+
+updateMessageNotifications();
+
+/* ====== REVISED: setupJobs() for clean staff split (Active vs Awaiting Parts) ====== */
+function setupJobs(){
+  const me=currentUser()||{};
+  const shop=currentShop();
+  const canAssign=(me.role==="admin"||me.role==="service_writer");
+  const users=(readLS(LS.users,[])||[]).filter(u=>u.shop_id===(shop&&shop.id));
+  const staffOptions=users.filter(u=>u.role!=="admin").map(u=>({id:u.id,label:`${u.first||""} ${u.last||""}`.trim()||u.email}));
+  const store=readLS(LS.data,{appointments:[],jobs:[]});
+  const rows=(store.jobs||[]).map(j=>({...j,a:(store.appointments||[]).find(x=>x.id===j.appointment_id)||{}}));
+
+  const isMobile = (typeof window !== 'undefined') && window.matchMedia && window.matchMedia('(max-width:480px)').matches;
+
+  const tb=document.querySelector("#jobsTable tbody");
+  if(!tb) return;
+
+  const awaitTbody=document.querySelector("#awaitTable tbody");
+  const awaitEmpty=byId("awaitEmpty");
+  const jobsEmpty=byId("jobsEmpty");
+
+  const badge=(st)=>{const map={new:"open",scheduled:"scheduled",in_progress:"progress",awaiting_parts:"parts",completed:"done"};const c=map[st]||"";return `<span class="badge ${c}">${st}</span>`;};
+
+  // STAFF — split view (keep UI clean; no duplicate headers)
+  if(me.role==="staff"){
+    const mine=rows.filter(r=>r.assigned_to===me.id);
+    const active=mine.filter(r=>r.status==="in_progress" || r.status==="scheduled");
+    const awaiting=mine.filter(r=>r.status==="awaiting_parts");
+
+    function renderStaffRow(r){
+      const tr=document.createElement("tr");
+      const who=users.find(u=>u.id===r.assigned_to);
+      const actions=document.createElement("td");
+
+      const sel=document.createElement("select");
+      sel.className="cx-status";
+      sel.setAttribute("data-job", r.id);
+      ["in_progress","awaiting_parts","completed"].forEach(st=>{
+        const op=document.createElement("option");
+        op.value=st; op.textContent=st; if(r.status===st) op.selected=true;
+        sel.appendChild(op);
+      });
+      sel.addEventListener("change", ()=>{
+        const d=readLS(LS.data,{appointments:[],jobs:[]});
+        const i=(d.jobs||[]).findIndex(j=>j.id===r.id);
+        if(i>=0){
+          d.jobs[i].status=sel.value;
+          // Keep appointment status in sync with job
+          const ai=(d.appointments||[]).findIndex(a=>a.id===r.appointment_id);
+          if(ai>=0){ d.appointments[ai].status = sel.value; }
+          // EDIT #7: when staff marks completed, create/reuse invoice by appointment_id
+          if(sel.value==="completed"){
+            try{ ensureInvoiceForAppt(r.appointment_id); }catch(_e){}
+          }
+          // Merge-safe write to avoid clobbering invoices created by ensureInvoiceForAppt
+          const __latestJ = readLS(LS.data,{appointments:[],jobs:[],threads:[],invoices:[]});
+          __latestJ.jobs = d.jobs;
+          __latestJ.appointments = d.appointments || (__latestJ.appointments||[]);
+          writeLS(LS.data,__latestJ);
+        }
+        location.reload();
+      });
+
+      const rm=document.createElement("button");
+      rm.className="btn danger";
+      rm.textContent="Remove";
+      rm.addEventListener("click", ()=>{
+        const ok=confirm("Remove this job? OK=Delete · Cancel=Unassign");
+        const d=readLS(LS.data,{jobs:[]});
+        const i=(d.jobs||[]).findIndex(j=>j.id===r.id);
+        if(i<0) return;
+        if(ok){ d.jobs.splice(i,1); }
+        else { d.jobs[i].assigned_to=null; if(d.jobs[i].status!=="completed") d.jobs[i].status="unassigned"; }
+        writeLS(LS.data,d); location.reload();
+      });
+
+  tr.innerHTML=`<td>${shortJobLabel(r)}</td>
+  <td>${(r.a.customer_first||"?")} ${(r.a.customer_last||"")}</td>
+  <td>${r.a.vehicle||""}</td>
+  <td>
+    <div class="svc-toggle" data-id="${r.a.id || r.appointment_id}">
+      <span class="svc-label">${r.a.service || ""}</span>
+      <div class="svc-notes hidden">${(r.a.notes || "No notes").toString()}</div>
+    </div>
+  </td>
+  <td>${isMobile ? `<div class="status-box" style="background: ${getStatusColor(r.status)}; color: white; padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 600; text-align: center; cursor: pointer; border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 1px 3px rgba(0,0,0,0.1);" onclick="event.stopPropagation(); openJobStatusModal('${r.id}')">${r.status.replace('_', ' ').toUpperCase()}</div>` : badge(r.status)}</td>
+  <td>${who?`${who.first||""} ${who.last||""}`.trim():"-"}</td>`;
+// Toggle notes on Service click (Jobs table, staff rows)
+{
+  const svcWrap = tr.querySelector(".svc-toggle");
+  const notesEl = svcWrap?.querySelector(".svc-notes");
+  if (svcWrap && notesEl) {
+    svcWrap.addEventListener("click", (e) => {
+      e.stopPropagation?.();
+      const isOpen = svcWrap.classList.toggle("open");
+      notesEl.classList.toggle("hidden", !isOpen);
+    });
+  }
+}
+
+      actions.appendChild(sel); actions.appendChild(rm);
+      tr.appendChild(actions);
+
+      return {__tr:tr,id:r.id,customer:`${r.a.customer_first||""} ${r.a.customer_last||""}`,vehicle:r.a.vehicle||"",service:r.a.service||"",status:r.status||"new"};
+    }
+
+    // Active table
+    tb.innerHTML="";
+    const activeRows=active.map(renderStaffRow);
+    activeRows.forEach(r=>tb.appendChild(r.__tr));
+    if(jobsEmpty) jobsEmpty.textContent = activeRows.length ? "" : "No active jobs.";
+
+    // Awaiting Parts table
+    if(awaitTbody){
+      awaitTbody.innerHTML="";
+      const awaitingRows=awaiting.map(renderStaffRow);
+      awaitingRows.forEach(r=>awaitTbody.appendChild(r.__tr));
+      if(awaitEmpty) awaitEmpty.textContent = awaitingRows.length ? "" : "No awaiting parts jobs.";
+      document.querySelectorAll("#awaitTable thead th").forEach((th,i)=>{
+        const map=["id","customer","vehicle","service","status","assigned","actions"]; th.setAttribute("data-key",map[i]||"");
+      });
+      makeSortable(document.getElementById("awaitTable"),()=>awaitingRows);
+    }
+
+    // Sorting for Active
+    document.querySelectorAll("#jobsTable thead th").forEach((th,i)=>{
+      const map=["id","customer","vehicle","service","status","assigned","actions"]; th.setAttribute("data-key",map[i]||"");
+    });
+    makeSortable(document.getElementById("jobsTable"),()=>activeRows);
+    return;
+  }
+
+  // NON-STAFF (unchanged layout/behavior)
+   // NON-STAFF (admin / service_writer): split into Active vs Awaiting Parts
+  tb.innerHTML = "";
+  if (awaitTbody) awaitTbody.innerHTML = "";
+
+  const today = todayISO();
+  const visibleRows = rows.filter(r => (
+    r.status === "in_progress" ||
+    r.status === "awaiting_parts" ||
+    (r.status === "scheduled" && (r.a && r.a.preferred_date === today))
+  ));
+
+  const activeList   = visibleRows.filter(r => r.status === "in_progress" || (r.status === "scheduled" && (r.a && r.a.preferred_date === today)));
+  const awaitingList = visibleRows.filter(r => r.status === "awaiting_parts");
+
+  if (!rows.length) {
+    if (jobsEmpty)  jobsEmpty.textContent  = "No jobs available.";
+    if (awaitEmpty) awaitEmpty.textContent = "No awaiting parts jobs.";
+    return;
+  }
+  if (jobsEmpty)  jobsEmpty.textContent  = "";
+  if (awaitEmpty) awaitEmpty.textContent = "";
+
+  const canClaimForMe = (r) => (!r.assigned_to) && (me.role !== "receptionist");
+
+  function renderRow(r, containerTbody){
+    const tr = document.createElement("tr");
+    const assignedUser = users.find(u => u.id === r.assigned_to);
+
+    let assignCell = "";
+    if (canAssign) {
+      const opts = ['<option value="">Unassigned</option>']
+        .concat(staffOptions.map(o => `<option value="${o.id}" ${r.assigned_to===o.id?'selected':''}>${o.label}</option>`))
+        .join("");
+      assignCell = `<select class="assSel" data-job="${r.id}">${opts}</select>`;
+    } else {
+      assignCell = assignedUser ? `${assignedUser.first||""} ${assignedUser.last||""}`.trim() : "-";
+    }
+
+    const canClaim = canClaimForMe(r);
+    const isMine   = canAssign; // admin or service_writer
+
+    let actions = `<a class="btn" href="messages.html?appt=${r.a.id||""}">Message</a>`;
+  // Don't show Claim in the Awaiting Parts panel (awaitTbody)
+  if (canClaim && containerTbody !== awaitTbody && r.status !== 'awaiting_parts') actions += ` <button class="btn" data-claim="${r.id}">Claim</button>`;
+    if (isMine)   actions += ` <button class="btn" data-unassign="${r.id}">Unassign</button>`;
+    if (me.role === "admin") actions += ` <button class="btn danger" data-remove="${r.id}">Remove</button>`;
+    if (me.role !== "receptionist") actions += ` <button class="btn cx-find" data-find="${r.id}">Find Parts</button>`;
+
+    // Allow certain roles to change job status inline on Jobs page
+    const statusRoles = ["admin", "service_writer", "receptionist"];
+    // Render a status select that also carries a status-* class so we can color it
+    const statusClass = `status-${(r.status||'').replace(/[^a-z0-9_\-]/gi,'')}`;
+    const isMobile = (typeof window !== 'undefined') && window.matchMedia && window.matchMedia('(max-width:480px)').matches;
+    let statusCellHtml;
+    // Always render colored status box for jobs (desktop and mobile)
+    const statusOnClick = isMobile ? `openJobStatusModal('${r.id}')` : `openJobStatusUI('${r.id}', this)`;
+    statusCellHtml = `<div class="status-box" style="background: ${getStatusColor(r.status)}; color: white; padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 600; text-align: center; cursor: pointer; border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 1px 3px rgba(0,0,0,0.1);" onclick="event.stopPropagation(); ${statusOnClick}">${r.status.replace('_', ' ').toUpperCase()}</div>`;
+
+    // Desktop: when dropdown changes, replace with colored status box
+    setTimeout(() => {
+      if (!isMobile && statusRoles.includes(me.role)) {
+        const sel = document.querySelector(`select.job-status[data-job='${r.id}']`);
+        if (sel) {
+          sel.addEventListener('change', function() {
+            const d = readLS(LS.data, { jobs: [], appointments: [] });
+            const i = (d.jobs || []).findIndex(j => j.id === r.id);
+            if (i >= 0) {
+              d.jobs[i].status = sel.value;
+              // update appointment status
+              const ai = (d.appointments || []).findIndex(a => a.id === r.appointment_id);
+              if (ai >= 0) d.appointments[ai].status = sel.value;
+              writeLS(LS.data, d);
+            }
+            // Replace dropdown with colored status box
+            sel.outerHTML = `<div class=\"status-box\" style=\"background: ${getStatusColor(sel.value)}; color: white; padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 600; text-align: center; border: 1px solid rgba(255,255,255,0.2); box-shadow: 0 1px 3px rgba(0,0,0,0.1);\">${sel.value.replace('_', ' ').toUpperCase()}</div>`;
+            // Show confirmation
+            const notification = document.getElementById('notification');
+            if (notification) {
+              notification.textContent = `Job status updated to ${sel.value.replace('_', ' ')}`;
+              notification.classList.remove('hidden');
+              setTimeout(() => {
+                notification.classList.add('hidden');
+              }, 3000);
+            }
+          });
+        }
+      }
+    }, 0);
+  tr.innerHTML = `<td>${shortJobLabel(r)}</td>
+      <td>${(r.a.customer_first||"?")} ${(r.a.customer_last||"")}</td>
+      <td>${r.a.vehicle||""}</td>
+      <td>
+        <div class="svc-toggle" data-id="${r.a.id || r.appointment_id}">
+          <span class="svc-label">${r.a.service || ""}</span>
+          <div class="svc-notes hidden">${(r.a.notes || "No notes").toString()}</div>
+        </div>
+      </td>
+      <td>${statusCellHtml}</td>
+      <td>${assignCell}</td>
+      <td>${actions}</td>`;
+// Toggle notes on Service click (Jobs table, non-staff rows)
+{
+  const svcWrap = tr.querySelector(".svc-toggle");
+  const notesEl = svcWrap?.querySelector(".svc-notes");
+  if (svcWrap && notesEl) {
+    svcWrap.addEventListener("click", (e) => {
+      e.stopPropagation?.();
+      const isOpen = svcWrap.classList.toggle("open");
+      notesEl.classList.toggle("hidden", !isOpen);
+    });
+  }
+}
+
+
+    if (canAssign) {
+      const sel = tr.querySelector(".assSel");
+      sel.addEventListener("change", () => {
+        const d = readLS(LS.data, { jobs:[] });
+        const i = (d.jobs||[]).findIndex(j => j.id === r.id);
+        if (i >= 0) { d.jobs[i].assigned_to = sel.value || null; writeLS(LS.data, d); }
+      });
+    }
+
+    const claimBtn = tr.querySelector("[data-claim]");
+    if (claimBtn) {
+      claimBtn.addEventListener("click", () => {
+        const d = readLS(LS.data, { jobs:[] });
+        const i = (d.jobs||[]).findIndex(j => j.id === r.id);
+        if (i < 0) return;
+        if (d.jobs[i].assigned_to) { alert("Someone already claimed this job."); return; }
+        d.jobs[i].assigned_to = me.id; writeLS(LS.data, d); location.reload();
+      });
+    }
+
+    const unBtn = tr.querySelector("[data-unassign]");
+    if (unBtn) {
+      unBtn.addEventListener("click", () => {
+        const d = readLS(LS.data, { jobs:[] });
+        const i = (d.jobs||[]).findIndex(j => j.id === r.id);
+        if (i < 0) return;
+        d.jobs[i].assigned_to = null; writeLS(LS.data, d); location.reload();
+      });
+    }
+
+    const rmBtn = tr.querySelector("[data-remove]");
+    if (rmBtn) {
+      rmBtn.addEventListener("click", () => {
+        const d = readLS(LS.data, { jobs:[] });
+        d.jobs = (d.jobs||[]).filter(x => x.id !== r.id);
+        writeLS(LS.data, d); location.reload();
+      });
+    }
+
+const findBtn = tr.querySelector('[data-find]');
+if (findBtn) {
+  findBtn.addEventListener('click', () => {
+    openPartsFinder({
+      apptId: r.a.id || r.appointment_id,
+      vehicle: r.a.vehicle || '',
+      vin: (r.a && r.a.vin) || '',        // NEW: forward VIN if the appt has it
+      jobId: r.id
+    });
+  });
+}
+
+    // Allow inline status changes for permitted roles (admin/service_writer/receptionist)
+    const statusSel = tr.querySelector('.job-status');
+    if (statusSel) {
+      statusSel.addEventListener('change', () => {
+        const d = readLS(LS.data, { appointments: [], jobs: [] });
+        const i = (d.jobs || []).findIndex(j => j.id === r.id);
+        if (i >= 0) {
+          d.jobs[i].status = statusSel.value;
+          // update select class so the UI stays color coded without a full reload
+          statusSel.className = 'job-status status-' + String(statusSel.value).replace(/[^a-z0-9_\-]/gi,'');
+          // Keep appointment status in sync with job
+          const ai = (d.appointments || []).findIndex(a => a.id === r.appointment_id);
+          if (ai >= 0) { d.appointments[ai].status = statusSel.value; }
+          if (statusSel.value === 'completed') {
+            try { ensureInvoiceForAppt(r.appointment_id); } catch (_e) {}
+          }
+          const __latestJ = readLS(LS.data, { appointments: [], jobs: [], threads: [], invoices: [] });
+          __latestJ.jobs = d.jobs;
+          __latestJ.appointments = d.appointments || (__latestJ.appointments || []);
+          writeLS(LS.data, __latestJ);
+        }
+        location.reload();
+      });
+    }
+
+
+    containerTbody.appendChild(tr);
+    return { __tr: tr, id: r.id, customer: `${r.a.customer_first||""} ${r.a.customer_last||""}`, vehicle: r.a.vehicle, service: r.a.service, status: r.status||"new" };
+  }
+
+  // Render Active to #jobsTable
+  const activeRows = activeList.map(r => renderRow(r, tb));
+  if (jobsEmpty) jobsEmpty.textContent = activeRows.length ? "" : "No active jobs.";
+
+  // Render Awaiting Parts to #awaitTable
+  let awaitingRows = [];
+  if (awaitTbody) {
+    awaitingRows = awaitingList.map(r => renderRow(r, awaitTbody));
+    if (awaitEmpty) awaitEmpty.textContent = awaitingRows.length ? "" : "No awaiting parts jobs.";
+    document.querySelectorAll("#awaitTable thead th").forEach((th,i)=>{
+      const map=["id","customer","vehicle","service","status","assigned","actions"]; th.setAttribute("data-key", map[i]||"");
+    });
+    makeSortable(document.getElementById("awaitTable"), () => awaitingRows);
+  }
+
+  // Enable sorting for Active
+  document.querySelectorAll("#jobsTable thead th").forEach((th,i)=>{
+    const map=["id","customer","vehicle","service","status","assigned","actions"]; th.setAttribute("data-key", map[i]||"");
+  });
+  makeSortable(document.getElementById("jobsTable"), () => activeRows);
+
+}
+/* ====== /REVISED setupJobs() ====== */
+
+/* ===== NEW: setupProfile() ===== */
+function setupProfile(){
+  const u=currentUser();
+  if(!u) return;
+
+  // Prefill
+  const f=byId("pfFirst"), l=byId("pfLast"), e=byId("pfEmail"), r=byId("pfRole");
+  if(f) f.value = u.first || "";
+  if(l) l.value = u.last  || "";
+  if(e) e.value = u.email || "";
+  if(r) r.value = u.role  || "";
+
+  // Buttons / modals
+  const emailModal = byId("emailModal");
+  const passModal  = byId("passModal");
+  const emailBtn   = byId("changeEmailBtn");
+  const passBtn    = byId("changePassBtn");
+  const closeEmail = byId("closeEmail");
+  const closePass  = byId("closePass");
+  const saveEmail  = byId("saveEmail");
+  const savePass   = byId("savePass");
+
+  function show(el){ el && el.classList.remove("hidden"); }
+  function hide(el){ el && el.classList.add("hidden"); }
+
+  emailBtn && emailBtn.addEventListener("click", ()=>show(emailModal));
+  passBtn  && passBtn.addEventListener("click",  ()=>show(passModal));
+  closeEmail && closeEmail.addEventListener("click", ()=>hide(emailModal));
+  closePass  && closePass.addEventListener("click",  ()=>hide(passModal));
+
+  // Change Email flow
+  saveEmail && saveEmail.addEventListener("click", ()=>{
+    const newEmail = (byId("newEmail")||{}).value?.trim().toLowerCase();
+    const curPass  = (byId("curPassForEmail")||{}).value || "";
+    const note = byId("emailNotice");
+    if(note) note.textContent = "";
+
+    if(!newEmail || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(newEmail)){
+      if(note) note.textContent = "Enter a valid email address.";
+      return;
+    }
+    const users=readLS(LS.users,[])||[];
+    if(users.some(x=>x.email===newEmail)){
+      if(note) note.textContent = "That email is already in use.";
+      return;
+    }
+    // re-auth
+    if((u.password||"")!==curPass){
+      if(note) note.textContent = "Current password is incorrect.";
+      return;
+    }
+    // update user
+    const i=users.findIndex(x=>x.id===u.id);
+    if(i>=0){
+      users[i].email=newEmail;
+      writeLS(LS.users,users);
+      // keep session in sync
+      writeLS(LS.session,{email:newEmail,at:Date.now()});
+      if(byId("pfEmail")) byId("pfEmail").value=newEmail;
+      if(note) note.textContent = "Email updated successfully.";
+      setTimeout(()=>hide(emailModal), 600);
+    }
+  });
+
+  // Change Password flow
+  savePass && savePass.addEventListener("click", ()=>{
+    const cur = (byId("curPass")||{}).value || "";
+    const npw = (byId("newPass")||{}).value || "";
+    const cfm = (byId("confPass")||{}).value || "";
+    const note = byId("passNotice");
+    if(note) note.textContent = "";
+
+    if((u.password||"")!==cur){
+      if(note) note.textContent = "Current password is incorrect.";
+      return;
+    }
+    if(!npw || npw.length<6){
+      if(note) note.textContent = "New password must be at least 6 characters.";
+      return;
+    }
+    if(npw===cur){
+      if(note) note.textContent = "New password must be different from current.";
+      return;
+    }
+    if(npw!==cfm){
+      if(note) note.textContent = "New password and confirm do not match.";
+      return;
+    }
+    const users=readLS(LS.users,[])||[];
+    const i=users.findIndex(x=>x.id===u.id);
+    if(i>=0){
+      users[i].password=npw;
+      writeLS(LS.users,users);
+      if(note) note.textContent = "Password updated successfully.";
+      setTimeout(()=>hide(passModal), 600);
+    }
+  });
+}
+
+// === Settings helpers (match your existing LS patterns) ===
+function _getData(){
+  return readLS(LS.data, { settings:{ services:[] }, appointments:[], jobs:[], threads:[], invoices:[] });
+}
+function _setData(d){
+  writeLS(LS.data, d || {});
+}
+function _curShopId(){
+  const s = currentShop();
+  return s ? s.id : null;
+}
+
+// === Themed confirmation modal helper ===
+function showConfirm(message, onConfirm, title = "Confirm") {
+  const modal = document.getElementById('confirmModal');
+  const titleEl = document.getElementById('confirmTitle');
+  const msgEl = document.getElementById('confirmMessage');
+  const okBtn = document.getElementById('confirmOk');
+  const cancelBtn = document.getElementById('confirmCancel');
+  
+  if (!modal) return;
+  
+  if (titleEl) titleEl.textContent = title;
+  if (msgEl) msgEl.textContent = message;
+  
+  // Remove old listeners
+  const newOk = okBtn.cloneNode(true);
+  const newCancel = cancelBtn.cloneNode(true);
+  okBtn.parentNode.replaceChild(newOk, okBtn);
+  cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
+  
+  // Add new listeners
+  newOk.addEventListener('click', () => {
+    modal.classList.add('hidden');
+    if (onConfirm) onConfirm();
+  });
+  
+  newCancel.addEventListener('click', () => {
+    modal.classList.add('hidden');
+  });
+  
+  // Close on overlay click
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.classList.add('hidden');
+  });
+  
+  modal.classList.remove('hidden');
+}
+
+updateMessageNotifications();
+
+function setupSettings(){
+  // --- Shop Info population & save handler ---
+  const shopNameI = byId('shopName');
+  const shopPhoneI = byId('shopPhone');
+  const shopEmailI = byId('shopEmail');
+  const shopZipI = byId('shopZipcode');
+  const shopLogoFileI = byId('shopLogoFile');
+  const saveShopBtn = byId('saveShop');
+  const shopSavedNotice = byId('shopSaved');
+
+  try{
+    const shops = readLS(LS.shops, []);
+    const sess = readLS(LS.session, {});
+    const users = readLS(LS.users, []);
+    const cu = users.find(x => x.email === sess.email) || {};
+    const shopId = cu.shop_id;
+    const currentShop = shops.find(s => s.id === shopId) || {};
+    const data = readLS(LS.data, { settings: {} });
+    const shopSettings = (data.settings && data.settings.shop) || {};
+
+    if(shopNameI) shopNameI.value = shopSettings.name || currentShop.name || '';
+    if(shopPhoneI) shopPhoneI.value = shopSettings.phone || '';
+    if(shopEmailI) shopEmailI.value = shopSettings.email || '';
+    if(shopZipI) shopZipI.value = shopSettings.zipcode || '';
+  }catch(e){ console.warn('populate shop info failed', e); }
+
+  // Save handler: persist to localStorage and kick off Supabase upsert in background
+  if(saveShopBtn){
+    saveShopBtn.addEventListener('click', async function(){
+      try{
+        const name = (shopNameI && shopNameI.value || '').trim();
+        const phone = (shopPhoneI && shopPhoneI.value || '').trim();
+        const email = (shopEmailI && shopEmailI.value || '').trim();
+        const zipcode = (shopZipI && shopZipI.value || '').trim();
+
+        // read current context
+        const shops = readLS(LS.shops, []);
+        const sess = readLS(LS.session, {});
+        const users = readLS(LS.users, []);
+        const cu = users.find(x => x.email === sess.email) || {};
+        const shopId = cu.shop_id;
+        const currentShop = shops.find(s => s.id === shopId) || {};
+
+        // read/prepare data object
+        const d = readLS(LS.data, {}) || {};
+        d.settings = d.settings || {};
+        d.settings.shop = d.settings.shop || {};
+        d.settings.shop.name = name || currentShop.name || d.settings.shop.name;
+        d.settings.shop.phone = phone;
+        d.settings.shop.email = email;
+        d.settings.shop.zipcode = zipcode;
+        d.settings.shop.shop_id = shopId || d.settings.shop.shop_id;
+
+        // If a logo file is selected, read it as a data URL
+        try{
+          const f = (shopLogoFileI && shopLogoFileI.files && shopLogoFileI.files[0]) || null;
+          if(f){
+            const dataUrl = await new Promise((resolve, reject) => {
+              const r = new FileReader();
+              r.onerror = () => reject(new Error('File read error'));
+              r.onload = () => resolve(r.result);
+              r.readAsDataURL(f);
+            });
+            d.settings.shop.logo = dataUrl;
+            // Also update currentShop local entry
+            const si = shops.findIndex(s => s.id === shopId);
+            if(si >= 0){ shops[si].logo = dataUrl; writeLS(LS.shops, shops); }
+          }
+        }catch(e){ console.warn('reading logo file failed', e); }
+
+        // persist locally (primary source)
+        writeLS(LS.data, d);
+
+        // update shops list name if changed
+        try{
+          const si = shops.findIndex(s => s.id === shopId);
+          if(si >= 0){ shops[si].name = d.settings.shop.name || shops[si].name; writeLS(LS.shops, shops); }
+        }catch(e){ console.warn('updating shops list failed', e); }
+
+        // optional: persist to Supabase in background
+        try{
+          if(window.supabase && typeof saveShopData === 'function' && shopId){
+            saveShopData(shopId, d).catch(err => { console.warn('background saveShopData failed', err); });
+          }
+        }catch(e){ console.warn('background supabase save attempt failed', e); }
+
+        if(shopSavedNotice) shopSavedNotice.textContent = 'Saved.';
+        setTimeout(()=>{ if(shopSavedNotice) shopSavedNotice.textContent = ''; }, 2500);
+      }catch(err){ console.warn('saveShop handler failed', err); if(shopSavedNotice) shopSavedNotice.textContent = 'Save failed.'; }
+    });
+  }
+
+  // --- end Shop Info ---
+
+  const addBtn = byId("svcAdd");
+  const nameI  = byId("svcName");
+  const priceI = byId("svcPrice");
+  const listEl = byId("svcList");
+const rateList  = byId("rateList");
+const rateName  = byId("rateName");
+const ratePrice = byId("ratePrice");
+const rateAdd   = byId("rateAdd");
+
+  // Safe getters around your existing LS helpers
+  function getData(){
+    // Ensure object shape so first add never crashes
+    return readLS(LS.data, { settings: { services: [] } });
+  }
+  function saveData(d){ writeLS(LS.data, d); }
+
+  function render(){
+    if(!listEl) return;
+    const d   = getData();
+    const sid = (currentShop()||{}).id || null;
+    const all = (d.settings && d.settings.services) || [];
+    const rows = all.filter(s => !s.shop_id || s.shop_id === sid);
+
+    listEl.innerHTML = "";
+    if(!rows.length){
+      const p = document.createElement("p");
+      p.className = "notice";
+      p.textContent = "No services added yet.";
+      listEl.appendChild(p);
+      return;
+    }
+
+    rows.forEach((svc, idxForShop) => {
+      const chip = document.createElement("span");
+      chip.className = "chip clickable";
+      chip.textContent = `${svc.name} ($${fmtMoney(svc.parts_price||0)})`;
+      chip.title = "Click to remove";
+      chip.addEventListener("click", ()=>{
+        showConfirm(`Remove service "${svc.name}"?`, () => {
+          const d2 = getData();
+          const sid2 = (currentShop()||{}).id || null;
+
+          let seen = -1;
+          d2.settings.services = (d2.settings.services || []).filter(s => {
+            const isMine = (!s.shop_id && sid2 === null) || s.shop_id === sid2;
+            if (!isMine) return true;           // keep other shops' services
+
+            // count every service for this shop in order
+            seen++;
+            return seen !== idxForShop;         // drop the clicked one
+          });
+
+          saveData(d2);
+          render();
+          try{ populateServiceOptions(); }catch(e){}
+        }, 'Remove Service');
+      });
+// ===== Manage Labor Rates (chip-based) =====
+const labList = byId("labList");
+const labAdd  = byId("labAdd");
+const labNameI = byId("labName");
+const labRateI = byId("labRate");
+
+function labRender(){
+  if(!labList) return;
+
+  const d   = getData();
+  const sid = (currentShop()||{}).id || null;
+  const all = (d.settings && d.settings.labor_rates) || [];
+
+  // map visible rows to their real array index
+  const pairs = [];
+  all.forEach((r, i) => {
+    if(!r) return;
+    if(r.shop_id && r.shop_id !== sid) return;
+    pairs.push({ r, idx: i });
+  });
+
+  labList.innerHTML = "";
+  if(!pairs.length){
+    const p = document.createElement("p");
+    p.className = "notice";
+    p.textContent = "No labor rates yet.";
+    labList.appendChild(p);
+    return;
+  }
+
+  pairs.forEach(({ r, idx }) => {
+    const chip = document.createElement("span");
+    chip.className = "chip clickable";
+    chip.textContent = `${r.name || 'Unnamed'} ($${Number(r.rate||0).toFixed(2)}/hr)`;
+    chip.title = "Click to remove";
+    chip.addEventListener("click", ()=>{
+      showConfirm(`Remove labor rate "${r.name||'Unnamed'}"?`, () => {
+        const d2 = getData();
+        d2.settings = d2.settings || {};
+        d2.settings.labor_rates = d2.settings.labor_rates || [];
+        if(idx >= 0 && idx < d2.settings.labor_rates.length){
+          d2.settings.labor_rates.splice(idx, 1);
+        }
+        saveData(d2);
+        labRender();
+      }, 'Remove Labor Rate');
+    });
+    labList.appendChild(chip);
+  });
+}
+
+if (labAdd && !labAdd.dataset.bound) {
+  labAdd.dataset.bound = "1";
+  labAdd.addEventListener("click", ()=>{
+    const name = (labNameI && labNameI.value || "").trim();
+    const rate = Number(labRateI && labRateI.value || 0);
+    
+    if(!name){
+      showConfirm("Rate name is required.", null, "Missing Field");
+      return;
+    }
+    if(isNaN(rate) || rate < 0){
+      showConfirm("Enter a valid non-negative hourly rate.", null, "Invalid Rate");
+      return;
+    }
+    
+    const d   = getData();
+    const sid = (currentShop()||{}).id || null;
+    d.settings = d.settings || {};
+    d.settings.labor_rates = d.settings.labor_rates || [];
+    d.settings.labor_rates.push({
+      name: name,
+      rate: rate,
+      shop_id: sid,
+      created_at: new Date().toISOString()
+    });
+    saveData(d);
+    
+    // Clear inputs
+    if(labNameI) labNameI.value = "";
+    if(labRateI) labRateI.value = "";
+    labRender();
+  });
+}
+
+
+// draw once on load
+labRender();
+// ===== /Manage Labor Rates =====
+
+      listEl.appendChild(chip);
+    });
+  }
+
+  if(addBtn){
+    addBtn.addEventListener("click", ()=>{
+      const name  = (nameI && nameI.value || "").trim();
+      const price = Number(priceI && priceI.value || 0);
+      if(!name){
+        showConfirm("Service name is required.", null, "Missing Field");
+        return;
+      }
+      if(isNaN(price) || price < 0){
+        showConfirm("Enter a valid non-negative price.", null, "Invalid Price");
+        return;
+      }
+
+      const d = getData();
+      d.settings = d.settings || {};
+      d.settings.services = d.settings.services || [];
+      d.settings.services.push({
+        id: 'svc_' + Date.now().toString(36),
+        name,
+        parts_price: price,
+        // maintain backward-compatible price fields used by invoice prefill
+        price: price,
+        base_price: price,
+        shop_id: (currentShop()||{}).id || null,
+        created_at: new Date().toISOString()
+      });
+      saveData(d);
+
+      // refresh UI and any dependent dropdowns
+      if(nameI) nameI.value = "";
+      if(priceI) priceI.value = "";
+      render();
+      try{ populateServiceOptions(); }catch(e){}
+    });
+  }
+
+  render();
+  try{ populateServiceOptions(); }catch(e){}
+}
+
+updateMessageNotifications();
+
+
+
+
+
+function setupMessages(){const store=readLS(LS.data,{threads:[],appointments:[]});if(!(readLS("xm_inquiry_seeded",false))){const hasInquiry=(store.threads||[]).some(t=>t.type==="inquiry");if(!hasInquiry){(store.threads=store.threads||[]).push({id:"t"+Date.now(),type:"inquiry",title:"New Inquiry · Evan Ramos",meta:{name:"Evan Ramos",phone:"(301) 555-0182",email:"evan.ramos@example.com",vehicle:"2014 BMW 335i",service:"Brake inspection",date:todayISO(),time:"10:00",notes:"Grinding noise on front left."},messages:[{from:"system",body:"New inquiry submitted from website.",created_at:new Date().toISOString()}]});writeLS("xm_inquiry_seeded",true);writeLS(LS.data,store);}}const data=readLS(LS.data,{threads:[],appointments:[]});const list=byId("threadList");const chat=byId("chatBox");const title=byId("threadTitle");const form=byId("sendForm");const inp=byId("msgInput");function renderList(){if(!list)return;list.innerHTML="";(data.threads||[]).slice().reverse().forEach(t=>{const li=document.createElement("li");li.style.padding="8px";li.style.borderBottom="1px solid var(--line)";li.tabIndex=0;const badge=t.type==="inquiry"?'<span class="badge open" style="margin-left:8px">New Inquiry</span>':"";const last=(t.messages||[])[(t.messages||[]).length-1]||{body:""};li.innerHTML=`<b>${t.title||("Appt "+(t.appointment_id||""))}</b> ${badge}<div class="notice">${last.body||""}</div>`;li.addEventListener("click",()=>select(t.id));list.appendChild(li);});}function renderMessages(t){return `<div style="margin-top:10px">${(t.messages||[]).map(m=>`<div style="margin:6px 0"><span class="badge ${m.from==='staff'?'scheduled':'open'}">${m.from}</span> ${m.body}</div>`).join("")}</div>`;}let cur=null;function select(id){const t=(data.threads||[]).find(x=>x.id===id);if(!t)return;title.textContent=t.title||("Appt "+(t.appointment_id||""));chat.innerHTML=renderMessages(t);chat.scrollTop=chat.scrollHeight;cur=t;}renderList();if(form)form.addEventListener("submit",(e)=>{e.preventDefault();const body=inp.value.trim();if(!body||!cur)return;cur.messages=cur.messages||[];cur.messages.push({from:"staff",body,created_at:new Date().toISOString()});const d=readLS(LS.data,{});const i=(d.threads||[]).findIndex(x=>x.id===cur.id);if(i>=0){d.threads[i]=cur;writeLS(LS.data,d);}inp.value="";select(cur.id);updateMessageNotifications();});updateMessageNotifications();}
+
+function setupInvoices(){
+  if (setupInvoices._wired) return;
+  setupInvoices._wired = true;
+  
+  // Auto-open modal if URL has #new
+  if (window.location.hash === '#new') {
+    setTimeout(() => {
+      const modal = document.getElementById("invModal");
+      if (modal) {
+        modal.classList.remove("hidden");
+        // Focus on customer input
+        const custInput = document.getElementById("invCustomer");
+        if (custInput) custInput.focus();
+      }
+    }, 100);
+  }
+  
+  const data=readLS(LS.data,{invoices:[],appointments:[]});
+  const shops=readLS("xm_shops",[]);const u=readLS(LS.session,{});const users=readLS(LS.users,[]);const cu=users.find(x=>x.email===u.email);const shopId=(cu?.shop_id);const currentShop=shops.find(s=>s.id===shopId);const shopName=(data.settings?.shop?.name)||(currentShop?.name)||"";const logo = data.settings?.shop?.logo;const footerEl=byId("footerShopName");if(footerEl)footerEl.textContent=shopName;
+  const tb=document.querySelector("#invTable tbody");
+  const empty=document.getElementById("invEmpty");
+  const pbody=document.querySelector("#prevTable tbody");
+  const pempty=document.getElementById("prevEmpty");
+
+  const isMobile = (typeof window !== 'undefined') && window.matchMedia && window.matchMedia('(max-width:480px)').matches;
+
+  // Update table headers for mobile
+  const invThead = document.querySelector('#invTable thead tr');
+  const prevThead = document.querySelector('#prevTable thead tr');
+  if (invThead) {
+    if (isMobile) {
+      invThead.innerHTML = '<th>Customer</th><th>Total</th><th>Status</th><th>Actions</th>';
+    } else {
+      invThead.innerHTML = '<th>#</th><th>Customer</th><th>Total</th><th>Status</th><th>Due</th><th>Actions</th>';
+    }
+  }
+  if (prevThead) {
+    if (isMobile) {
+      prevThead.innerHTML = '<th>Customer</th><th>Total</th><th>Status</th><th>Actions</th>';
+    } else {
+      prevThead.innerHTML = '<th>#</th><th>Customer</th><th>Total</th><th>Status</th><th>Due</th><th>Actions</th>';
+    }
+  }
+
+  const modal=document.getElementById("invModal");
+  const openBtn=document.getElementById("newInvoice");
+  const closeBtn=document.getElementById("closeInv");
+  const addBtn=document.getElementById("addItem");
+  const saveBtn=document.getElementById("saveInv");
+
+  const itemsDiv=document.getElementById("items");
+  const taxI=document.getElementById("invTax");
+  const discI=document.getElementById("invDisc");
+  const dueI=document.getElementById("invDue");
+  const subEl=document.getElementById("subTotal");
+  const grandEl=document.getElementById("grandTotal");
+  const custI=document.getElementById("invCustomer");
+  const apptI=document.getElementById("invAppt");
+// --- Wire prefill on invoice load (inside invoice init) ---
+try{
+  const url = new URL(window.location.href);
+  const apptId = url.searchParams.get("appt");
+  if(apptId){
+const appts = (readLS(LS.data, { appointments: [] }).appointments) || [];
+    const appt = appts.find(a=>String(a.id)===String(apptId));
+    if(appt) prefillInvoiceFromAppointment(appt);
+  }
+}catch(e){ console.warn("Appt→Invoice prefill skipped:", e); }
+
+  // track edit state
+  let invEditingId = null;
+
+  function fmt(n){return Number(n||0).toFixed(2);}
+  function total(inv){
+    const sub=(inv.items||[]).reduce((s,x)=>s+(Number(x.qty)||0)*(Number(x.price)||0),0);
+    const tax=sub*((Number(inv.tax_rate)||0)/100);
+    const disc=sub*((Number(inv.discount)||0)/100);
+    return {sub,total:sub+tax-disc};
+  }
+  function badge(st){
+    if (isMobile) {
+      // Mobile: simple colored text for status
+      const color = st === 'paid' ? '#10b981' : '#ef4444'; // green for paid, red for unpaid
+      return `<span style="color: ${color}; font-weight: 600;">${st.toUpperCase()}</span>`;
+    }
+    // Desktop: existing badge styling
+    const map={open:"open",paid:"done",new:"open",scheduled:"scheduled",in_progress:"progress",awaiting_parts:"parts",completed:"done"};
+    const c=map[st]||"";
+    return `<span class="badge ${c}">${st}</span>`;
+  }
+
+  function render(){
+    const q=(document.getElementById("invSearch")?.value||"").toLowerCase().trim();
+    const opens=(data.invoices||[]).filter(i=>(i.status||"open")!=="paid");
+    tb.innerHTML="";
+    const openRows=opens
+      .filter(inv=>{
+        const hay=`${inv.number||inv.id} ${inv.customer||""} ${inv.appointment_id||""}`.toLowerCase();
+        return !q||hay.includes(q);
+      })
+      .map(inv=>{
+        const t=total(inv);
+        const tr=document.createElement("tr");
+        if (isMobile) {
+          // Mobile: Customer, Total, Status, Actions (hide # and Due)
+          tr.innerHTML=`
+            <td>${inv.customer||"-"}</td>
+            <td>$${fmt(t.total)}</td>
+            <td>${badge(inv.status||"open")}</td>
+            <td>
+              <button class="btn edit-inv">Edit</button>
+              <button class="btn mark-paid">Mark Paid</button>
+              <button class="btn danger" data-remove="${inv.id}">Remove</button>
+            </td>`;
+        } else {
+          // Desktop: full columns
+          tr.innerHTML=`
+            <td><a href="invoice.html?id=${inv.number||inv.id}" class="btn">${inv.number||inv.id}</a></td>
+            <td>${inv.customer||"-"}</td>
+            <td>$${fmt(t.total)}</td>
+            <td>${badge(inv.status||"open")}</td>
+            <td>${inv.due||""}</td>
+            <td>
+              <button class="btn edit-inv">Edit</button>
+              <button class="btn mark-paid">Mark Paid</button>
+              <button class="btn danger" data-remove="${inv.id}">Remove</button>
+            </td>`;
+        }
+
+        tr.querySelector(".edit-inv").addEventListener("click",()=>editInvoice(inv.id));
+        tr.querySelector(".mark-paid").addEventListener("click",()=>{
+          // open confirmation modal instead of immediate mark-paid
+          pendingInvoiceId = inv.id;
+          pendingAction = 'markPaid';
+          const cModal = document.getElementById('invConfirmPaid');
+          const cTitle = document.getElementById('invConfirmTitle');
+          const cMsg = document.getElementById('invConfirmMsg');
+          const cOk = document.getElementById('invConfirmOk');
+          const t = total(inv);
+          if(cTitle) cTitle.textContent = 'Confirm Payment';
+          if(cOk) cOk.textContent = 'Mark Paid';
+          if(cMsg) cMsg.textContent = `Mark invoice for ${inv.customer} totaling $${fmt(t.total)} as paid?`;
+          cModal?.classList.remove('hidden');
+        });
+        tr.querySelector('[data-remove]').addEventListener('click',()=>{
+          const idx=data.invoices.findIndex(x=>x.id===inv.id);
+          if(idx>-1){ data.invoices.splice(idx,1); writeLS(LS.data,data); render(); }
+        });
+
+        tb.appendChild(tr);
+        return {__tr:tr,num:(inv.number||inv.id),customer:(inv.customer||"-"),total:t.total,status:(inv.status||"open"),due:(inv.due||"")};
+      });
+
+    const pq=(document.getElementById("prevSearch")?.value||"").toLowerCase().trim();
+    const paids=(data.invoices||[]).filter(i=>(i.status||"open")==="paid");
+    pbody.innerHTML="";
+    const paidRows=paids
+      .filter(inv=>{
+        const hay=`${inv.number||inv.id} ${inv.customer||""} ${inv.appointment_id||""}`.toLowerCase();
+        return !pq||hay.includes(pq);
+      })
+      .map(inv=>{
+        const t=total(inv);
+        const tr=document.createElement("tr");
+        if (isMobile) {
+          // Mobile: Customer, Total, Status, Actions (hide # and Due)
+          tr.innerHTML=`
+            <td>${inv.customer||"-"}</td>
+            <td>$${fmt(t.total)}</td>
+            <td>${badge("paid")}</td>
+            <td>
+              <button class="btn edit-inv">Edit</button>
+              <button class="btn mark-unpaid">Mark Unpaid</button>
+              <button class="btn danger" data-remove="${inv.id}">Remove</button>
+            </td>`;
+        } else {
+          // Desktop: full columns
+          tr.innerHTML=`
+            <td><a href="invoice.html?id=${inv.number||inv.id}" class="btn">${inv.number||inv.id}</a></td>
+            <td>${inv.customer||"-"}</td>
+            <td>$${fmt(t.total)}</td>
+            <td>${badge("paid")}</td>
+            <td>${inv.due||""}</td>
+            <td>
+              <button class="btn edit-inv">Edit</button>
+              <button class="btn mark-unpaid">Mark Unpaid</button>
+              <button class="btn danger" data-remove="${inv.id}">Remove</button>
+            </td>`;
+        }
+
+        tr.querySelector(".edit-inv").addEventListener("click",()=>editInvoice(inv.id));
+        tr.querySelector(".mark-unpaid").addEventListener("click",()=>{
+          // open confirmation modal for mark unpaid
+          pendingInvoiceId = inv.id;
+          pendingAction = 'markUnpaid';
+          const cModal = document.getElementById('invConfirmPaid');
+          const cTitle = document.getElementById('invConfirmTitle');
+          const cMsg = document.getElementById('invConfirmMsg');
+          const cOk = document.getElementById('invConfirmOk');
+          const t = total(inv);
+          if(cTitle) cTitle.textContent = 'Confirm Unpaid';
+          if(cOk) cOk.textContent = 'Mark Unpaid';
+          if(cMsg) cMsg.textContent = `Mark invoice for ${inv.customer} totaling $${fmt(t.total)} as unpaid?`;
+          cModal?.classList.remove('hidden');
+        });
+        tr.querySelector('[data-remove]').addEventListener('click',()=>{
+          const idx=data.invoices.findIndex(x=>x.id===inv.id);
+          if(idx>-1){ data.invoices.splice(idx,1); writeLS(LS.data,data); render(); }
+        });
+
+        pbody.appendChild(tr);
+        return {__tr:tr,num:(inv.number||inv.id),customer:(inv.customer||"-"),total:t.total,status:"paid",due:(inv.due||"")};
+      });
+
+    document.querySelectorAll("#invTable thead th").forEach((th,i)=>{
+      const map=["num","customer","total","status","due","actions"];
+      th.setAttribute("data-key",map[i]||"");
+    });
+    makeSortable(document.getElementById("invTable"),()=>openRows);
+
+    document.querySelectorAll("#prevTable thead th").forEach((th,i)=>{
+      const map=["num","customer","total","status","due","actions"];
+      th.setAttribute("data-key",map[i]||"");
+    });
+    makeSortable(document.getElementById("prevTable"),()=>paidRows);
+
+    empty&&(empty.textContent=openRows.length?"":"No open/unpaid invoices.");
+    pempty&&(pempty.textContent=paidRows.length?"":"No paid invoices yet.");
+  }
+
+  // pending invoice id and action to perform
+  let pendingInvoiceId = null;
+  let pendingAction = null;
+
+  // wire confirm paid modal buttons
+  const confirmModal = document.getElementById('invConfirmPaid');
+  const confirmOk = document.getElementById('invConfirmOk');
+  const confirmCancel = document.getElementById('invConfirmCancel');
+  if(confirmCancel) confirmCancel.addEventListener('click', ()=>{ if(confirmModal) confirmModal.classList.add('hidden'); pendingInvoiceId = null; pendingAction = null; });
+  if(confirmOk) confirmOk.addEventListener('click', ()=>{
+    if(!pendingInvoiceId || !pendingAction) { if(confirmModal) confirmModal.classList.add('hidden'); return; }
+    const inv = (data.invoices||[]).find(x=>x.id===pendingInvoiceId);
+    const action = pendingAction;
+    if(inv){
+      if(pendingAction === 'markPaid'){
+        inv.status = 'paid';
+        inv.paid_date = todayISO();
+      } else if(pendingAction === 'markUnpaid'){
+        inv.status = 'open';
+        delete inv.paid_date;
+      }
+      writeLS(LS.data,data);
+    }
+    pendingInvoiceId = null;
+    pendingAction = null;
+    if(confirmModal) confirmModal.classList.add('hidden');
+    render();
+    if(inv && action === 'markPaid') window.location.href = `invoice.html?id=${inv.id}`;
+  });
+
+  function openModal(newMode=true){
+    modal?.classList.remove("hidden");
+    if(newMode){
+      invEditingId = null;
+      itemsDiv&&(itemsDiv.innerHTML="");
+      if(taxI)taxI.value=6;
+      if(discI)discI.value=0;
+      if(dueI)dueI.value=todayISO();
+      if(custI)custI.value="";
+      if(apptI)apptI.value="";
+      addItem();
+      calc();
+      const title=document.getElementById("invTitle"); if(title) title.textContent="New Invoice";
+    }
+  }
+  function closeModal(){ modal?.classList.add("hidden"); }
+
+function addItem(name="", qty=1, price=0, type="part"){
+  const wrap=document.createElement("div");
+  wrap.className="grid cols-3";
+  wrap.style.marginTop="6px";
+  wrap.style.paddingTop="12px";
+  wrap.style.paddingBottom="12px";
+  // Use solid black separators for clear visibility
+  wrap.style.borderTop="1px solid #000";
+  
+  if(type === "labor") {
+    // Labor row with rate dropdown
+    const d = readLS(LS.data, { settings: { labor_rates: [] } });
+    const sid = _curShopId();
+    const rates = (d.settings?.labor_rates || []).filter(r => !r.shop_id || r.shop_id === sid);
+    
+    // Build dropdown options
+    let options = '<option value="custom" data-name="Custom">Custom</option>' + 
+      rates.map(r => `<option value="${r.rate}" data-name="${r.name}">${r.name} - $${r.rate}/hr</option>`).join('');
+    
+    wrap.innerHTML=`
+      <div class="itm-custom-fields" style="grid-column: span 3; display: none; gap: 6px; margin-bottom: 6px;">
+        <input type="text" placeholder="Rate name" class="itm-custom-name" style="flex: 1;">
+        <input type="number" placeholder="$/hr" class="itm-custom-rate" step="0.01" min="0" style="width: 120px;">
+        <button type="button" class="btn itm-save-rate" title="Save rate">+</button>
+      </div>
+      <select class="itm-labor-select">
+        ${options}
+      </select>
+      <input type="number" placeholder="Hours" value="${qty}" class="itm-qty" step="0.5" min="0">
+      <input type="number" placeholder="Price" value="${price}" class="itm-price" step="0.01" min="0">
+      <button type="button" class="btn danger itm-remove">Remove</button>`;
+    
+    const customFields = wrap.querySelector(".itm-custom-fields");
+    const customNameInput = wrap.querySelector(".itm-custom-name");
+    const customRateInput = wrap.querySelector(".itm-custom-rate");
+    const saveBtn = wrap.querySelector(".itm-save-rate");
+    const select = wrap.querySelector(".itm-labor-select");
+    const hoursInput = wrap.querySelector(".itm-qty");
+    const priceInput = wrap.querySelector(".itm-price");
+    
+    // Auto-select first rate if available
+    if(rates.length > 0) {
+      select.selectedIndex = 1;
+      hoursInput.value = 1;
+      priceInput.value = rates[0].rate;
+    } else {
+      // No rates, default to custom
+      select.selectedIndex = 0;
+      customFields.style.display = 'flex';
+      hoursInput.value = 1;
+      priceInput.value = '';
+    }
+    
+    // When rate dropdown changes
+    select.addEventListener("change", ()=>{
+      if(select.value === "custom") {
+        // Show custom inputs
+        customFields.style.display = 'flex';
+        hoursInput.value = 1;
+        priceInput.value = '';
+        customNameInput.focus();
+      } else {
+        // Hide custom inputs
+        customFields.style.display = 'none';
+        // Calculate price from saved rate
+        const rate = Number(select.value || 0);
+        const hours = Number(hoursInput.value || 1);
+        priceInput.value = (rate * hours).toFixed(2);
+        calc();
+      }
+    });
+    
+    // When custom rate changes, recalculate price
+    customRateInput.addEventListener("input", ()=>{
+      const rate = Number(customRateInput.value || 0);
+      const hours = Number(hoursInput.value || 1);
+      if(rate > 0) {
+        priceInput.value = (rate * hours).toFixed(2);
+        calc();
+      }
+    });
+    
+    // When hours change, recalculate price
+    hoursInput.addEventListener("input", ()=>{
+      let rate = 0;
+      if(select.value === "custom") {
+        rate = Number(customRateInput.value || 0);
+      } else {
+        rate = Number(select.value || 0);
+      }
+      const hours = Number(hoursInput.value || 0);
+      if(rate > 0) {
+        priceInput.value = (rate * hours).toFixed(2);
+        calc();
+      }
+    });
+    
+    // When price changes, recalculate hours
+    priceInput.addEventListener("input", ()=>{
+      let rate = 0;
+      if(select.value === "custom") {
+        rate = Number(customRateInput.value || 0);
+      } else {
+        rate = Number(select.value || 0);
+      }
+      const price = Number(priceInput.value || 0);
+      if(rate > 0) {
+        hoursInput.value = (price / rate).toFixed(2);
+      }
+      calc();
+    });
+    
+    // Save custom rate button
+    saveBtn.addEventListener("click", ()=>{
+      const name = customNameInput.value.trim();
+      const rate = Number(customRateInput.value || 0);
+      
+      if(!name) {
+        alert("Please enter a rate name");
+        customNameInput.focus();
+        return;
+      }
+      if(rate <= 0) {
+        alert("Please enter a valid rate");
+        customRateInput.focus();
+        return;
+      }
+      
+      // Save to settings
+      const d = readLS(LS.data, {});
+      if(!d.settings) d.settings = {};
+      if(!d.settings.labor_rates) d.settings.labor_rates = [];
+      
+      const sid = (currentShop()||{}).id || null;
+      d.settings.labor_rates.push({
+        name: name,
+        rate: rate,
+        shop_id: sid,
+        created_at: new Date().toISOString()
+      });
+      
+      writeLS(LS.data, d);
+      
+      // Add to dropdown
+      const newOption = document.createElement('option');
+      newOption.value = rate;
+      newOption.setAttribute('data-name', name);
+      newOption.textContent = `${name} - $${rate}/hr`;
+      select.appendChild(newOption);
+      
+      // Select the new option
+      select.value = rate;
+      
+      // Hide custom inputs
+      customFields.style.display = 'none';
+      
+      // Update price
+      const hours = Number(hoursInput.value || 1);
+      priceInput.value = (rate * hours).toFixed(2);
+      calc();
+      
+      // Refresh settings page chips if it exists
+      if(typeof populateServiceOptions === 'function') {
+        populateServiceOptions();
+      }
+    });
+    
+  } else {
+    // Regular part row
+    wrap.innerHTML=`
+      <input placeholder="Name" class="itm-name" value="${name}">
+      <input type="number" placeholder="Qty" value="${qty}" class="itm-qty">
+      <input type="number" placeholder="Price" value="${price}" class="itm-price">
+      <button type="button" class="btn danger itm-remove">Remove</button>`;
+  }
+  
+  itemsDiv.appendChild(wrap);
+
+  // hook up remove
+  wrap.querySelector(".itm-remove").addEventListener("click",()=>{
+    wrap.remove();
+    calc();
+  });
+}
+// --- Prefill engine (right under addItem) ---
+function prefillInvoiceFromAppointment(appt){
+  if(!appt||!appt.id) return;
+  const guardKey=_apptPrefillKey(appt.id);
+  if(sessionStorage.getItem(guardKey)) return; // only once per appt
+
+  const sid = appt.service_id || appt.service || appt.svc_id;
+  const sname = appt.service_name || appt.serviceLabel || appt.service;
+
+  const svc = getServiceConfigById(sid) || getServiceConfigByName(sname);
+  const label = `Labor - ${svc?.name || sname || "Service"}`;
+const rate   = Number(svc?.rate || 0);
+const hours  = Number(svc?.hours || 0);
+// Prefer base-price services; fallback to labor math
+const base   = Number(svc?.price ?? svc?.base_price ?? 0);
+const price  = Number.isFinite(base) && base > 0 ? base : (rate * hours);
+
+
+  // prevent duplicate by label if user already added it
+  try{
+    const existing = document.querySelectorAll(".itm-name");
+    for(const el of existing){
+      if(String(el.value||"").trim().toLowerCase()===label.toLowerCase()) return;
+    }
+  }catch(e){}
+
+  // use your exact addItem implementation
+  // If service has a parts_price, add a Parts line first
+  try{
+    const partsP = Number(svc?.parts_price || svc?.parts || 0) || 0;
+    if (partsP > 0 && typeof addItem === "function") {
+      addItem(`Parts - ${svc?.name || sname || "Service"}`, 1, partsP);
+    }
+  }catch(e){}
+
+  if(typeof addItem==="function") addItem(label, 1, price);
+
+  try{ if(typeof calc==="function") calc(); }catch(e){}
+  try{ if(typeof saveDraft==="function") saveDraft(); }catch(e){}
+
+  sessionStorage.setItem(guardKey,"1");
+}
+
+/* =========================
+   INVOICE NAME ENHANCER v2
+   - Keeps addItem() & row UI identical.
+   - "Name" gets a datalist (dropdown) with Parts/Labor.
+   - Choosing Parts shows a tiny inline form to enter the part name -> sets Name to "Part:XXXX".
+   - Choosing Labor shows a tiny inline form with:
+       • Saved Rate (dropdown)
+       • Rate (typeable)
+       • Hours
+     -> Price = rate * hours, Name like "Labor - <label> for Xh".
+========================= */
+
+// Read saved labor rates safely
+function _getSavedLaborRatesSafe() {
+  try {
+    const d = (typeof _getData === "function") ? _getData()
+            : (typeof readLS === "function" ? (readLS("crm_data") || {}) : {}) || {};
+    const s = d.settings || {};
+    let list = [];
+    if (Array.isArray(s.laborRates)) list = s.laborRates;
+    else if (Array.isArray(s.labor_rates)) list = s.labor_rates;
+    else if (s.labor && Array.isArray(s.labor.rates)) list = s.labor.rates;
+
+    return list.map(r => {
+      const label = r.label || r.name || r.title || `${Number(r.rate ?? r.value ?? 0).toFixed(2)}`;
+      const rate  = Number(r.rate ?? r.value ?? r.amount ?? 0) || 0;
+      return { label, rate };
+    });
+  } catch { return []; }
+}
+
+// One datalist for "Name" input → dropdown for Parts/Labor
+function _ensureTypeDatalist() {
+  let dl = document.getElementById("itm-type-list");
+  if (!dl) {
+    dl = document.createElement("datalist");
+    dl.id = "itm-type-list";
+    // Only expose a single high-level selector to users: Services
+    // Selecting this will open a richer popover populated from Settings → services
+    dl.innerHTML = `<option value="Services">`;
+    document.body.appendChild(dl);
+  }
+  return dl;
+}
+
+// Small popover factory (inline styles so we don't touch your CSS files)
+function _makePopover(anchor, html) {
+  // close any existing one on this row first
+  anchor.closest(".grid")?.querySelectorAll(".inv-popover").forEach(el=>el.remove());
+
+  const pop = document.createElement("div");
+  pop.className = "inv-popover";
+  pop.style.cssText = `
+    position: absolute; z-index: 9999; background: #111; color:#fff; border:1px solid #333;
+    border-radius:8px; padding:10px; box-shadow:0 6px 18px rgba(0,0,0,.35);
+    width: min(320px, 90vw);
+  `;
+
+  // position next to the Name input
+  const r = anchor.getBoundingClientRect();
+  const scrollTop  = window.pageYOffset || document.documentElement.scrollTop;
+  const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+  pop.style.left = (r.left + scrollLeft) + "px";
+  pop.style.top  = (r.bottom + scrollTop + 6) + "px";
+
+  pop.innerHTML = html;
+  document.body.appendChild(pop);
+
+  function close() { pop.remove(); }
+  // ESC closes
+  const onKey = (e)=>{ if(e.key==="Escape") close(); };
+  document.addEventListener("keydown", onKey, { once:true });
+  // Click outside closes
+  setTimeout(()=>{
+    function outside(e){
+      if (!pop.contains(e.target)) { close(); document.removeEventListener("mousedown", outside); }
+    }
+    document.addEventListener("mousedown", outside);
+  },0);
+
+  return pop;
+}
+
+function setupInvoiceSmartNameInputV2() {
+  // Give the Name input a real dropdown (datalist) for Parts/Labor
+  document.addEventListener("focusin", (e) => {
+    const inp = e.target;
+    if (!(inp instanceof HTMLInputElement)) return;
+    if (!inp.classList.contains("itm-name")) return;
+    _ensureTypeDatalist();
+    if (!inp.hasAttribute("list")) inp.setAttribute("list", "itm-type-list");
+    inp.setAttribute("autocomplete", "off");
+  });
+
+  // Handle choosing "Parts" or "Labor" from that dropdown
+  document.addEventListener("change", (e) => {
+    const inp = e.target;
+    if (!(inp instanceof HTMLInputElement)) return;
+    if (!inp.classList.contains("itm-name")) return;
+
+    const v = String(inp.value||"").trim().toLowerCase();
+    // If user selected the Services token from the datalist, trigger the services picker
+    if (v === 'services' || v === 'service') {
+      try { inp.value = ''; /* clear the token so it doesn't stick */ } catch(e){}
+      // synthesize a click so the invoice code that listens for item clicks will open the services picker
+      setTimeout(()=> inp.click(), 0);
+      return;
+    }
+    const wrap = inp.closest(".grid.cols-3") || inp.closest(".grid");
+    if (!wrap) return;
+
+    const qtyEl   = wrap.querySelector(".itm-qty");
+    const priceEl = wrap.querySelector(".itm-price");
+    const safeCalc = () => { try { calc(); } catch {} };
+
+    if (v === "parts") {
+      // Inline mini-form for part name → Name becomes "Part:XXXX"
+      const pop = _makePopover(inp, `
+        <div style="display:grid; gap:8px;">
+          <label style="font-size:12px; opacity:.85;">Part name</label>
+          <input type="text" class="pp-partname" placeholder="e.g., Brake Pads" style="padding:8px; border-radius:6px; border:1px solid #454545; background:#1a1a1a; color:#fff;">
+          <div style="display:flex; gap:8px; justify-content:flex-end;">
+            <button type="button" class="pp-cancel" style="padding:6px 10px; border-radius:6px; background:#333; color:#fff; border:1px solid #444;">Cancel</button>
+            <button type="button" class="pp-apply"  style="padding:6px 10px; border-radius:6px; background:#0b84ff; color:#fff; border:0;">Apply</button>
+          </div>
+        </div>
+      `);
+      const nameInput = pop.querySelector(".pp-partname");
+      nameInput.focus();
+
+      pop.querySelector(".pp-cancel").onclick = ()=> pop.remove();
+      pop.querySelector(".pp-apply").onclick = ()=>{
+        const partName = (nameInput.value||"").trim();
+        inp.value = partName ? `Part:${partName}` : "";
+        pop.remove();
+        safeCalc();
+      };
+      return;
+    }
+
+    // NEW: single 'Services' flow — open a popover populated from Settings → services
+    if (v === "services") {
+      const d = readLS(LS.data, { settings: { services: [] } });
+      const sid = (currentShop()||{}).id || null;
+      const list = (d.settings?.services || []).filter(s => !s.shop_id || s.shop_id === sid);
+      if (!list.length) {
+        alert('No services defined for this shop. Go to Settings → Services to add services.');
+        return;
+      }
+
+      const itemsHtml = list.map(s => {
+        const partsP = Number(s.parts_price || s.parts || 0) || 0;
+        const base = Number(s.price ?? s.base_price ?? 0) || 0;
+        const rate = Number(s.labor_rate || s.rate || 0) || 0;
+        const hours = Number(s.hours || 0) || 0;
+        const price = (base > 0) ? base : (rate * hours);
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px;border-bottom:1px solid rgba(255,255,255,.06);">
+                  <div style="flex:1">
+                    <div style="font-weight:600">${(s.name||'').replace(/</g,'&lt;')}</div>
+                    <div style="font-size:12px;opacity:.9">${partsP?`Parts $${partsP.toFixed(2)} • `:''}${price?`Est $${Number(price).toFixed(2)}`:'Est $0.00'}</div>
+                  </div>
+                  <div style="margin-left:12px"><button class="svc-choose btn" data-name="${(s.name||'').replace(/"/g,'&quot;')}">Choose</button></div>
+                </div>`;
+      }).join("");
+
+      const pop = _makePopover(inp, `
+        <div style="max-height:40vh; overflow:auto; display:grid; gap:6px; padding:6px">${itemsHtml}
+          <div style="display:flex;justify-content:flex-end;margin-top:6px"><button class="pp-cancel" style="padding:6px 10px;border-radius:6px;background:#333;color:#fff;border:1px solid #444;">Cancel</button></div>
+        </div>
+      `);
+
+      // wire choose buttons
+      pop.querySelectorAll('.svc-choose').forEach(btn => {
+        btn.addEventListener('click', ()=>{
+          const svcName = btn.dataset.name;
+          const svc = list.find(x => x.name === svcName);
+          if(!svc) return;
+
+          const partsP = Number(svc.parts_price || svc.parts || 0) || 0;
+          const base = Number(svc.price ?? svc.base_price ?? 0) || 0;
+          const rate = Number(svc.labor_rate || svc.rate || 0) || 0;
+          const hours = Number(svc.hours || 0) || 0;
+          const price = (base > 0) ? base : (rate * hours) || 0;
+
+          // insert a Parts row before current wrap if parts price exists
+          try{
+            const wrap = inp.closest('.grid.cols-3') || inp.closest('.grid');
+            if(wrap){
+              if(partsP > 0){
+                const partWrap = document.createElement('div');
+                partWrap.className = 'grid cols-3';
+                partWrap.style.marginTop = '6px';
+                partWrap.style.paddingTop = '12px';
+                partWrap.style.paddingBottom = '12px';
+                partWrap.style.borderTop = '1px solid #000';
+                partWrap.innerHTML = `\n                  <input placeholder="Name" class="itm-name" value="Parts - ${svc.name}">\n                  <input type="number" placeholder="Qty" value="1" class="itm-qty">\n                  <input type="number" placeholder="Price" value="${Number(partsP).toFixed(2)}" class="itm-price">\n                  <button type="button" class="btn danger itm-remove">Remove</button>`;
+                wrap.parentNode.insertBefore(partWrap, wrap);
+                // wire remove
+                partWrap.querySelector('.itm-remove').addEventListener('click', ()=>{ partWrap.remove(); calc(); });
+              }
+
+              // set current row to labor-like values
+              const nameEl = wrap.querySelector('.itm-name');
+              const qtyEl = wrap.querySelector('.itm-qty');
+              const priceEl = wrap.querySelector('.itm-price');
+              if(nameEl) nameEl.value = `Labor - ${svc.name}`;
+              if(qtyEl) qtyEl.value = (hours && hours>0) ? hours : 1;
+              if(priceEl) priceEl.value = Number(price).toFixed(2);
+            }
+          }catch(e){ console.warn('could not apply service to row', e); }
+
+          pop.remove();
+          safeCalc();
+        });
+      });
+
+      pop.querySelector('.pp-cancel')?.addEventListener('click', ()=> pop.remove());
+      return;
+    }
+  });
+
+  // Bonus: If they *type* "parts" and press Enter → open the parts mini-form directly
+  document.addEventListener("keydown", (e)=>{
+    const inp = e.target;
+    if (e.key !== "Enter") return;
+    if (!(inp instanceof HTMLInputElement)) return;
+    if (!inp.classList.contains("itm-name")) return;
+    const v = String(inp.value||"").trim().toLowerCase();
+    if (v === "services") {
+      // trigger change flow to open the services popover
+      inp.dispatchEvent(new Event("change", {bubbles:true}));
+      e.preventDefault();
+    }
+  });
+}
+
+// init once
+setupInvoiceSmartNameInputV2();
+
+
+  function collect(){
+    return Array.from(itemsDiv.querySelectorAll(".grid")).map(r=>{
+      // Check if labor row (has dropdown) or part row (has name input)
+      const laborSelect = r.querySelector(".itm-labor-select");
+      const nameInput = r.querySelector(".itm-name");
+      
+      let name = "Item";
+      if(laborSelect) {
+        // Labor row - build name from selected rate or custom
+        const selectedOption = laborSelect.options[laborSelect.selectedIndex];
+        let rateName = "Labor";
+        
+        if(laborSelect.value === "custom") {
+          const customName = r.querySelector(".itm-custom-name")?.value?.trim();
+          rateName = customName || "Custom";
+        } else {
+          rateName = selectedOption?.getAttribute("data-name") || "Labor";
+        }
+        
+        const hours = Number(r.querySelector(".itm-qty").value || 0);
+        name = `Labor - ${rateName} (${hours}h)`;
+      } else if(nameInput) {
+        // Part row
+        name = nameInput.value || "Item";
+      }
+      
+      return {
+        name: name,
+        qty: Number(r.querySelector(".itm-qty").value||0),
+        price: Number(r.querySelector(".itm-price").value||0)
+      };
+    });
+  }
+  function calc(){
+    const items=collect();
+    const sub=items.reduce((s,x)=>s+(x.qty||0)*(x.price||0),0);
+    const tax=sub*((Number(taxI?.value)||0)/100);
+    const disc=sub*((Number(discI?.value)||0)/100);
+    subEl&&(subEl.textContent=Number(sub).toFixed(2));
+    grandEl&&(grandEl.textContent=Number(sub+tax-disc).toFixed(2));
+  }
+
+  function editInvoice(id){
+    const inv=(data.invoices||[]).find(i=>i.id===id);
+    if(!inv) return;
+    invEditingId = id;
+    // Prefill
+    if(custI) custI.value = inv.customer || "";
+    if(apptI) apptI.value = inv.appointment_id || "";
+    if(taxI) taxI.value = Number(inv.tax_rate||0);
+    if(discI) discI.value = Number(inv.discount||0);
+    if(dueI) dueI.value = inv.due || todayISO();
+    if(itemsDiv){
+      itemsDiv.innerHTML="";
+      (inv.items||[]).forEach(it=>{
+        addItem();
+        const last = itemsDiv.querySelectorAll(".grid").item(itemsDiv.querySelectorAll(".grid").length-1);
+        last.querySelector(".itm-name").value = it.name || "Item";
+        last.querySelector(".itm-qty").value = Number(it.qty||0);
+        last.querySelector(".itm-price").value = Number(it.price||0);
+      });
+    }
+    calc();
+    const title=document.getElementById("invTitle"); if(title) title.textContent="Edit Invoice";
+    openModal(false);
+  }
+
+    openBtn&&openBtn.addEventListener("click",()=>openModal(true));
+    closeBtn&&closeBtn.addEventListener("click",closeModal);
+    
+    // Wire up Item Type Modal
+    const itemTypeModal = document.getElementById("itemTypeModal");
+    const addPartBtn = document.getElementById("addPartBtn");
+    const addLaborBtn = document.getElementById("addLaborBtn");
+    const cancelItemBtn = document.getElementById("cancelItemBtn");
+    
+    console.log('🔧 Invoice modal elements:', { 
+      addBtn: !!addBtn, 
+      itemTypeModal: !!itemTypeModal, 
+      addPartBtn: !!addPartBtn, 
+      addLaborBtn: !!addLaborBtn 
+    });
+    
+    // Show modal when Add Item is clicked
+    if(addBtn) {
+      addBtn.addEventListener("click",()=>{ 
+        console.log('🎯 Add Item clicked, showing modal');
+        if(itemTypeModal) {
+          itemTypeModal.classList.remove("hidden");
+          console.log('✅ Modal should be visible now');
+        } else {
+          console.error('❌ itemTypeModal not found!');
+        }
+      });
+    } else {
+      console.error('❌ addBtn not found!');
+    }
+    
+    // Cancel button - close modal
+    cancelItemBtn&&cancelItemBtn.addEventListener("click",()=>{
+      if(itemTypeModal) itemTypeModal.classList.add("hidden");
+    });
+    
+    // Part button - add blank part item
+    addPartBtn&&addPartBtn.addEventListener("click",()=>{
+      addItem("", 1, 0, "part");
+      calc();
+      if(itemTypeModal) itemTypeModal.classList.add("hidden");
+    });
+    
+    // Labor button - add labor item with rate dropdown
+    addLaborBtn&&addLaborBtn.addEventListener("click",()=>{
+      addItem("", 1, 0, "labor");
+      calc();
+      if(itemTypeModal) itemTypeModal.classList.add("hidden");
+    });
+    
+    // Close modal on overlay click
+    itemTypeModal&&itemTypeModal.addEventListener("click",(e)=>{
+      if(e.target === itemTypeModal) itemTypeModal.classList.add("hidden");
+    });
+
+    // --- Services picker modal (opens when clicking a part row's name) ---
+    console.log('Setting up services picker modal');
+    let servicesPicker = document.getElementById('servicesPickerModal');
+    if(!servicesPicker){
+      servicesPicker = document.createElement('div');
+      servicesPicker.id = 'servicesPickerModal';
+      servicesPicker.className = 'modal-backdrop hidden';
+      // ensure the services picker sits above any other modal on the page
+      servicesPicker.style.zIndex = '999999';
+      servicesPicker.innerHTML = `
+        <div class="modal-card">
+          <div class="modal-head">
+            <h3>Select a Service</h3>
+            <button class="btn svc-close">Close</button>
+          </div>
+          <div class="modal-body" style="max-height:60vh; overflow:auto">
+            <div id="svcPickerList"></div>
+          </div>
+          <div class="modal-foot">
+            <button class="btn" id="svcPickerCancel">Cancel</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(servicesPicker);
+      console.log('Services picker modal created and appended');
+    }    const svcPickerList = document.getElementById('svcPickerList');
+    let svcPickerTargetInput = null;
+
+    function populateServicesPicker(){
+      const d = readLS(LS.data, { settings: { services: [] } });
+      console.log('populateServicesPicker: data.settings.services =', d.settings?.services);
+      // const sid = (currentShop()||{}).id || null; // currentShop not defined, use null to get all
+      const sid = null;
+      // For now, show all services regardless of shop_id
+      let list = (d.settings?.services || []);
+      // De-dupe by name (case-insensitive)
+      const seen = new Set();
+      const unique = [];
+      list.forEach(s => {
+        const key = String(s.name||'').trim().toLowerCase();
+        if(!key || seen.has(key)) return;
+        seen.add(key);
+        unique.push(s);
+      });
+      list = unique;
+      console.log('populateServicesPicker: filtered list =', list);
+      if(!svcPickerList) return;
+      svcPickerList.innerHTML = '';
+      if(!list.length){ svcPickerList.innerHTML = '<p class="muted">No services defined. Go to Settings → Services to add services.</p>'; return; }
+      list.forEach(s => {
+        const partsP = Number(s.parts_price || s.parts || 0) || 0;
+        const base = Number(s.price ?? s.base_price ?? 0) || 0;
+        const rate = Number(s.labor_rate || s.rate || 0) || 0;
+        const hours = Number(s.hours || 0) || 0;
+        const price = (base > 0) ? base : (rate * hours) || 0;
+        const row = document.createElement('div');
+        row.style.display = 'flex'; row.style.justifyContent='space-between'; row.style.padding='8px'; row.style.borderBottom='1px solid var(--line, #e5e5e5)';
+        row.innerHTML = `<div style="flex:1"><div style="font-weight:600">${(s.name||'').replace(/</g,'&lt;')}</div><div style="font-size:12px;opacity:.8">${partsP?`Parts $${partsP.toFixed(2)} • `:''}Est $${Number(price).toFixed(2)}</div></div><div><button class="btn svc-choose" data-name="${(s.name||'').replace(/"/g,'&quot;')}">Choose</button></div>`;
+          svcPickerList.appendChild(row);
+      });
+    }
+
+    // When user clicks a part-name input, open services picker
+    if(itemsDiv){
+      console.log('Setting up click listener on itemsDiv for .itm-name');
+      itemsDiv.addEventListener('click', (e) => {
+        console.log('Click event on itemsDiv', e.target);
+        const inp = e.target.closest && e.target.closest('.itm-name');
+        if(!inp) {
+          console.log('No .itm-name found in click target');
+          return;
+        }
+        console.log('Found .itm-name input:', inp);
+        // Don't open if already has a value
+        if(inp.value.trim()) {
+          console.log('Input already has value, skipping');
+          return;
+        }
+        // If this row is a labor row (has itm-labor-select) skip
+        const wrap = inp.closest('.grid.cols-3') || inp.closest('.grid');
+        if(!wrap) {
+          console.log('No wrap found for input');
+          return;
+        }
+        if(wrap.querySelector('.itm-labor-select')) {
+          console.log('Skipping labor row');
+          return; // labor row
+        }
+
+        // open picker
+        svcPickerTargetInput = inp;
+        populateServicesPicker();
+        console.log('Opening services picker for', inp);
+        servicesPicker.classList.remove('hidden');
+        // focus the modal for keyboard users
+        setTimeout(()=> servicesPicker.querySelector('.svc-close')?.focus(), 20);
+      });
+    } else {
+      console.error('itemsDiv not found, cannot set up services picker');
+    }
+
+    // Wire picker actions: choose, close, cancel
+    servicesPicker.querySelector('.svc-close')?.addEventListener('click', ()=> servicesPicker.classList.add('hidden'));
+    document.getElementById('svcPickerCancel')?.addEventListener('click', ()=>{
+      // If the target input is still empty, remove the row
+      if(svcPickerTargetInput && !svcPickerTargetInput.value.trim()){
+        const wrap = svcPickerTargetInput.closest('.grid.cols-3') || svcPickerTargetInput.closest('.grid');
+        if(wrap) wrap.remove();
+        calc();
+      }
+      servicesPicker.classList.add('hidden');
+    });
+    svcPickerList && svcPickerList.addEventListener('click', (e)=>{
+      const btn = e.target.closest && e.target.closest('.svc-choose');
+      if(!btn) return;
+      const svcName = btn.dataset.name;
+      const d = readLS(LS.data, { settings: { services: [] } });
+      // const sid = (currentShop()||{}).id || null;
+      // const svc = (d.settings?.services || []).filter(s => !s.shop_id || s.shop_id === sid).find(s => s.name === svcName);
+      const svc = (d.settings?.services || []).find(s => s.name === svcName);
+      if(!svc){ alert('Service not found'); servicesPicker.classList.add('hidden'); return; }
+
+      // apply selection to target input's row
+      try{
+        const wrap = svcPickerTargetInput.closest('.grid.cols-3') || svcPickerTargetInput.closest('.grid');
+        const partsP = Number(svc.parts_price || svc.parts || 0) || 0;
+        const base = Number(svc.price ?? svc.base_price ?? 0) || 0;
+        const rate = Number(svc.labor_rate || svc.rate || 0) || 0;
+        const hours = Number(svc.hours || 0) || 0;
+        const price = (base > 0) ? base : (rate * hours) || 0;
+
+        // Removed: no longer adding separate parts row for services
+        // if(partsP > 0){
+        //   const partWrap = document.createElement('div');
+        //   partWrap.className = 'grid cols-3';
+        //   partWrap.style.marginTop = '6px';
+        //   partWrap.style.paddingTop = '12px';
+        //   partWrap.style.paddingBottom = '12px';
+        //   partWrap.style.borderTop = '1px solid #000';
+        //   partWrap.innerHTML = `\n            <input placeholder="Name" class="itm-name" value="Parts - ${svc.name}">\n            <input type="number" placeholder="Qty" value="1" class="itm-qty">\n            <input type="number" placeholder="Price" value="${Number(partsP).toFixed(2)}" class="itm-price">\n            <button type="button" class="btn danger itm-remove">Remove</button>`;
+        //   wrap.parentNode.insertBefore(partWrap, wrap);
+        //   partWrap.querySelector('.itm-remove').addEventListener('click', ()=>{ partWrap.remove(); calc(); });
+        // }
+
+        const nameEl = wrap.querySelector('.itm-name');
+        const qtyEl = wrap.querySelector('.itm-qty');
+        const priceEl = wrap.querySelector('.itm-price');
+        if(nameEl) nameEl.value = svc.name;
+        if(qtyEl) qtyEl.value = 1;
+        if(priceEl) priceEl.value = Number(price).toFixed(2);
+      }catch(e){ console.warn('apply service error', e); }
+
+      calc();
+      servicesPicker.classList.add('hidden');
+      svcPickerTargetInput = null; // clear target
+      svcPickerTargetInput = null; // clear target
+    });
+    
+    itemsDiv&&itemsDiv.addEventListener("input",calc);
+    taxI&&taxI.addEventListener("input",calc);
+    discI&&discI.addEventListener("input",calc);  function validateBeforeSave(items){
+    // must have at least one item with qty>0
+    const validItem = items.some(it => (Number(it.qty)||0) > 0);
+    if(!validItem){ alert("Invoice must have at least one item with quantity > 0."); return false; }
+    return true;
+  }
+
+  const saveBtnHandler=()=>{
+    const items=collect();
+    if(!validateBeforeSave(items)) return;
+
+    if(invEditingId){
+      // update existing
+      const idx=(data.invoices||[]).findIndex(i=>i.id===invEditingId);
+      if(idx>=0){
+        const inv=data.invoices[idx];
+        inv.customer = custI?(custI.value||"Walk-in"):"Walk-in";
+        inv.appointment_id = apptI?(apptI.value||null):null;
+        inv.tax_rate = Number(taxI?.value||0)||0;
+        inv.discount = Number(discI?.value||0)||0;
+        inv.due = dueI?(dueI.value||todayISO()):todayISO();
+        inv.items = items;
+        // number & status remain as-is (edited elsewhere)
+        writeLS(LS.data,data);
+      }
+      closeModal();
+      render();
+      invEditingId=null;
+      return;
+    }
+
+    // create new
+    const next=(data.invoices||[]).reduce((mx,i)=>Math.max(mx,Number(i.number||0)||0),1000)+1;
+    const inv={
+      id:"inv"+Date.now(),
+      number:String(next),
+      customer:custI?(custI.value||"Walk-in"):"Walk-in",
+      appointment_id:apptI?(apptI.value||null):null,
+      status:"open",
+      due:dueI?(dueI.value||todayISO()):todayISO(),
+      tax_rate:Number(taxI?.value||0)||0,
+      discount:Number(discI?.value||0)||0,
+      items
+    };
+    data.invoices.push(inv);
+    writeLS(LS.data,data);
+    // Tag related jobs with this invoice number so Jobs -> Invoices -> Invoice flow shows the job #
+    try { if (inv.appointment_id) { ensureInvoiceForAppt(inv.appointment_id); } } catch (e) { console.warn('Could not tag jobs for new invoice', e); }
+    closeModal();
+    render();
+  };
+
+  // Rebind save each render
+  if(saveBtn){
+    const clone = saveBtn.cloneNode(true);
+    saveBtn.parentNode.replaceChild(clone, saveBtn);
+    clone.id = "saveInv"; // keep same id
+    clone.addEventListener("click", saveBtnHandler);
+  }
+
+  const apptQ=new URLSearchParams(location.search).get("appt");
+  if(apptQ){
+    let inv=(data.invoices||[]).find(i=>i.appointment_id===apptQ);
+    if(!inv){
+      const appt=(data.appointments||[]).find(a=>a.id===apptQ);
+      const next=(data.invoices||[]).reduce((mx,i)=>Math.max(mx,Number(i.number||0)||0),1000)+1;
+      inv={id:"inv"+Date.now(),number:String(next),customer:appt?`${appt.customer_first||""} ${appt.customer_last||""}`.trim()||"Walk-in":"Walk-in",appointment_id:apptQ,status:"open",due:appt?appt.preferred_date:todayISO(),tax_rate:6,discount:0,items:[{name:"Item",qty:1,price:0}]};
+      data.invoices.push(inv); writeLS(LS.data,data);
+      try { if (apptQ) { ensureInvoiceForAppt(apptQ); } } catch (e) { console.warn('Could not tag jobs for appt→invoice redirect', e); }
+    }
+    location.replace(`invoice.html?id=${inv.number||inv.id}`);
+    return;
+  }
+
+  document.getElementById("invSearch")?.addEventListener("input",render);
+  document.getElementById("prevSearch")?.addEventListener("input",render);
+  render();
+  updateMessageNotifications();
+}
+
+document.addEventListener("click",(e)=>{if(e.target&&e.target.id==="pfSave"){const u=currentUser();if(!u)return;const users=readLS(LS.users,[]);const i=users.findIndex(x=>x.id===u.id);if(i>=0){users[i].first=(byId("pfFirst")||{}).value||users[i].first;users[i].last=(byId("pfLast")||{}).value||users[i].last;writeLS(LS.users,users);const note=byId("pfSaved");if(note)note.textContent="Saved.";}}});
+
+/* ===== Existing non-invasive Job Claim enhancer (kept 1:1) ===== */
+(async function(){await (async function(){if(readLS(LS.seeded,false))return;writeLS(LS.users,[{id:"u1",first:"Owner",last:"User",email:"owner@demo.local",password:"admin123",role:"admin",shop_id:"s1"}]);writeLS(LS.shops,[{id:"s1",name:"Demo Shop",type:"Mechanic",join_code:"ABCD12",staff_limit:3}]);writeLS(LS.data,{settings:{shop:{name:"Demo Shop",phone:"",email:""}},appointments:[{id:"a1",created_at:new Date().toISOString(),customer_first:"Evan",customer_last:"Ramos",email:"evan.ramos@example.com",phone:"(301) 555-0182",vehicle:"2014 BMW 335i",service:"Brake inspection",preferred_date:todayISO(),preferred_time:"10:00",status:"scheduled",source:"inquiry",shop_id:"s1"}],jobs:[{id:"J1001",appointment_id:"a1",status:"scheduled",shop_id:"s1"}],threads:[{id:"t1",type:"inquiry",title:"New Inquiry · Evan Ramos",meta:{name:"Evan Ramos",phone:"(301) 555-0182",email:"evan.ramos@example.com",vehicle:"2014 BMW 335i",service:"Brake inspection",date:todayISO(),time:"10:00",notes:"Grinding noise on front left."},messages:[{from:"system",body:"New inquiry submitted from website.",created_at:new Date().toISOString()}],shop_id:"s1"}],invoices:[{id:"inv1001",number:"1001",customer:"Evan Ramos",appointment_id:"a1",status:"open",due:todayISO(),tax_rate:6,discount:0,items:[{name:"Labor",qty:1,price:120},{name:"Parts",qty:1,price:45}],shop_id:"s1"}]});writeLS(LS.seeded,true);})();setThemeFromUser();if(byId("themeToggle"))byId("themeToggle").addEventListener("click",toggleTheme);if(byId("logoutBtn"))byId("logoutBtn").addEventListener("click",logout);
+
+// Handle OAuth callback
+if (supabase) {
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    if (session) {
+      console.log('OAuth session found:', session);
+      
+      // Check URL parameters for additional setup
+      const urlParams = new URLSearchParams(window.location.search);
+      const role = urlParams.get('role');
+      const shopId = urlParams.get('shop_id');
+      const oauth = urlParams.get('oauth');
+      
+      if (role === 'staff' && shopId) {
+        // Staff joining existing shop via OAuth
+        const users = readLS(LS.users, []);
+        const userExists = users.find(u => u.email === session.user.email);
+        
+        if (!userExists) {
+          // Add user to localStorage
+          const newUser = {
+            id: 'u_' + Math.random().toString(36).slice(2, 8),
+            first: session.user.user_metadata?.first_name || session.user.user_metadata?.name?.split(' ')[0] || 'User',
+            last: session.user.user_metadata?.last_name || session.user.user_metadata?.name?.split(' ').slice(1).join(' ') || '',
+            email: session.user.email,
+            role: 'staff',
+            shop_id: shopId
+          };
+          users.push(newUser);
+          writeLS(LS.users, users);
+        }
+        
+        // Set session and redirect to dashboard
+        writeLS(LS.session, { email: session.user.email, at: Date.now() });
+        window.location.replace('dashboard.html');
+        
+      } else if (oauth === 'google') {
+        // Handle Google OAuth completion for create-shop
+        handleGoogleOAuthCompletion(session);
+      } else {
+        // Regular OAuth login - set session
+        writeLS(LS.session, { email: session.user.email, at: Date.now() });
+        if (pageName() === 'index' || pageName() === '') {
+          window.location.replace('dashboard.html');
+        }
+      }
+    }
+  }).catch(error => {
+    console.warn('OAuth session check failed:', error);
+  });
+}
+
+// Handle Google OAuth completion (pre-fill forms)
+function handleGoogleOAuthCompletion(session) {
+  if (!session || !session.user) return;
+  
+  const page = pageName();
+  
+  if (page === 'create-shop') {
+    // Pre-fill create shop form with Google user data
+    setTimeout(() => {
+      const firstInput = byId('csFirst');
+      const lastInput = byId('csLast');
+      const emailInput = byId('csEmail');
+      
+      if (firstInput && !firstInput.value) {
+        firstInput.value = session.user.user_metadata?.first_name || 
+                          session.user.user_metadata?.name?.split(' ')[0] || '';
+      }
+      if (lastInput && !lastInput.value) {
+        lastInput.value = session.user.user_metadata?.last_name || 
+                         session.user.user_metadata?.name?.split(' ').slice(1).join(' ') || '';
+      }
+      if (emailInput && !emailInput.value) {
+        emailInput.value = session.user.email || '';
+        emailInput.readOnly = true; // Prevent email changes
+      }
+      
+      console.log('Pre-filled create-shop form with Google data');
+    }, 500); // Give more time for form to load
+  }
+}
+
+const p=pageName();if(p==="index"||p==="")setupLogin();else{requireAuth();if(p==="dashboard")setupDashboard();if(p==="appointments")setupAppointments();if(p==="jobs")setupJobs();if(p==="messages")setupMessages();if(p==="invoices")setupInvoices();if(p==="settings")setupSettings();if(p==="profile")setupProfile();}
+/* ===== EDIT: Job Claim flow (non-invasive, additive) ===== */
+// Tiny helpers (reuse your LS + data shapes)
+function __data(){ return readLS(LS.data,{appointments:[],jobs:[],threads:[],invoices:[]}); }
+function __save(d){ writeLS(LS.data,d); }
+function __jobForAppt(apptId){
+  const d=__data();
+  let j=(d.jobs||[]).find(x=>x.appointment_id===apptId);
+  if(!j){ j={id:"J"+Date.now(), appointment_id:apptId, status:"unassigned"}; d.jobs=d.jobs||[]; d.jobs.push(j); __save(d); }
+  return j;
+}
+function __assign(jobId, userId){
+  const d=__data(); const i=(d.jobs||[]).findIndex(x=>x.id===jobId);
+  if(i<0) return false;
+  if(d.jobs[i].assigned_to && d.jobs[i].assigned_to!==userId) return false;
+  d.jobs[i].assigned_to=userId;
+  if(d.jobs[i].status!=='completed') d.jobs[i].status='in_progress';
+  __save(d); return true;
+}
+function __unassign(jobId){
+  const d=__data(); const i=(d.jobs||[]).findIndex(x=>x.id===jobId);
+  if(i<0) return;
+  d.jobs[i].assigned_to=null;
+  if(d.jobs[i].status!=='completed') d.jobs[i].status='unassigned';
+  __save(d);
+}
+function __delJob(jobId){
+  const d=__data(); d.jobs=(d.jobs||[]).filter(x=>x.id!==jobId); __save(d);
+}
+function __setStatus(jobId, status){
+  const d=__data(); const i=(d.jobs||[]).findIndex(x=>x.id===jobId);
+  if(i<0) return; d.jobs[i].status=status; __save(d);
+}
+
+// Enhance rendered tables without touching your templates
+function __claimEnhance(){
+  try{
+    if (typeof currentUser !== "function") return;
+    const me = currentUser();
+    if(!me) return;
+
+    // DASHBOARD: Day table (find appt id from action links)
+    const dayTbody = document.querySelector("#dayTable tbody");
+    if(dayTbody){
+      dayTbody.querySelectorAll("tr").forEach(tr=>{
+        const actions = tr.querySelector("td:last-child");
+        if(!actions || actions.querySelector(".cx-claim")) return;
+        const link = actions.querySelector('a[href*="messages.html?appt="], a[href*="invoices.html?appt="]');
+        if(!link) return;
+        let apptId = null;
+        try { apptId = new URL(link.getAttribute("href"), location.href).searchParams.get("appt"); } catch(_e){}
+        if(!apptId) return;
+        const d=__data(); const j=(d.jobs||[]).find(x=>x.appointment_id===apptId);
+        const claimable = (!j || !j.assigned_to);
+        if(me.role==='staff' && claimable){
+          const btn=document.createElement("button");
+          btn.className="btn cx-claim";
+          btn.textContent="Claim";
+          btn.addEventListener("click", ()=>{
+            const jj=__jobForAppt(apptId);
+            if(jj.assigned_to && jj.assigned_to!==me.id){ alert("This job is already assigned."); return; }
+            __assign(jj.id, me.id);
+            location.reload();
+          });
+          actions.appendChild(btn);
+        }
+      });
+    }
+
+    // APPOINTMENTS: add Claim before Remove
+    const apptTable = document.getElementById("apptTable") || document.querySelector('[data-app-table="appointments"]');
+    const apptBody = apptTable && apptTable.querySelector("tbody");
+    if(apptBody){
+      apptBody.querySelectorAll("tr").forEach(tr=>{
+        const actions = tr.querySelector("td:last-child");
+        if(!actions || actions.querySelector(".cx-claim-appt")) return;
+        const link = actions.querySelector('a[href*="messages.html?appt="], a[href*="invoices.html?appt="]');
+        if(!link) return;
+        let apptId = null;
+        try { apptId = new URL(link.getAttribute("href"), location.href).searchParams.get("appt"); } catch(_e){}
+        if(!apptId) return;
+        const d=__data(); const j=(d.jobs||[]).find(x=>x.appointment_id===apptId);
+        const claimable = (!j || !j.assigned_to);
+        if(me.role==='staff' && claimable){
+          const btn=document.createElement("button");
+          btn.className="btn cx-claim-appt";
+          btn.textContent="Claim";
+          btn.addEventListener("click", ()=>{
+            const jj=__jobForAppt(apptId);
+            if(jj.assigned_to && jj.assigned_to!==me.id){ alert("This job is already assigned."); return; }
+            __assign(jj.id, me.id);
+            location.reload();
+          });
+          const removeBtn = actions.querySelector("button.btn.danger");
+          actions.insertBefore(btn, removeBtn || null);
+        }
+      });
+    }
+
+    // JOBS: hide Claim; for staff on own jobs provide limited controls
+    const jobsTable = document.getElementById("jobsTable");
+    if(jobsTable){
+      // remove any claim buttons
+      jobsTable.querySelectorAll("[data-claim]").forEach(el=> el.remove());
+
+      if(me.role==='staff'){
+        jobsTable.querySelectorAll("tr").forEach(tr=>{
+          const actions = tr.querySelector("td:last-child");
+          if(!actions || actions.querySelector(".cx-status")) return;
+          const unBtn = actions.querySelector("[data-unassign]");
+          const jobId = (unBtn && unBtn.getAttribute("data-unassign")) || null;
+          // hide unassign if present; we'll replace with status+remove
+          if(unBtn) unBtn.remove();
+          if(!jobId) return; // only on own jobs
+          const sel = document.createElement("select");
+          sel.className="cx-status";
+          sel.setAttribute("data-job", jobId);
+          ["in_progress","awaiting_parts","completed"].forEach(st=>{
+            const op=document.createElement("option"); op.value=st; op.textContent=st; sel.appendChild(op);
+          });
+          sel.addEventListener("change", ()=>{ __setStatus(jobId, sel.value); location.reload(); });
+
+          const rm=document.createElement("button");
+          rm.className="btn danger cx-remove-job";
+          rm.textContent="Remove";
+          rm.addEventListener("click", ()=>{
+            const ok = confirm("Remove this job? Press OK to DELETE, Cancel to UNASSIGN.");
+            if(ok){ __delJob(jobId); } else { __unassign(jobId); }
+            location.reload();
+          });
+          actions.appendChild(sel);
+          actions.appendChild(rm);
+        });
+      }
+    }
+  }catch(e){ /* safe no-op */ }
+}
+// Run after the page renders (and again when user interacts) without touching existing init
+document.addEventListener("DOMContentLoaded", ()=> { setTimeout(__claimEnhance, 0); });
+document.addEventListener("click", ()=> { setTimeout(__claimEnhance, 0); });
+/* ===== /EDIT ===== */
+})();
+// ==================== Auto-Labor (Per-Service, Always Add) ====================
+
+// Local getters/setters (do not override your existing getData/setData)
+function _getData() {
+  try { return JSON.parse(localStorage.getItem('xm_data')||'{}') || {}; }
+  catch(e){ return {}; }
+}
+function _setData(d) {
+  localStorage.setItem('xm_data', JSON.stringify(d||{}));
+}
+function _getUsers() {
+  try { return JSON.parse(localStorage.getItem('xm_users')||'[]') || []; }
+  catch(e){ return []; }
+}
+function _getSession() {
+  try { return JSON.parse(localStorage.getItem('xm_session')||'null'); }
+  catch(e){ return null; }
+}
+function _curShopId() {
+  const s = _getSession();
+  if (!s || !s.email) return null;
+  const me = _getUsers().find(u => u.email === s.email);
+  return me && me.shop_id || null;
+}
+
+// Look up service config by name for current shop
+function getServiceConfigByName(name) {
+  if (!name) return null;
+  const d = _getData();
+  const list = (d.settings && d.settings.services) || [];
+  const lower = String(name).toLowerCase();
+  const sid   = _curShopId();
+  // Prefer same-shop services; fall back to any if shop_id missing
+  const hit = list.find(s =>
+    String(s.name||'').toLowerCase() === lower &&
+    (!s.shop_id || s.shop_id === sid)
+  );
+  return hit || null;
+}
+
+// Build a labor line even if no config (defaults to $0.00)
+// If service has rate & hours => price = rate * hours; else price = 0
+function makeLaborItemForServiceAlways(serviceName, partName) {
+  // even if no config, create a labor line with $0
+  const label = serviceName
+    ? `Labor - ${serviceName}`
+    : `Labor - ${partName}`;
+
+  let rate = 0, hours = 0;
+  const d = _getData();
+  const svc = (d.settings?.services || []).find(s => s.name === serviceName);
+  if (svc) {
+    rate = Number(svc.labor_rate || 0);
+    hours = Number(svc.hours || 0);
+  }
+
+  return {
+    name: label,       // <-- always string, never null
+    qty: hours || 0,
+    price: rate || 0
+  };
+}
+
+
+
+// (Optional) refresh the chips/list UI here as you already do
+
+// Add a Part and ALWAYS follow with a Labor line (0 if no config)
+// If invoice is linked to an appointment with a 'service', use that service for pricing
+function addPartThenAlwaysLabor(invoice, partName, partPrice) {
+  const items = invoice.items = (invoice.items || []);
+
+  // 1) add the PART and capture its index
+  const part = { name: partName, qty: 1, price: Number(partPrice||0) };
+  const partIndex = Labor.push(part) - 1;
+
+  // 2) figure out service name (from linked appointment, if any)
+  let serviceName = null;
+  if (invoice.appointment_id) {
+    const d = _getData();
+    const appt = (d.appointments || []).find(a => a.id === invoice.appointment_id);
+    if (appt && appt.service) serviceName = appt.service;
+  }
+
+  // 3) build the LABOR line (even if $0.00)
+  const labor = makeLaborItemForServiceAlways(serviceName, partName);
+
+  // 4) INSERT labor immediately after the part (index + 1) to lock in order
+  items.splice(partIndex + 1, 0, labor);
+
+
+  return invoice;
+}
+
+
+// When removing a part row, also remove its paired auto-labor row (matched by _forPart)
+function removePartAndAutoLabor(invoice, partIndex) {
+  if (!invoice.items || partIndex < 0 || partIndex >= invoice.items.length) return;
+  const part = invoice.items[partIndex];
+  const partName = part && part.name;
+  invoice.items.splice(partIndex, 1); // remove part
+  if (!partName) return;
+
+  const i = (invoice.items || []).findIndex(it => it && it._autoLabor && it._forPart === partName);
+  if (i >= 0) invoice.items.splice(i, 1); // remove paired labor
+}
+
+
+// ===== PARTS FINDER (app.js ONLY) =====
+function setupPartsFinder() {
+  const pageName_local = (location.pathname.split("/").pop() || "index.html").toLowerCase();
+  console.log("setupPartsFinder() called, current page:", pageName_local);
+  if (pageName_local !== "jobs.html") {
+    console.log("setupPartsFinder(): Page is not jobs.html, returning early");
+    return;
+  }
+
+  const pfVehicleEl = document.getElementById("pfVehicle");
+  const pfQueryEl = document.getElementById("pfQuery");
+  const pfVinEl = document.getElementById("pfVin");
+  const pfSearchBtn = document.getElementById("pfSearch");
+  const pfResultsEl = document.getElementById("pfResults");
+  const pfNoteEl = document.getElementById("pfNote");
+  const closePartsBtn = document.getElementById("closeParts");
+  const partsModalEl = document.getElementById("partsModal");
+  const laborModalEl = document.getElementById("laborModal");
+  const labCloseBtn = document.getElementById("labClose");
+  const labConfirmBtn = document.getElementById("labConfirm");
+  const labHoursEl = document.getElementById("labHours");
+  const labRateSelEl = document.getElementById("labRateSel");
+  const labNoteEl = document.getElementById("labNote");
+  const jobsTableTbody = document.querySelector("#jobsTable tbody");
+
+  console.log("setupPartsFinder(): Elements found - pfSearchBtn:", !!pfSearchBtn, "jobsTableTbody:", !!jobsTableTbody);
+
+  if (!pfSearchBtn || !jobsTableTbody) {
+    console.error("setupPartsFinder(): Missing required elements, returning");
+    return;
+  }
+  
+  console.log("setupPartsFinder(): Initialization complete, setting up event listeners");
+
+  // Store current selected job & part data
+  let currentJobId = null;
+  let selectedPartData = null;
+
+  // 1. When user explicitly clicks a Find Parts control (or the row actions), open parts finder.
+  //    Previously we opened the modal on ANY row click which caused buttons to trigger it.
+  jobsTableTbody.addEventListener("click", (e) => {
+    // If the click is on an interactive control (button/link/select/input),
+    // prefer honoring that control unless it is the Find Parts control.
+    const findControl = e.target.closest('[data-find], .cx-find');
+    if (!findControl) {
+      // Not a Find Parts click — ignore so other row controls (buttons/links) work normally
+      return;
+    }
+
+    const tr = findControl.closest("tr");
+    if (!tr) return;
+    const cells = tr.querySelectorAll("td");
+    if (cells.length < 3) return;
+
+    currentJobId = cells[0].textContent.trim();
+    const vehicleText = cells[2].textContent.trim();
+    if (pfVehicleEl) pfVehicleEl.value = vehicleText;
+
+    // Show parts finder modal
+    if (partsModalEl) partsModalEl.classList.remove("hidden");
+    if (pfQueryEl) pfQueryEl.focus();
+  });
+
+  // Close parts modal
+  if (closePartsBtn) {
+    closePartsBtn.addEventListener("click", () => {
+      if (partsModalEl) partsModalEl.classList.add("hidden");
+      if (laborModalEl) laborModalEl.classList.add("hidden");
+    });
+  }
+
+  // Close labor modal
+  if (labCloseBtn) {
+    labCloseBtn.addEventListener("click", () => {
+      if (laborModalEl) laborModalEl.classList.add("hidden");
+    });
+  }
+
+  // 2. VIN auto-decode (17 chars → call /vin endpoint + populate pfVehicle)
+  if (pfVinEl) {
+    pfVinEl.addEventListener("blur", async () => {
+      const vin = pfVinEl.value.trim().toUpperCase();
+      if (vin.length !== 17) return;
+
+      try {
+        const r = await fetch(`/vin/${encodeURIComponent(vin)}`);
+        if (!r.ok) {
+          console.warn("VIN decode failed");
+          return;
+        }
+        const data = await r.json();
+        const results = data.data?.Results?.[0];
+        if (results) {
+          const year = results.ModelYear || "";
+          const make = results.Make || "";
+          const model = results.Model || "";
+          const trim = results.Trim || "";
+          const decoded = `${year} ${make} ${model}${trim ? " " + trim : ""}`.trim();
+          if (pfVehicleEl) pfVehicleEl.value = decoded;
+        }
+      } catch (e) {
+        console.error("VIN decode error:", e);
+      }
+    });
+  }
+
+  // Store search parameters for "Load More" functionality
+  let lastSearchParams = null;
+  let searchPage = 0;
+
+  // 3. Search button → call /api/grok-parts
+  if (pfSearchBtn) {
+    pfSearchBtn.addEventListener("click", async () => {
+      console.log("pfSearch button clicked!");
+      const vehicle = pfVehicleEl?.value.trim() || "";
+      const query = pfQueryEl?.value.trim() || "";
+      const vin = pfVinEl?.value.trim() || null;
+      const zipcode = localStorage.getItem("userZipcode") || "";
+
+      console.log("Button click handler - vehicle:", vehicle, "query:", query, "vin:", vin);
+      if (!vehicle || !query) {
+        console.warn("Missing vehicle or query");
+        if (pfNoteEl) pfNoteEl.textContent = "Please enter vehicle and keyword.";
+        return;
+      }
+
+      // New search - reset page counter
+      searchPage = 0;
+      lastSearchParams = { vehicle, query, vin, zipcode };
+      console.log("About to call performSearch()");
+      performSearch();
+    });
+  }
+
+  async function performSearch() {
+    if (!lastSearchParams) return;
+    const { vehicle, query, vin, zipcode } = lastSearchParams;
+
+    // Show loading
+    if (searchPage === 0) {
+      if (pfSearchBtn) pfSearchBtn.disabled = true;
+      if (pfResultsEl) pfResultsEl.innerHTML = "";
+    }
+    if (pfNoteEl) pfNoteEl.textContent = "Searching...";
+
+    try {
+      console.log("performSearch() called with params:", { vehicle, query, vin, zipcode });
+      
+      // Call Claude API via /api/grok-parts endpoint
+      const apiResponse = await fetch("/api/grok-parts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vehicle, query, vin, zipcode })
+      });
+
+      if (!apiResponse.ok) {
+        const errData = await apiResponse.json();
+        throw new Error(`API error: ${apiResponse.status} - ${errData.error || 'Unknown error'}`);
+      }
+
+      const data = await apiResponse.json();
+      console.log("Grok response data:", data);
+      console.log("pfResultsEl element:", pfResultsEl);
+      console.log("pfResultsEl ID:", pfResultsEl?.id);
+      
+      // Append results (not replace)
+      if (data.resultsHtml && data.resultsHtml.trim()) {
+        console.log("Setting results HTML, length:", data.resultsHtml.length);
+        console.log("First 200 chars of HTML:", data.resultsHtml.substring(0, 200));
+        if (pfResultsEl) {
+          if (searchPage === 0) {
+            pfResultsEl.innerHTML = data.resultsHtml;
+          } else {
+            pfResultsEl.innerHTML += data.resultsHtml;
+          }
+          console.log("Results element innerHTML set, current length:", pfResultsEl.innerHTML.length);
+          console.log("Results element visible?", pfResultsEl.offsetHeight > 0 ? "YES" : "NO (hidden)");
+          console.log("Results element parent visible?", pfResultsEl.parentElement?.offsetHeight > 0 ? "YES" : "NO (hidden)");
+        } else {
+          console.error("pfResultsEl is null or undefined!");
+        }
+      } else {
+        console.log("No resultsHtml in response - data.resultsHtml:", data.resultsHtml);
+      }
+      
+      if (pfNoteEl) {
+        pfNoteEl.textContent = data.noteText || "No results.";
+      }
+
+      // Add "Load More" button
+      if (data.resultsHtml && data.resultsHtml.trim()) {
+        const existingBtn = pfResultsEl?.querySelector("[data-load-more]");
+        if (existingBtn) existingBtn.remove();
+        
+        const loadMoreBtn = document.createElement("button");
+        loadMoreBtn.className = "btn small";
+        loadMoreBtn.textContent = "Load More Results";
+        loadMoreBtn.setAttribute("data-load-more", "true");
+        loadMoreBtn.style.marginTop = "12px";
+        loadMoreBtn.style.width = "100%";
+        loadMoreBtn.addEventListener("click", () => {
+          searchPage++;
+          performSearch();
+        });
+        if (pfResultsEl) pfResultsEl.appendChild(loadMoreBtn);
+      }
+      
+      // Commented out MutationObserver - was detecting legitimate DOM updates
+      // The store dropdown handlers were causing false positives
+
+      // Attach "Add to Job" handlers
+      attachPartCardHandlers();
+      
+      // Attach dropdown toggle handlers for store sections
+      console.log("About to call attachStoreDropdownHandlers");
+      console.log("Results HTML before handlers:", pfResultsEl?.innerHTML.substring(0, 100));
+      attachStoreDropdownHandlers();
+      console.log("attachStoreDropdownHandlers completed");
+      console.log("Current results element innerHTML length:", pfResultsEl?.innerHTML.length);
+      console.log("Current results element displayed?", pfResultsEl?.offsetHeight > 0 ? "YES" : "NO");
+      console.log("Results HTML after handlers:", pfResultsEl?.innerHTML.substring(0, 100));
+      
+      // Force visibility check
+      if (pfResultsEl?.innerHTML.length === 0) {
+        console.error("ERROR: Results HTML was cleared after handlers!");
+      }
+    } catch (e) {
+      if (pfNoteEl) pfNoteEl.textContent = "Error fetching parts: " + (e.message || "Try again later.");
+      console.error("Parts search error:", e);
+    } finally {
+      if (pfSearchBtn) pfSearchBtn.disabled = false;
+    }
+  }
+
+  // 4. Attach handlers to part cards (Add to Job)
+  function attachPartCardHandlers() {
+    const cards = pfResultsEl?.querySelectorAll(".parts-card");
+    if (!cards) return;
+
+    cards.forEach((card) => {
+      const addBtn = card.querySelector(".add-part");
+      if (!addBtn) return;
+
+      addBtn.addEventListener("click", () => {
+        selectedPartData = {
+          link: card.getAttribute("data-link") || "",
+          source: card.getAttribute("data-source") || "",
+          part: card.getAttribute("data-part") || ""
+        };
+
+        // Show labor modal
+        if (laborModalEl) laborModalEl.classList.remove("hidden");
+        if (labHoursEl) labHoursEl.focus();
+      });
+    });
+  }
+
+  // 4.5 Attach dropdown toggle handlers for store sections
+  function attachStoreDropdownHandlers() {
+    const storeHeaders = pfResultsEl?.querySelectorAll(".store-header");
+    if (!storeHeaders) return;
+
+    storeHeaders.forEach((header) => {
+      header.addEventListener("click", () => {
+        const section = header.closest(".store-section");
+        const results = section?.querySelector(".store-results");
+        const arrow = header.querySelector(".arrow");
+        
+        if (results && arrow) {
+          if (results.style.display === "none") {
+            results.style.display = "block";
+            arrow.style.transform = "rotate(90deg)";
+          } else {
+            results.style.display = "none";
+            arrow.style.transform = "rotate(0deg)";
+          }
+        }
+      });
+    });
+  }
+
+  // 5. Labor modal confirm → console.log final line item
+  if (labConfirmBtn) {
+    labConfirmBtn.addEventListener("click", () => {
+      const hours = labHoursEl?.value || 1;
+      const rateVal = labRateSelEl?.value || "Standard";
+
+      const lineItem = {
+        jobId: currentJobId,
+        partData: selectedPartData,
+        labor: {
+          hours: parseFloat(hours),
+          rate: rateVal
+        }
+      };
+
+      console.log("Final line item:", lineItem);
+
+      if (labNoteEl) labNoteEl.textContent = "Added to job!";
+      setTimeout(() => {
+        if (laborModalEl) laborModalEl.classList.add("hidden");
+        if (partsModalEl) partsModalEl.classList.add("hidden");
+        if (labNoteEl) labNoteEl.textContent = "";
+      }, 1500);
+    });
+  }
+
+  // Populate labor rate select (from settings)
+  function populateLaborRates() {
+    if (!labRateSelEl) return;
+    labRateSelEl.innerHTML = "";
+    const d = readLS(LS.data, { settings: { labor_rates: [] } });
+    const rates = d.settings?.labor_rates || [];
+    if (!rates.length) {
+      const opt = document.createElement("option");
+      opt.value = "Standard";
+      opt.textContent = "Standard";
+      labRateSelEl.appendChild(opt);
+      return;
+    }
+    rates.forEach((r) => {
+      const opt = document.createElement("option");
+      opt.value = r.name || "Standard";
+      opt.textContent = `${r.name || "Standard"} ($${r.rate || "0"}/hr)`;
+      labRateSelEl.appendChild(opt);
+    });
+  }
+
+  // Store user zipcode on page load
+  const user = currentUser && currentUser();
+  if (user && user.zipcode) {
+    localStorage.setItem("userZipcode", user.zipcode);
+  }
+
+  populateLaborRates();
+}
+
+// ===== Mobile Menu Toggle =====
+document.addEventListener("DOMContentLoaded", function() {
+  const menuToggle = document.getElementById("menuToggle");
+  const mainNav = document.getElementById("mainNav");
+
+  if (menuToggle && mainNav) {
+    menuToggle.addEventListener("click", function(e) {
+      e.stopPropagation();
+      this.classList.toggle("active");
+      mainNav.classList.toggle("active");
+    });
+
+    const navLinks = mainNav.querySelectorAll("a");
+    navLinks.forEach(link => {
+      link.addEventListener("click", () => {
+        menuToggle.classList.remove("active");
+        mainNav.classList.remove("active");
+      });
+    });
+
+    document.addEventListener("click", function(event) {
+      if (mainNav.classList.contains("active") &&
+          !mainNav.contains(event.target) &&
+          !menuToggle.contains(event.target)) {
+        menuToggle.classList.remove("active");
+        mainNav.classList.remove("active");
+      }
+    });
+  }
+
+  // Setup parts finder on jobs page
+  setupPartsFinder();
+});
+
+// Ensure dashboard open invoices list shows up to 5 cards before scrolling
+document.addEventListener('DOMContentLoaded', function(){
+  try{
+    const el = document.getElementById('openInvoicesList');
+    if(!el) return;
+    const applySize = ()=>{
+      const children = Array.from(el.children).filter(n=>n.nodeType===1);
+      const visible = 5;
+      if(!children.length){ el.style.maxHeight=''; el.style.overflowY=''; el.classList.remove('themed-scroll'); return; }
+      const first = children[0];
+      const gap = 8;
+      const cardHeight = Math.ceil(first.getBoundingClientRect().height);
+      const total = (cardHeight * visible) + (gap * (visible - 1));
+      el.style.maxHeight = total + 'px';
+      el.style.overflowY = (children.length > visible) ? 'auto' : 'visible';
+      el.classList.add('themed-scroll');
+    };
+    // initial
+    setTimeout(applySize,50);
+    // observe changes
+    const mo = new MutationObserver(()=> setTimeout(applySize,20));
+    mo.observe(el,{childList:true});
+    window.addEventListener('resize', applySize);
+  }catch(e){console.warn('dashboard openInv sizing:',e);} });
+
+// Hydrate synchronous in-memory cache and start main app flow.
+// This ensures the app's synchronous readLS()/writeLS() contract remains valid
+// while async Supabase persistence runs in the background.
+document.addEventListener('DOMContentLoaded', function() {
+  try {
+    if(!CACHE_LOADED) {
+      const raw = localStorage.getItem(LS.data);
+      if(raw) {
+        APP_CACHE = JSON.parse(raw);
+        CACHE_LOADED = true;
+        console.debug('Hydrated APP_CACHE from localStorage (sync)');
+      }
+    }
+  } catch(e) { console.warn('Error hydrating APP_CACHE sync:', e); }
+
+  // Start the main app initialization (async-safe)
+  if(typeof __mainBase === 'function'){
+    __mainBase().catch(err => console.error('__mainBase failed', err));
+  } else {
+    console.warn('__mainBase not found at startup');
+  }
+  // Abbreviate customer names on narrow screens (keeps original data intact)
+  // This observes invoice lists, tables and the day details table and shortens
+  // displayed customer labels when window width <= 1200px.
+  (function(){
+    function applyAbbreviations(){
+      try{
+        const isMobile = (typeof window !== 'undefined') && window.matchMedia && window.matchMedia('(max-width:1200px)').matches;
+        // Only change display on mobile-sized viewports
+        if(!isMobile) return;
+        // Only abbreviate customer names inside the Day details table on mobile
+        document.querySelectorAll('#dayTable td:nth-child(2), #dayTable thead th:nth-child(2)').forEach(el=>{
+          const txt = (el.textContent||el.innerText||'').trim();
+          const ab = abbrName(txt);
+          if(ab && ab !== txt) el.textContent = ab;
+        });
+      }catch(e){/* ignore */}
+    }
+
+    // Observe likely containers so we abbreviate when content changes
+    // Observe only the Day details table so invoice panels/tables remain unchanged
+    const dayNode = document.getElementById('dayTable');
+    if(dayNode){
+      try{
+        const mo = new MutationObserver(()=> setTimeout(applyAbbreviations,10));
+        mo.observe(dayNode, { childList:true, subtree:true, characterData:true });
+      }catch(e){/* ignore */}
+    }
+
+    // Run on load and on resize
+    window.addEventListener('resize', ()=> setTimeout(applyAbbreviations,50));
+    setTimeout(applyAbbreviations,100);
+  })();
+}
+});

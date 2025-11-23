@@ -1,0 +1,27 @@
+{
+  "settings": {
+    "services": [
+      {
+        "id": "svc_align",
+        "name": "Standard Wheel Alignment",
+        "parts_price": 0,
+        "labor_rate": 100,
+        "hours": 1.0
+      },
+      {
+        "id": "svc_control_arm",
+        "name": "Control Arm Replacement",
+        "parts_price": 250,
+        "labor_rate": 150,
+        "hours": 2.0
+      },
+      {
+        "id": "svc_oil_change",
+        "name": "Oil Change (Full Synthetic)",
+        "parts_price": 70,
+        "labor_rate": 90,
+        "hours": 0.5
+      }
+    ]
+  }
+}

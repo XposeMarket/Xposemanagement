@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: xpose-stripe-server
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node stripe-server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false

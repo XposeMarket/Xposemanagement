@@ -1,0 +1,509 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Settings</title><link rel="stylesheet" href="styles.css"></head><body>
+<header class="top">
+  <div class="container row top row">
+    <a class="brand" href="dashboard.html" aria-label="Home">
+      <img id="headerLogo" src="assets/XposeManagementCRMlogo.png" alt="Logo">
+    </a>
+    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button><nav id="mainNav">
+      <a href="dashboard.html" class="">Dashboard</a>
+      <a href="appointments.html" class="">Appointments</a>
+      <a href="jobs.html" class="">Jobs</a>
+      <a href="messages.html" class="">Messages</a>
+      <a href="invoices.html" class="">Invoices</a>
+      <a href="customers.html" class="">Customers</a>
+      <a href="settings.html" class="active">Settings</a>
+      <a href="profile.html" class="">Profile</a>
+    </nav>
+    <div>
+      <button id="themeToggle" class="btn" aria-label="Toggle theme">Theme</button>
+      <button id="logoutBtn" class="btn" aria-label="Logout">Logout</button>
+    </div>
+  </div>
+</header>
+<main class="container" style="padding:16px 0">
+  <h1>Settings</h1>
+  
+  <!-- Subscription Status Banner -->
+  <div id="subscriptionBanner" class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 24px; margin-bottom: 24px; display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+      <div>
+        <h2 style="margin: 0 0 8px 0; color: white; font-size: 1.5rem;">🎉 <span id="subPlanName">Single Plan</span></h2>
+        <p id="subStatusText" style="margin: 0; font-size: 1.1rem; opacity: 0.95;">Trial ends in <strong id="trialDaysLeft">14 days</strong></p>
+      </div>
+      <div style="text-align: right;">
+        <p style="margin: 0 0 4px 0; font-size: 0.9rem; opacity: 0.9;">First billing date</p>
+        <p id="billingDate" style="margin: 0; font-size: 1.2rem; font-weight: 600;">December 2, 2025</p>
+      </div>
+    </div>
+  </div>
+  
+  <div class="grid cols-2"><div class="card" style="position:relative; overflow:visible;"><h3>Shop Info</h3>
+  <!-- Logo preview positioned top-right of this card -->
+  <img id="shopLogoPreview" src="" alt="Logo preview" style="position:absolute; top:8px; right:8px; width:64px; height:auto; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,0.12); display:none; object-fit:contain; background:#fff; padding:4px;" />
+  <label>Shop Name</label><input id="shopName"><label>Phone</label><input id="shopPhone"><label>Email</label><input id="shopEmail"><label>Zipcode</label><input id="shopZipcode"><label>Shop Logo</label><input id="shopLogoFile" type="file" accept="image/*"><button id="saveShop" class="btn info" style="margin-top:10px">Save</button><p id="shopSaved" class="notice"></p></div><div class="card"><h3>Services</h3><div id="svcList"></div><div class="grid cols-3" style="margin-top:10px"><input id="svcName" placeholder="Service name"><input id="svcPrice" type="number" placeholder="Base price"><button id="svcAdd" class="btn primary">Add</button></div><p class="notice">Click a service to remove it.</p>
+<div class="card" style="margin-top:16px">
+  <div class="toolbar" style="justify-content:space-between">
+    <h3>Manage Labor Rates</h3>
+  </div>
+
+  <div id="labList"></div>
+  <div class="grid cols-3" style="margin-top:10px">
+    <input id="labName" placeholder="Rate name (e.g., Standard)">
+    <input id="labRate" type="number" step="0.01" placeholder="$/hr">
+    <button id="labAdd" class="btn primary">Add</button>
+  </div>
+  <p class="notice">Click a rate to remove it.</p>
+</div>
+</div></div>
+
+<!-- Shop Access & Team (hardcoded into page for reliability) -->
+<div class="card" id="xm-team-card" style="margin-top:16px">
+  <h2>Shop Access & Team</h2>
+  <div class="grid cols-3">
+    <div>
+      <label>Shop Type</label>
+      <select id="setShopType">
+        <option>Mechanic</option>
+        <option>Body</option>
+        <option>Other</option>
+      </select>
+    </div>
+    <div>
+      <label>Staff Limit</label>
+      <input id="setStaffLimit" type="number" min="1" value="3">
+    </div>
+    <div>
+      <label>Join Code</label>
+      <div style="position:relative;">
+        <input id="setJoinCode" value="" readonly style="padding-right:40px;">
+        <button id="btnCopyJoin" class="btn" type="button" title="Copy join code" style="position:absolute; right:5px; top:50%; transform:translateY(-50%); width:24px; height:24px; padding:0; display:flex; align-items:center; justify-content:center; border:none; background:none;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M16 1H4C3 1 2 2 2 3V17H4V3H16V1Z" fill="currentColor"/>
+            <path d="M15 5H8C7 5 6 6 6 7V21C6 22 7 23 8 23H20C21 23 22 22 22 21V11C22 10 21 9 20 9H17V7C17 6 16 5 15 5ZM20 21H8V7H15V11H20V21Z" fill="currentColor"/>
+          </svg>
+        </button>
+      </div>
+      <div style="margin-top:8px;">
+        <button id="btnRegenerateJoin" class="btn" type="button">Regenerate Code</button>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:16px">
+    <h3>Staff List</h3>
+    <div id="shopOwner" style="margin-bottom:8px; font-weight:600">Shop Owner: <span id="shopOwnerName">-</span></div>
+    <table class="table" id="staffTable"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Actions</th></tr></thead><tbody></tbody></table>
+        <style>
+          .owner-badge {
+            background: #ffd700;
+            color: #333;
+            font-weight: bold;
+            border-radius: 4px;
+            padding: 2px 6px;
+            margin-left: 6px;
+            font-size: 0.9em;
+          }
+        </style>
+    <p class="notice">Slots used: <span id="slotsUsed">0</span> / <span id="slotsMax">3</span></p>
+  </div>
+</div>
+
+</main>
+
+<!-- Confirmation Modal -->
+<div id="confirmModal" class="modal-overlay hidden">
+  <div class="modal-content card" style="max-width: 400px; margin: 20vh auto;">
+    <h3 id="confirmTitle">Confirm</h3>
+    <p id="confirmMessage" style="margin: 16px 0;"></p>
+    <div class="toolbar" style="justify-content: flex-end; gap: 8px;">
+      <button id="confirmCancel" class="btn">Cancel</button>
+      <button id="confirmOk" class="btn danger">Remove</button>
+    </div>
+  </div>
+</div>
+  <!-- Role Selection Modal -->
+  <div id="roleModal" class="modal-overlay hidden">
+    <div class="modal-content card" style="max-width: 420px; margin: 18vh auto;">
+      <h3 id="roleModalTitle">Edit Role</h3>
+      <div style="margin:12px 0">
+        <label for="roleSelect">Select role for <span id="roleModalTarget">user</span></label>
+        <select id="roleSelect" style="width:100%; padding:8px; margin-top:8px">
+          <option value="admin">admin</option>
+          <option value="service_writer">service_writer</option>
+          <option value="receptionist">receptionist</option>
+          <option value="staff">staff</option>
+        </select>
+      </div>
+      <div class="toolbar" style="justify-content: flex-end; gap: 8px; margin-top:12px;">
+        <button id="roleCancel" class="btn">Cancel</button>
+        <button id="roleSave" class="btn primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+<footer class="container">© Xpose Market</footer>
+<script src="vendor/supabase.umd.js"></script>
+<script type="module" src="app.js"></script>
+
+<script>
+// Populate the hardcoded Shop Access & Team panel from Supabase
+document.addEventListener('DOMContentLoaded', function(){
+  const SUPA_URL = 'https://hxwufjzyhtwveyxbkkya.supabase.co';
+  const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4d3Vmanp5aHR3dmV5eGJra3lhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI3MjU0MjAsImV4cCI6MjA3ODMwMTQyMH0.nN7MGoYyqwhonOSPBJlFEZoZrOEAIRP79l43FZK5nh8';
+
+  function waitForSupabaseClient(timeout = 5000){
+    return new Promise((resolve) => {
+      const start = Date.now();
+      function tryGet(){
+        // If a shared client already exists, return it
+        if(window._supabaseClient){
+          resolve(window._supabaseClient);
+          return;
+        }
+
+        // If vendor lib is available, create a single shared client (only once)
+        if(window.supabase && typeof window.supabase.createClient === 'function'){
+          try{
+            window._supabaseClient = window._supabaseClient || window.supabase.createClient(SUPA_URL, SUPA_KEY);
+            resolve(window._supabaseClient);
+            return;
+          }catch(e){
+            console.warn('Error creating shared Supabase client', e);
+          }
+        }
+
+        if(Date.now() - start > timeout){ resolve(null); return; }
+        setTimeout(tryGet, 200);
+      }
+      tryGet();
+    });
+  }
+
+  (async function(){
+    const elType = document.getElementById('setShopType');
+    const elLimit = document.getElementById('setStaffLimit');
+    const elJoin = document.getElementById('setJoinCode');
+    const btnCopy = document.getElementById('btnCopyJoin');
+    const btnRegen = document.getElementById('btnRegenerateJoin');
+    const tbody = document.querySelector('#staffTable tbody');
+    const slotsUsedEl = document.getElementById('slotsUsed');
+    const slotsMaxEl = document.getElementById('slotsMax');
+    const ownerEl = document.getElementById('shopOwnerName');
+    try{
+      // Ensure we have a Supabase client
+      const sup = await waitForSupabaseClient(8000);
+      if(!sup){ tbody.innerHTML = '<tr><td colspan="4" style="color:red;">[ERROR] Supabase client unavailable.</td></tr>'; return; }
+      // 1. Get current Supabase Auth user
+      const { data: authData, error: authErr } = await sup.auth.getUser();
+      const authId = authData?.user?.id || null;
+      if(!authId){
+        tbody.innerHTML = '<tr><td colspan="4" style="color:red;">[ERROR] No Supabase Auth user found. Please log in.</td></tr>';
+        return;
+      }
+      // 2. Query users table for this auth_id
+      let currentUser = null;
+      try{
+        const { data: userRows } = await sup.from('users').select('*').eq('auth_id', authId).limit(1);
+        currentUser = userRows && userRows[0] ? userRows[0] : null;
+      }catch(uErr){ console.warn('Error querying users by auth_id', uErr); }
+
+      
+
+      // If no match on auth_id, try matching by email (many existing rows may not have auth_id populated)
+      if(!currentUser){
+        const authEmail = authData?.user?.email || null;
+        if(authEmail){
+          try{
+            const { data: byEmail } = await sup.from('users').select('*').eq('email', authEmail).limit(1);
+            currentUser = byEmail && byEmail[0] ? byEmail[0] : null;
+            if(currentUser){
+                  console.warn('[settings] Found users row by email fallback. Consider setting users.auth_id for this user to', authId);
+                  console.log('[settings] users by email ->', currentUser);
+                }
+          }catch(e){ console.warn('Error querying users by email', e); }
+        }
+      }
+
+      if(!currentUser){
+        tbody.innerHTML = '<tr><td colspan="4" style="color:red;">[ERROR] No user record found for your account. Please ensure a `users` row exists with your email or auth_id.</td></tr>';
+        return;
+      }
+
+      if(!currentUser.shop_id){
+        tbody.innerHTML = '<tr><td colspan="4" style="color:red;">[ERROR] Your user record does not have a `shop_id` assigned. Please ask an admin to assign your account to a shop.</td></tr>';
+        return;
+      }
+      // 3. Query shops table for this shop_id
+      const { data: shopRows, error: shopErr } = await sup.from('shops').select('*').eq('id', currentUser.shop_id).limit(1);
+      const shop = shopRows && shopRows[0] ? shopRows[0] : null;
+      
+      if(!shop){
+        tbody.innerHTML = '<tr><td colspan="4" style="color:red;">[ERROR] No shop found for your user/shop assignment.</td></tr>';
+        return;
+      }
+      // shop has been resolved from the authenticated user's shop_id above
+
+      // Fill basic shop fields
+      if(elType) elType.value = shop.type || '';
+      if(elLimit) elLimit.value = shop.staff_limit || 3;
+      if(elJoin) elJoin.value = shop.join_code || '';
+      if(slotsMaxEl) slotsMaxEl.textContent = String(shop.staff_limit || 3);
+
+      // Fetch staff from both users and shop_staff then merge
+      let usersLocal = [];
+      try{ const { data: udata } = await sup.from('users').select('*').eq('shop_id', shop.id); if(udata) usersLocal = udata; }catch(e){ console.warn('Error querying users table', e); }
+      let staffData = [];
+      try{ const { data: sdata } = await sup.from('shop_staff').select('*').eq('shop_id', shop.id); if(sdata) staffData = sdata.map(s => ({ id: s.id, first: s.first_name, last: s.last_name, email: s.email, role: s.role, shop_id: s.shop_id, is_staff:true })); }catch(e){ console.warn('Error querying shop_staff', e); }
+
+      // Combine and dedupe by email (prefer usersLocal entries)
+      const combined = [...(usersLocal || []), ...(staffData || [])];
+      const emailMap = new Map();
+      combined.forEach(u => {
+        const key = (u.email || '').toLowerCase();
+        if(!emailMap.has(key)) emailMap.set(key, u);
+        else {
+          const existing = emailMap.get(key);
+          if(existing.is_staff && !u.is_staff) emailMap.set(key, u);
+        }
+      });
+      const allTeamMembers = Array.from(emailMap.values());
+
+      // Determine owner (admin) - prefer users table admin
+      let owner = allTeamMembers.find(x => x.role === 'admin' && !x.is_staff) || allTeamMembers.find(x => x.role === 'admin') || null;
+      if(owner){ ownerEl.textContent = `${owner.first || ''} ${owner.last || ''} - ${owner.email || ''}`; }
+      else ownerEl.textContent = 'None';
+
+      // Populate staff table
+      tbody.innerHTML = '';
+      if(!allTeamMembers.length){ tbody.innerHTML = '<tr><td colspan="4" class="muted">No team members found.</td></tr>'; if(slotsUsedEl) slotsUsedEl.textContent = '0'; }
+      else {
+        let used = 0;
+        // Find owner by owner_id
+        let shopOwnerId = shop.owner_id ? String(shop.owner_id).trim() : null;
+        // (No debug row in production) - owner_id and user IDs are used below for owner detection
+        allTeamMembers.forEach(u => {
+          const tr = document.createElement('tr');
+          
+          const isOwner = shopOwnerId && String(u.id).trim() === shopOwnerId;
+          // Name cell with badge for owner
+          const tdName = document.createElement('td');
+          tdName.textContent = `${u.first||u.first_name||''} ${u.last||u.last_name||''}`;
+          if(isOwner){
+            const badge = document.createElement('span');
+            badge.className = 'owner-badge';
+            badge.textContent = 'Owner';
+            tdName.appendChild(badge);
+          }
+          tr.appendChild(tdName);
+          // Email cell
+          const tdEmail = document.createElement('td'); tdEmail.textContent = u.email || ''; tr.appendChild(tdEmail);
+          // Role cell
+          const tdRole = document.createElement('td');
+          if(isOwner){
+            tdRole.textContent = 'owner';
+          }else{
+            // clickable bordered role badge that opens a role selection modal
+            const roleEl = document.createElement('span');
+            roleEl.className = 'role-badge';
+            roleEl.textContent = (u.role || 'staff');
+            roleEl.style.border = '1px solid #ddd';
+            roleEl.style.padding = '4px 8px';
+            roleEl.style.borderRadius = '6px';
+            roleEl.style.cursor = 'pointer';
+            roleEl.style.display = 'inline-block';
+            roleEl.style.background = '#fff';
+            roleEl.title = 'Click to change role';
+            // store identifying info
+            roleEl.dataset.email = (u.email || '').toLowerCase();
+            roleEl.dataset.role = (u.role || 'staff');
+            roleEl.addEventListener('click', () => openRoleModal(roleEl.dataset.email, roleEl.dataset.role, tr, roleEl));
+            tdRole.appendChild(roleEl);
+          }
+          tr.appendChild(tdRole);
+          // Actions cell
+          const tdAct = document.createElement('td');
+          if(isOwner){
+            tdAct.textContent = '';
+          }else{
+            tdAct.innerHTML = '<button class="btn" disabled>Remove</button>';
+          }
+          tr.appendChild(tdAct);
+          tbody.appendChild(tr);
+          if(!isOwner) used++;
+        });
+        if(slotsUsedEl) slotsUsedEl.textContent = String(used);
+      }
+
+      // Wire copy button
+      if(btnCopy && elJoin){
+        btnCopy.addEventListener('click', async function(){
+          try{
+            const text = (elJoin.value || '').toString();
+            if(!text) return;
+            if(navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(text);
+            else { elJoin.select(); document.execCommand('copy'); }
+            const prev = btnCopy.textContent; btnCopy.textContent = 'Copied!'; setTimeout(()=> btnCopy.textContent = prev, 1500);
+          }catch(ex){ console.warn('copy failed', ex); alert('Could not copy join code.'); }
+        });
+      }
+
+      // Role modal helpers
+      const roleModal = document.getElementById('roleModal');
+      const roleSelect = document.getElementById('roleSelect');
+      const roleModalTarget = document.getElementById('roleModalTarget');
+      const roleSaveBtn = document.getElementById('roleSave');
+      const roleCancelBtn = document.getElementById('roleCancel');
+      let roleModalContext = { email: null, row: null, badge: null };
+
+      function openRoleModal(email, currentRole, row, badgeEl){
+        roleModalContext = { email: (email||'').toLowerCase(), row: row, badge: badgeEl };
+        if(roleModalTarget) roleModalTarget.textContent = roleModalContext.email || 'user';
+        if(roleSelect) roleSelect.value = currentRole || 'staff';
+        if(roleModal) roleModal.classList.remove('hidden');
+      }
+
+      function closeRoleModal(){
+        roleModalContext = { email: null, row: null, badge: null };
+        if(roleModal) roleModal.classList.add('hidden');
+      }
+
+      roleCancelBtn?.addEventListener('click', (e) => { e.preventDefault(); closeRoleModal(); });
+
+      roleSaveBtn?.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const newRole = roleSelect.value;
+        const email = roleModalContext.email;
+        const badge = roleModalContext.badge;
+
+        // optimistic UI update
+        if(badge) { badge.textContent = newRole; badge.dataset.role = newRole; }
+
+        // Try to persist to Supabase: update users then shop_staff by email
+        if(sup){
+          try{
+            if(email){
+              // attempt users table update
+              try{
+                await sup.from('users').update({ role: newRole }).eq('email', email);
+              }catch(uErr){ /* ignore user update error - try shop_staff next */ }
+
+              try{
+                await sup.from('shop_staff').update({ role: newRole }).eq('email', email);
+              }catch(sErr){ /* ignore */ }
+            }
+          }catch(ex){
+            console.warn('Failed to persist role change', ex);
+          }
+        }
+
+        closeRoleModal();
+      });
+
+      // In-page confirm helper (returns Promise<boolean>) using the page's confirm modal
+      function showConfirm(message, okText = 'OK', cancelText = 'Cancel') {
+        return new Promise((resolve) => {
+          const modal = document.getElementById('confirmModal');
+          const msgEl = document.getElementById('confirmMessage');
+          const okBtn = document.getElementById('confirmOk');
+          const cancelBtn = document.getElementById('confirmCancel');
+          if (!modal || !msgEl || !okBtn || !cancelBtn) {
+            // fallback to native confirm if modal not present
+            resolve(window.confirm(message));
+            return;
+          }
+
+          msgEl.textContent = message;
+          okBtn.textContent = okText;
+          cancelBtn.textContent = cancelText;
+
+          function clean(result) {
+            modal.classList.add('hidden');
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            resolve(result);
+          }
+
+          function onOk() { clean(true); }
+          function onCancel() { clean(false); }
+
+          okBtn.addEventListener('click', onOk);
+          cancelBtn.addEventListener('click', onCancel);
+          modal.classList.remove('hidden');
+        });
+      }
+
+      // Wire regenerate button (update Supabase shops table)
+      // This loop will attempt to update the shop with a brand new join code and will
+      // retry if the DB reports a duplicate (unique constraint) to avoid ever producing
+      // a duplicate join code due to race conditions.
+      if(btnRegen && elJoin){
+        btnRegen.addEventListener('click', async function(){
+          const ok = await showConfirm('Generate a new join code for this shop?', 'Generate', 'Cancel');
+          if (!ok) return;
+          function gen(){ return Math.random().toString(36).slice(2,8).toUpperCase(); }
+
+          const maxTries = 200; // generous cap to avoid infinite loops
+          let tries = 0;
+          let lastErr = null;
+
+          while (tries < maxTries) {
+            tries++;
+            const code = gen();
+            try {
+              // Only update join_code to avoid touching non-existent columns like 'updated_at'
+              const { data: updated, error: upErr } = await sup.from('shops')
+                .update({ join_code: code })
+                .eq('id', shop.id)
+                .select()
+                .single();
+
+              if (upErr) {
+                const msg = String(upErr?.message || upErr || '');
+                if (upErr?.code === '23505' || /duplicate|unique/i.test(msg)) {
+                  lastErr = upErr;
+                  continue; // try another code
+                }
+                throw upErr;
+              }
+
+              // Success
+              elJoin.value = updated.join_code || code;
+              btnRegen.textContent = 'Saved'; setTimeout(()=> btnRegen.textContent = 'Regenerate Code', 1500);
+              lastErr = null;
+              break;
+            } catch (ex) {
+              const m = String(ex?.message || ex || '');
+              if (/duplicate|unique|23505/i.test(m)) { lastErr = ex; continue; }
+              console.warn('Failed to update join code', ex);
+              // show in-page notification fallback
+              alert('Could not update join code: ' + (ex.message || ex));
+              return;
+            }
+          }
+
+          if (tries >= maxTries) {
+            console.error('Could not generate a unique join code after', maxTries, 'tries', lastErr);
+            alert('Could not generate a unique join code. Please try again later.');
+          }
+        });
+      }
+
+    }catch(err){
+      console.error('Error populating settings panel from Supabase', err);
+    }
+
+  })();
+
+});
+</script>
+
+  <!-- ...existing code... -->
+<script type="module">
+import { loadSubscriptionBanner } from './pages/settings-subscription.js';
+
+// Load subscription info when page loads
+document.addEventListener('DOMContentLoaded', () => {
+  loadSubscriptionBanner();
+});
+</script>
+
+</body></html>

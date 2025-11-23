@@ -1,0 +1,165 @@
+// ============================================================================
+// APP.JS - Application Bootstrap (Clean, No Duplicates)
+// ============================================================================
+
+import { LS, ROLE_PAGES } from './helpers/constants.js';
+import { readLS, writeLS } from './helpers/storage.js';
+import { getCurrentUser, getCurrentShop } from './helpers/auth.js';
+import { byId, todayISO } from './helpers/utils.js';
+import { updateMessageNotifications } from './components/notifications.js';
+import { setupMobileMenu } from './components/mobileMenu.js';
+
+// Import page modules (they register themselves)
+import './pages/index.js';
+import './pages/signup.js';
+import './pages/create-shop.js';
+import './pages/dashboard.js';
+import './pages/appointments.js';
+import './pages/jobs.js';
+import './pages/messages.js';
+import './pages/invoices.js';
+import './pages/customers.js';
+import './pages/profile.js';
+import './pages/settings.js';
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+
+function pageName() {
+  const p = (location.pathname.split("/").pop() || "index.html").toLowerCase();
+  return p.replace(".html", "");
+}
+
+function setThemeFromUser() {
+  const u = getCurrentUser();
+  const t = (u && u.theme) || "light";
+  document.documentElement.classList.toggle("dark", t === "dark");
+}
+
+function toggleTheme() {
+  const html = document.documentElement;
+  html.classList.toggle("dark");
+  const dark = html.classList.contains("dark");
+  const u = getCurrentUser();
+  if (!u) return;
+  const users = readLS(LS.users, []);
+  const i = users.findIndex(x => x.id === u.id);
+  if (i >= 0) {
+    users[i].theme = dark ? "dark" : "light";
+    writeLS(LS.users, users);
+  }
+}
+
+function applyNavPermissions() {
+  const u = getCurrentUser();
+  if (!u) return;
+  const allowed = ROLE_PAGES[u.role] || [];
+  document.querySelectorAll("header nav a").forEach(a => {
+    const href = (a.getAttribute("href") || "").toLowerCase();
+    const pn = href.replace(".html", "").replace("./", "");
+    if (href && pn && !allowed.includes(pn)) {
+      a.style.display = "none";
+    }
+  });
+}
+
+function enforcePageAccess() {
+  const u = getCurrentUser();
+  if (!u) return;
+  const allowed = ROLE_PAGES[u.role] || [];
+  const pn = pageName();
+  const open = ["index", "signup", "create-shop"];
+  if (!allowed.includes(pn) && !open.includes(pn)) {
+    if (allowed.includes("dashboard")) location.href = "dashboard.html";
+    else location.href = "index.html";
+  }
+}
+
+async function requireAuth() {
+  const user = getCurrentUser();
+  const pn = pageName();
+  const open = ["index", "signup", "create-shop", ""];
+  if (!user && !open.includes(pn)) location.href = "index.html";
+  if (user) {
+    applyNavPermissions();
+    enforcePageAccess();
+  }
+}
+
+async function logout() {
+  try {
+    localStorage.removeItem(LS.session);
+  } catch (e) {}
+  location.href = "index.html";
+}
+
+async function ensureSeed() {
+  if (readLS(LS.seeded, false)) return;
+  
+  writeLS(LS.users, [{
+    id: "u1",
+    first: "Owner",
+    last: "User",
+    email: "owner@demo.local",
+    password: "admin123",
+    role: "admin",
+    shop_id: "s1"
+  }]);
+  
+  writeLS(LS.shops, [{
+    id: "s1",
+    name: "Demo Shop",
+    type: "Mechanic",
+    join_code: "ABCD12",
+    staff_limit: 3
+  }]);
+  
+  writeLS(LS.data, {
+    settings: { shop: { name: "Demo Shop", phone: "", email: "" } },
+    appointments: [],
+    jobs: [],
+    threads: [],
+    invoices: []
+  });
+  
+  writeLS(LS.seeded, true);
+}
+
+// ============================================================================
+// MAIN
+// ============================================================================
+
+async function main() {
+  console.log('🚀 App initializing...');
+  
+  await ensureSeed();
+  setThemeFromUser();
+  
+  // Wire up global buttons
+  const themeToggle = byId("themeToggle");
+  if (themeToggle) themeToggle.addEventListener("click", toggleTheme);
+  
+  const logoutBtn = byId("logoutBtn");
+  if (logoutBtn) logoutBtn.addEventListener("click", logout);
+  
+  setupMobileMenu();
+  
+  // Get current page
+  const page = pageName();
+  const publicPages = ["index", "", "signup", "create-shop"];
+  
+  if (!publicPages.includes(page)) {
+    await requireAuth();
+  }
+  
+  updateMessageNotifications();
+  console.log('✅ App initialized');
+}
+
+// Start the app
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', main);
+} else {
+  main();
+}

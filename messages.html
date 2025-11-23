@@ -1,0 +1,74 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Messages</title><link rel="stylesheet" href="styles.css"></head><body>
+<header class="top">
+  <div class="container row top row">
+    <a class="brand" href="dashboard.html" aria-label="Home">
+      <img id="headerLogo" src="assets/XposeManagementCRMlogo.png" alt="Logo">
+    </a>
+    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button><nav id="mainNav">
+      <a href="dashboard.html" class="">Dashboard</a>
+      <a href="appointments.html" class="">Appointments</a>
+      <a href="jobs.html" class="">Jobs</a>
+      <a href="messages.html" class="active">Messages</a>
+      <a href="invoices.html" class="">Invoices</a>
+      <a href="customers.html" class="">Customers</a>
+      <a href="settings.html" class="">Settings</a>
+      <a href="profile.html" class="">Profile</a>
+    </nav>
+    <div>
+      <button id="themeToggle" class="btn" aria-label="Toggle theme">Theme</button>
+      <button id="logoutBtn" class="btn" aria-label="Logout">Logout</button>
+    </div>
+  </div>
+</header>
+<main class="container" style="padding:16px 0">
+  <h1>Messages</h1>
+  <div class="grid cols-2 messages-wrap" style="position:relative">
+    <div class="card" style="min-height:400px">
+      <h3>Threads</h3>
+      <ul id="threadList" style="list-style:none;padding:0;margin:0"></ul>
+    </div>
+    <div class="card">
+      <h3 id="threadTitle">Select a thread</h3>
+      <div id="chatBox" style="height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--card)"></div>
+      <form id="sendForm" class="toolbar" style="margin-top:10px"><input id="msgInput" placeholder="Type a message…"><button class="btn primary" type="submit">Send</button></form>
+    </div>
+
+    <!-- Caution tape X overlay -->
+    <div class="caution-overlay" aria-hidden="true">
+      <div class="caution-tape tape-a"></div>
+      <div class="caution-tape tape-b"></div>
+      <div class="caution-plaque" role="status" aria-live="polite">
+        <div class="plaque-title">Under Construction</div>
+        <div class="plaque-sub">Live Shop to Client Texting directly through Xpose Management</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<style>
+  /* Caution tape X overlay for Messages page */
+  .messages-wrap{ overflow:visible; }
+  /* keep below the sticky header (header.top z-index:10) */
+  .caution-overlay{ position:absolute; inset:0; display:block; pointer-events:none; z-index:5; }
+  .caution-tape{ position:absolute; left:50%; top:50%; width:140%; height:44px; transform-origin:center; display:block; box-shadow:0 6px 18px rgba(0,0,0,0.25); }
+  .caution-tape::before{ content:""; position:absolute; inset:0; background:repeating-linear-gradient(45deg, #ffd54f 0 12px, #111 12px 24px); opacity:0.98; border-radius:6px; }
+  .tape-a{ transform:translate(-50%,-50%) rotate(30deg); }
+  .tape-b{ transform:translate(-50%,-50%) rotate(-30deg); }
+
+  .caution-plaque{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:linear-gradient(180deg,#fffef6,#fff8ec); border:2px solid #d6c08b; padding:18px 26px; border-radius:8px; box-shadow:0 12px 30px rgba(0,0,0,0.35); text-align:center; pointer-events:auto; z-index:6; }
+  .plaque-title{ font-size:20px; font-weight:700; color:#2b2b2b; letter-spacing:0.6px; }
+  .plaque-sub{ font-size:13px; margin-top:6px; color:#444; }
+
+  /* Slight responsive scale down on small screens */
+  @media(max-width:700px){
+    .caution-tape{ height:36px; }
+    .caution-tape::before{ background:repeating-linear-gradient(45deg, #ffd54f 0 10px, #111 10px 20px); }
+    .caution-plaque{ width:86%; padding:14px 18px; }
+  }
+</style>
+
+<footer class="container">© Xpose Market</footer>
+<script src="vendor/supabase.umd.js"></script>
+<script src="app.js"></script>
+<script src="multi-tenant.js"></script>
+</body></html>

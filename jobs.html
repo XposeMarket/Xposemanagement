@@ -1,0 +1,242 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jobs</title><link rel="stylesheet" href="styles.css"></head><body>
+<header class="top">
+  <div class="container row top row">
+    <a class="brand" href="dashboard.html" aria-label="Home">
+      <img id="headerLogo" src="assets/XposeManagementCRMlogo.png" alt="Logo">
+    </a>
+    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button><nav id="mainNav">
+      <a href="dashboard.html" class="">Dashboard</a>
+      <a href="appointments.html" class="">Appointments</a>
+      <a href="jobs.html" class="active">Jobs</a>
+      <a href="messages.html" class="">Messages</a>
+      <a href="invoices.html" class="">Invoices</a>
+      <a href="customers.html" class="">Customers</a>
+      <a href="settings.html" class="">Settings</a>
+      <a href="profile.html" class="">Profile</a>
+    </nav>
+    <div>
+      <button id="themeToggle" class="btn" aria-label="Toggle theme">Theme</button>
+      <button id="logoutBtn" class="btn" aria-label="Logout">Logout</button>
+    </div>
+  </div>
+</header>
+<div id="notification" class="notification hidden"></div>
+<div id="errorBanner" class="notification hidden" style="background:#ef4444;color:white;"></div>
+<!-- Error banner for user notifications (preserved) -->
+<!-- Debug banner (hidden in UI) -->
+<!-- ...existing code... -->
+<main class="container" style="padding:16px 0"><h1>Jobs</h1>
+
+<!-- Existing card (kept 1:1, just a heading added) -->
+<div class="card">
+  <h3>Active Jobs (In progress)</h3>
+  <table class="table" id="jobsTable">
+    <thead><tr>
+      <th class="sortable" data-col="id">Job #</th>
+      <th class="sortable" data-col="customer">Customer</th>
+      <th class="sortable" data-col="vehicle">Vehicle</th>
+      <th class="sortable" data-col="service">Service</th>
+      <th class="sortable" data-col="status">Status</th>
+      <th class="sortable" data-col="assigned">Assigned To</th>
+      <th>Actions</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+  <p class="notice" id="jobsEmpty"></p>
+</div>
+
+<!-- New, second card (staff-only population handled by app.js) -->
+<div class="card" id="awaitWrap" style="margin-top:16px">
+  <h3>Awaiting Parts</h3>
+  <table class="table" id="awaitTable">
+    <thead><tr>
+      <th class="sortable" data-col="id">Job #</th>
+      <th class="sortable" data-col="customer">Customer</th>
+      <th class="sortable" data-col="vehicle">Vehicle</th>
+      <th class="sortable" data-col="service">Service</th>
+      <th class="sortable" data-col="status">Status</th>
+      <th class="sortable" data-col="assigned">Assigned To</th>
+      <th>Actions</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+  <p class="notice" id="awaitEmpty"></p>
+</div>
+
+
+
+<!-- Add Parts Modal -->
+<div id="addPartsModal" class="card hidden" style="position:fixed; right:20px; bottom:20px; max-width:680px; z-index:65">
+  <form id="addPartsForm" onsubmit="return false;">
+    <div class="toolbar" style="justify-content:space-between">
+      <h3>Add Parts</h3>
+      <button id="closeAddParts" class="btn">Close</button>
+    </div>
+    <div class="grid cols-2" style="margin-top:8px">
+      <div>
+        <label>Part Name</label>
+        <input id="partName" placeholder="e.g., Brake Pads">
+      </div>
+      <div>
+        <label>Quantity</label>
+        <input id="partQty" type="number" value="1" min="1">
+      </div>
+      <div>
+        <label>Price</label>
+        <input id="partPrice" type="number" step="0.01" placeholder="0.00">
+      </div>
+    </div>
+      <div class="toolbar" style="margin-top:8px; justify-content:flex-end">
+      <button id="addToInvoiceBtn" class="btn info" type="button">Add to Invoice</button>
+    </div>
+    <p class="notice" id="addPartsNote"></p>
+  </form>
+</div>
+
+<!-- Labor Modal (single unified modal used by jobs and parts flows) -->
+<div id="laborModal" class="card hidden" style="position:fixed; right:20px; bottom:20px; max-width:420px; z-index:70">
+  <div class="toolbar" style="justify-content:space-between">
+    <h3>Add Labor</h3>
+    <button id="labClose" class="btn">Close</button>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:8px">
+    <div>
+      <label>Labor Description</label>
+      <input id="labDesc" placeholder="e.g., Brake Pad Replacement">
+      <!-- rate selector moved here (shows labor rate presets) -->
+      <select id="labRateSel" class="form-control" style="margin-top:6px; width:100%;"></select>
+    </div>
+    <div>
+      <label>Hours</label>
+      <input id="labHours" type="number" min="0" step="0.1" value="1">
+    </div>
+    <div>
+      <label>Rate</label>
+      <input id="labRateCustom" type="number" step="0.01" placeholder="$/hr" style="margin-top:6px; width:100%;">
+    </div>
+  </div>
+
+  <div class="toolbar" style="margin-top:8px; justify-content:flex-end">
+    <button id="labConfirm" class="btn info">Add</button>
+    <button id="skipLaborBtn" class="btn">Skip Labor</button>
+  </div>
+  <p class="notice" id="labNote" class="notice"></p>
+</div>
+<!-- Parts Finder Modal (integrated with catalog) -->
+<div id="partsModal" class="card hidden" style="position:fixed; right:20px; bottom:20px; max-width:800px; z-index:60; max-height:90vh; overflow-y:auto;">
+  <div class="toolbar" style="justify-content:space-between">
+    <h3>Find Parts</h3>
+    <button id="closeParts" class="btn">Close</button>
+  </div>
+  
+  <!-- Vehicle Info Display -->
+  <div id="partsVehicleInfo" style="background: var(--card-bg); padding: 12px; border-radius: 8px; margin-bottom: 16px; border: 1px solid var(--line);">
+    <strong>Vehicle:</strong> <span id="partsCurrentVehicle">Loading...</span>
+  </div>
+
+  <!-- Catalog Search Section -->
+  <div id="catalogSearchSection">
+    <h4 style="margin: 0 0 12px 0; font-size: 1rem;">Search Parts Catalog</h4>
+    
+    <!-- YMM Dropdowns -->
+    <div class="grid cols-3" style="margin-bottom: 12px;">
+      <div>
+        <label>Year</label>
+        <select id="catalogYear" class="form-control">
+          <option value="">Select Year</option>
+        </select>
+      </div>
+      <div>
+        <label>Make</label>
+        <select id="catalogMake" class="form-control" disabled>
+          <option value="">Select Make</option>
+        </select>
+      </div>
+      <div>
+        <label>Model</label>
+        <select id="catalogModel" class="form-control" disabled>
+          <option value="">Select Model</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Category & Search -->
+    <div class="grid cols-3" style="margin-bottom: 12px;">
+      <div>
+        <label>Category</label>
+        <select id="catalogCategory" class="form-control">
+          <option value="">All Categories</option>
+        </select>
+      </div>
+      <div>
+        <label>Search</label>
+        <input type="text" id="catalogSearch" class="form-control" placeholder="Part name or number...">
+      </div>
+      <div style="display: flex; align-items: flex-end;">
+        <button id="searchCatalogBtn" class="btn info" style="width: 100%;">Search Catalog</button>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="catalogResults" style="margin-top: 16px; max-height: 300px; overflow-y: auto;">
+      <p class="notice" style="text-align: center; color: var(--muted); padding: 2rem 1rem;">
+        <strong style="display: block; margin-bottom: 0.5rem;">Select vehicle and search to find parts</strong>
+        <small style="color: var(--muted); font-size: 0.85rem;">💡 Call suppliers or local auto parts stores for accurate pricing</small>
+      </p>
+    </div>
+  </div>
+
+  <!-- Manual Entry Fallback -->
+  <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line);">
+    <button id="openAddPartsFromFinder" class="btn" style="width: 100%;">Or Add Parts Manually</button>
+  </div>
+</div>
+
+</main>
+
+<div id="statusModal" class="modal-overlay hidden" onclick="closeStatusModal()">
+  <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 400px;">
+    <div class="modal-head">
+      <h3>Select Status</h3>
+      <button onclick="closeStatusModal()" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="statusPills" style="display: flex; flex-direction: column; gap: 12px;">
+        <!-- Pills will be populated -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="removeModal" class="modal-overlay hidden" onclick="closeRemoveModal()">
+  <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 400px;">
+    <div class="modal-head">
+      <h3>Remove Job</h3>
+      <button onclick="closeRemoveModal()" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p>Are you sure you want to remove this job?</p>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 20px;">
+        <button id="removeJobBtn" class="btn danger" style="width: 100%;">Remove Job</button>
+        <button id="removeJobApptBtn" class="btn danger" style="width: 100%;">Remove Job & Appointment</button>
+        <button id="cancelRemoveBtn" class="btn" style="width: 100%;">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Parts Catalog Modals -->
+<div id="partsCatalogModal"></div>
+<div id="partPricingModal"></div>
+
+<footer class="container">© Xpose Market</footer>
+<script src="vendor/supabase.umd.js"></script>
+<script type="module" src="app.js"></script>
+<script src="multi-tenant.js"></script>
+<!-- Parts Catalog Components -->
+<script src="components/partsCatalogModal.js"></script>
+<script src="components/partPricingModal.js"></script>
+<script src="components/partsModalHandler.js"></script>
+</body></html>
+

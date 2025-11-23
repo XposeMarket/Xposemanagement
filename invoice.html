@@ -1,0 +1,535 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Invoice</title><link rel="stylesheet" href="styles.css"></head><body>
+<header class="top">
+  <div class="container row top row">
+    <a class="brand" href="dashboard.html" aria-label="Home">
+      <img id="headerLogo" src="assets/XposeManagementCRMlogo.png" alt="Logo">
+    </a>
+    <nav>
+      <a href="dashboard.html" class="">Dashboard</a>
+      <a href="appointments.html" class="">Appointments</a>
+      <a href="jobs.html" class="">Jobs</a>
+      <a href="messages.html" class="">Messages</a>
+      <a href="invoices.html" class="">Invoices</a>
+      <a href="settings.html" class="">Settings</a>
+      <a href="profile.html" class="">Profile</a>
+    </nav>
+    <div>
+      <button id="themeToggle" class="btn" aria-label="Toggle theme">Theme</button>
+      <button id="logoutBtn" class="btn" aria-label="Logout">Logout</button>
+    </div>
+  </div>
+</header>
+<main class="container" style="padding:16px 0"><div id="invBrand">
+  <img id="invBrandLogo" src="assets/XposeManagementCRMlogo.png" alt="Logo" class="brand-left">
+<div class="brand-right">
+  <img alt="" id="brandShopLogo">
+  <span id="brandShopName" style="font-weight: bold;"></span>
+</div>
+</div>
+<!-- ...existing code... -->
+<div class="no-print" style="text-align:right; margin-bottom:8px"><button class="btn" onclick="printInvoice()">Print</button></div>
+<h1>Invoice <span id="invNo"></span></h1>
+<div><b>Customer:</b> <span id="invCustomer">-</span></div><div><b>Vehicle:</b> <span id="invVehicle">-</span></div><p class="notice" id="invMeta" style="margin-top:6px"></p><div style="margin-top:16px; padding:12px; border:1px solid #ddd; border-radius:4px; background:#f9f9f9;"><b>From:</b><br><span id="invShopName"></span><br><span id="invShopPhone"></span><br><span id="invShopEmail"></span></div></div></div><table class="table" id="invItems"><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody></tbody></table><div style="text-align:right;margin-top:10px"><div><b>Subtotal:</b> <span id="iSub">0.00</span></div><div><b>Tax:</b> <span id="iTax">0.00</span></div><div><b>Discount:</b> <span id="iDisc">0.00</span></div><div style="font-size:18px;margin-top:6px"><b>Grand Total:</b> <span id="iGrand">0.00</span></div></div></div>
+<img src="assets/logo.svg" alt="Xpose Management" id="printFooterLogo" class="no-screen">
+</main><footer class="container">© <span id="footerShopName"></span></footer><script src="vendor/supabase.umd.js"></script><script type="module" src="app.js"></script><script src="multi-tenant.js"></script>
+<!-- Fallback global print handler (will be overridden by module) -->
+<script>
+  window.printInvoice = function(){ window.print(); };
+</script>
+<script>
+/* ============ CRM-Xpose: Per-Part Labor (Step 1 / Data + Modal API) ============ */
+(function () {
+  const STORAGE_PREFIX = 'crm:savedLaborRates:';
+
+  function getShopId() {
+    try {
+      const session = JSON.parse(localStorage.getItem('crm:session') || '{}');
+      return session?.activeShopId || session?.shopId || 'default';
+    } catch (e) {
+      return 'default';
+    }
+  }
+
+  function loadRates() {
+    try {
+      const key = STORAGE_PREFIX + getShopId();
+      return JSON.parse(localStorage.getItem(key) || '[]');
+    } catch {
+      return [];
+    }
+  }
+
+  function saveRates(rates) {
+    const key = STORAGE_PREFIX + getShopId();
+    localStorage.setItem(key, JSON.stringify(rates));
+  }
+
+  function addRate(label, value) {
+    const v = Number(value);
+    if (!label || !Number.isFinite(v)) return { ok: false, error: 'Invalid name or rate' };
+    const rates = loadRates();
+    const idx = rates.findIndex(r => r.label === label);
+    const item = { label, value: v };
+    if (idx >= 0) rates[idx] = item;
+    else rates.push(item);
+    saveRates(rates);
+    return { ok: true, rates };
+  }
+
+  function removeRate(label) {
+    const rates = loadRates().filter(r => r.label !== label);
+    saveRates(rates);
+    return rates;
+  }
+
+  function renderIntoModal() {
+    const modal = document.getElementById('laborModal');
+    if (!modal) return;
+    const sel = modal.querySelector('[data-el="rateSelect"]');
+    if (!sel) return;
+    const rates = loadRates();
+    sel.innerHTML =
+      '<option value="">Custom rate…</option>' +
+      rates.map(r => `<option value="${r.value}">${r.label} — $${Number(r.value).toFixed(2)}/hr</option>`).join('');
+  }
+
+  function setupModalHandlers() {
+    const modal = document.getElementById('laborModal');
+    if (!modal) return;
+
+    const sel = modal.querySelector('[data-el="rateSelect"]');
+    const customRate = modal.querySelector('[data-el="rateInput"]');
+    const hoursInput = modal.querySelector('[data-el="hoursInput"]');
+    const addBtn = modal.querySelector('[data-el="addRateBtn"]');
+    const saveBtn = modal.querySelector('[data-el="saveRateBtn"]');
+    const nameInput = modal.querySelector('[data-el="rateNameInput"]');
+    const valueInput = modal.querySelector('[data-el="rateValueInput"]');
+    const addPanel = modal.querySelector('[data-el="addRatePanel"]');
+    const closeButtons = modal.querySelectorAll('[data-action="closeLaborModal"]');
+
+    sel && sel.addEventListener('change', () => {
+      if (sel.value) customRate.value = sel.value;
+    });
+
+    addBtn && addBtn.addEventListener('click', () => {
+      addPanel && addPanel.classList.remove('hidden');
+      nameInput && nameInput.focus();
+    });
+
+    saveBtn && saveBtn.addEventListener('click', () => {
+      const name = (nameInput?.value || '').trim();
+      const val = parseFloat(valueInput?.value);
+      const res = addRate(name, val);
+      if (!res.ok) { alert('Enter a valid name and numeric hourly rate.'); return; }
+      if (nameInput) nameInput.value = '';
+      if (valueInput) valueInput.value = '';
+      addPanel && addPanel.classList.add('hidden');
+      renderIntoModal();
+    });
+
+    closeButtons.forEach(btn => btn.addEventListener('click', () => modal.classList.add('hidden')));
+
+    renderIntoModal();
+  }
+
+  // Promise-based opener; will be used in Step 2 when we wire it in.
+  function openLaborModal(initialRate, initialHours) {
+    const modal = document.getElementById('laborModal');
+    if (!modal) return Promise.resolve(null);
+
+    modal.classList.remove('hidden');
+    renderIntoModal();
+    setupModalHandlers();
+
+    const rateInput = modal.querySelector('[data-el="rateInput"]');
+    const hoursInput = modal.querySelector('[data-el="hoursInput"]');
+    if (rateInput) rateInput.value = (initialRate ?? '');
+    if (hoursInput) hoursInput.value = (initialHours ?? 1);
+
+    return new Promise(resolve => {
+      const cancel = modal.querySelector('[data-action="closeLaborModal"]');
+      const confirm = modal.querySelector('[data-action="confirmLabor"]');
+
+      const onCancel = () => { cleanup(); resolve(null); };
+      const onConfirm = () => {
+        const rate = parseFloat(rateInput?.value);
+        const hours = parseFloat(hoursInput?.value);
+        if (!Number.isFinite(rate) || !Number.isFinite(hours) || hours <= 0) {
+          alert('Enter valid numbers for hours and rate.');
+          return;
+        }
+        cleanup();
+        resolve({ hours, rate, total: rate * hours });
+      };
+
+      function cleanup() {
+        confirm && confirm.removeEventListener('click', onConfirm);
+        cancel && cancel.removeEventListener('click', onCancel);
+        modal.classList.add('hidden');
+      }
+
+      confirm && confirm.addEventListener('click', onConfirm);
+      cancel && cancel.addEventListener('click', onCancel);
+    });
+  }
+
+  // Expose a tiny API for later steps.
+  window.LaborRates = {
+    load: loadRates,
+    add: addRate,
+    remove: removeRate,
+    openLaborModal,
+    renderIntoModal
+  };
+})();
+</script>
+
+<script type="module">
+import { getSupabaseClient } from './helpers/supabase.js';
+import { getShopData } from './helpers/storage.js';
+
+(async function(){
+  try{
+    const q = new URLSearchParams(location.search);
+    const id = q.get('id');
+    if (!id) return;
+
+    // Always try to fetch the latest invoice from Supabase first
+    const supabase = await getSupabaseClient();
+    let inv = null;
+    let data = JSON.parse(localStorage.getItem('xm_data') || '{}') || {};
+    let supabaseInvoice = null;
+    if (supabase) {
+      try {
+        const { data: rows, error } = await supabase.from('invoices').select('*').or(`id.eq.${id},number.eq.${id}`).limit(1);
+        if (!error && rows && rows.length) {
+          supabaseInvoice = rows[0];
+        }
+      } catch (e) { /* ignore */ }
+    }
+    if (supabaseInvoice) {
+      inv = supabaseInvoice;
+    } else {
+      // Fallback to local cache
+      inv = (data.invoices || []).find(i => String(i.id) === id || String(i.number) === id);
+    }
+
+    // Helper to render invoice object into DOM
+    function renderInvoice(invObj, allData, shopSource) {
+      if (!invObj) return;
+      const invNoEl = document.getElementById('invNo');
+      const invCustomerEl = document.getElementById('invCustomer');
+      const invVehicleEl = document.getElementById('invVehicle');
+      const metaEl = document.getElementById('invMeta');
+      const shopNameEl = document.getElementById('invShopName');
+      const shopPhoneEl = document.getElementById('invShopPhone');
+      const shopEmailEl = document.getElementById('invShopEmail');
+      const itemsTbody = document.querySelector('#invItems tbody');
+      const subEl = document.getElementById('iSub');
+      const taxEl = document.getElementById('iTax');
+      const discEl = document.getElementById('iDisc');
+      const grandEl = document.getElementById('iGrand');
+
+      invNoEl.textContent = invObj.number || invObj.id || '';
+      invCustomerEl.textContent = invObj.customer || (invObj.customer_first ? (invObj.customer_first + ' ' + (invObj.customer_last || '')) : '');
+      invVehicleEl.textContent = invObj.vehicle || '';
+
+  // Shop info: prefer allData.settings.shop, fall back to xm_shops.
+      // Treat seeded/demo shop names as non-authoritative so they don't show in production UI.
+      const DEFAULT_SHOP_NAME = 'Xpose Management';
+      const demoNames = ['GR Automotive'];
+  const shopInfo = (allData && allData.settings && allData.settings.shop) || JSON.parse(localStorage.getItem('xm_shops') || 'null') || null;
+      let s = null;
+      if (shopInfo) s = Array.isArray(shopInfo) ? shopInfo[0] : shopInfo;
+
+      // Clean, labelled display for shop "From" block
+      let displayName = DEFAULT_SHOP_NAME;
+      let displayPhone = '';
+      let displayEmail = '';
+      if (s && typeof s.name === 'string' && s.name.trim() && !demoNames.includes(s.name.trim())) {
+        displayName = s.name || DEFAULT_SHOP_NAME;
+        displayPhone = s.phone || '';
+        displayEmail = s.email || '';
+        // If no explicit source was passed, assume it came from data.settings
+        shopSource = shopSource || (allData && allData.settings && allData.settings.shop ? 'data.settings' : 'xm_shops');
+      } else {
+        // No authoritative shop data found — use a friendly default rather than seeded demo text.
+        displayName = DEFAULT_SHOP_NAME;
+        displayPhone = '';
+        displayEmail = '';
+        shopSource = shopSource || 'default_fallback';
+      }
+
+  // Render labels in bold, escape values to avoid HTML injection
+  function esc(v){ return String(v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  shopNameEl.innerHTML = `<strong>Name:</strong> ${esc(displayName)}`;
+  shopPhoneEl.innerHTML = `<strong>Number:</strong> ${esc(displayPhone)}`;
+  shopEmailEl.innerHTML = `<strong>Email:</strong> ${esc(displayEmail)}`;
+
+  // Show shop logo in header (top-right) and on the invoice brand area (top of invoice)
+  try {
+    const logoSrc = (s && (s.logo || s.logo_url || s.image)) ? (s.logo || s.logo_url || s.image) : '';
+    const brandLogoEl = document.getElementById('brandShopLogo');
+    const brandNameEl = document.getElementById('brandShopName');
+    if (logoSrc) {
+      if (brandLogoEl) { brandLogoEl.src = logoSrc; brandLogoEl.style.display = 'inline-block'; brandLogoEl.style.height = '48px'; brandLogoEl.style.width = 'auto'; brandLogoEl.style.marginRight = '8px'; }
+    } else {
+      if (brandLogoEl) { brandLogoEl.src = ''; brandLogoEl.style.display = 'none'; }
+    }
+    if (brandNameEl) brandNameEl.textContent = displayName || '';
+  } catch (e) {}
+
+    // Set print footer logo to shop logo when available (falls back to platform logo)
+    try {
+      const printLogo = document.getElementById('printFooterLogo');
+      if (printLogo) {
+        // Always use the platform/header logo for printed footer (platform branding)
+        const headerLogoEl = document.getElementById('headerLogo');
+        const footerLogoSrc = (headerLogoEl && headerLogoEl.src) ? headerLogoEl.src : 'assets/logo.svg';
+        printLogo.src = footerLogoSrc;
+        // Ensure the print logo resource is loaded by creating a hidden loader image
+        try {
+          let loader = document.getElementById('printFooterLogoLoader');
+          if (!loader) {
+            loader = document.createElement('img');
+            loader.id = 'printFooterLogoLoader';
+            loader.style.width = '0';
+            loader.style.height = '0';
+            loader.style.position = 'absolute';
+            loader.style.left = '-9999px';
+            loader.style.top = 'auto';
+            document.body.appendChild(loader);
+          }
+          loader.src = footerLogoSrc;
+        } catch (e) {}
+      }
+    } catch (e) {}
+
+      // Update debug banner if present
+      // ...existing code...
+
+      // Meta: status, due, paid_date
+      const parts = [];
+      if (invObj.status) parts.push(invObj.status.toUpperCase());
+      if (invObj.due) parts.push('Due: ' + invObj.due);
+      if (invObj.paid_date) parts.push('Paid: ' + (new Date(invObj.paid_date).toLocaleDateString()));
+      if (Array.isArray(invObj.job_numbers) && invObj.job_numbers.length) parts.push('Jobs: ' + invObj.job_numbers.join(', '));
+      if (Array.isArray(invObj.job_ids) && invObj.job_ids.length && allData && Array.isArray(allData.jobs)) {
+        const jobs = (allData.jobs || []).filter(j => invObj.job_ids.includes(j.id)).map(j => j.number || j.id);
+        if (jobs.length) parts.push('Jobs: ' + jobs.join(', '));
+      }
+      metaEl.textContent = parts.join(' · ');
+
+      // Items
+      itemsTbody.innerHTML = '';
+      const items = invObj.items || [];
+      let subtotal = 0;
+      items.forEach(itm => {
+        const qty = Number(itm.qty) || 0;
+        const price = Number(itm.price) || 0;
+        const total = qty * price;
+        subtotal += total;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${itm.name || ''}</td><td style="text-align:center">${qty}</td><td style="text-align:right">$${price.toFixed(2)}</td><td style="text-align:right">$${total.toFixed(2)}</td>`;
+        itemsTbody.appendChild(tr);
+      });
+
+      const taxRate = Number(invObj.tax_rate) || 0;
+      const discountRate = Number(invObj.discount) || 0;
+      const tax = subtotal * (taxRate / 100);
+      const discount = subtotal * (discountRate / 100);
+      const grand = subtotal + tax - discount;
+
+      subEl.textContent = subtotal.toFixed(2);
+      taxEl.textContent = tax.toFixed(2);
+      discEl.textContent = discount.toFixed(2);
+      grandEl.textContent = grand.toFixed(2);
+
+      // Footer shop name for print
+  const footerEl = document.getElementById('footerShopName');
+  if (footerEl) footerEl.textContent = displayName || '';
+    }
+
+    if (inv) {
+      // If we found the invoice in local cache, still prefer authoritative
+      // shop info: try getShopData() and Supabase `shops` table before using xm_shops.
+      let src = 'xm_data';
+      if (data && data.settings && data.settings.shop) src = 'data.settings';
+      else if (localStorage.getItem('xm_shops')) src = 'xm_shops';
+
+      try {
+        const supabase = await getSupabaseClient();
+        // Determine candidate shopId from invoice, data.settings, session, or xm_shops
+        let candidateShopId = null;
+        try {
+          if (inv && inv.shop_id) candidateShopId = inv.shop_id;
+          if (!candidateShopId && data && data.settings && data.settings.shop) {
+            const s0 = Array.isArray(data.settings.shop) ? data.settings.shop[0] : data.settings.shop;
+            if (s0 && (s0.id || s0.shop_id)) candidateShopId = s0.id || s0.shop_id;
+          }
+          if (!candidateShopId) {
+            const sess = JSON.parse(localStorage.getItem('xm_session') || 'null') || {};
+            candidateShopId = sess.shop_id || sess.shopId || candidateShopId;
+          }
+          if (!candidateShopId) {
+            const xmSh = JSON.parse(localStorage.getItem('xm_shops') || 'null');
+            if (Array.isArray(xmSh) && xmSh.length) candidateShopId = xmSh[0].id || xmSh[0].shop_id || null;
+          }
+        } catch (e) { /* ignore */ }
+        let authoritative = null;
+        let authoritativeSrc = null;
+
+        // 1) Try the storage helper (may fetch data.settings from server or LS)
+        try {
+          if (typeof getShopData === 'function') {
+            const shopBlob = await getShopData(candidateShopId);
+            if (shopBlob && shopBlob.settings && shopBlob.settings.shop) {
+              const s = Array.isArray(shopBlob.settings.shop) ? shopBlob.settings.shop[0] : shopBlob.settings.shop;
+              if (s && s.name && !['GR Automotive', 'Demo Shop'].includes(s.name.trim())) {
+                authoritative = s;
+                authoritativeSrc = 'data.settings';
+              }
+            }
+          }
+        } catch (e) { /* ignore */ }
+
+        // 2) If not found, ask Supabase shops table directly
+        if (!authoritative && supabase && candidateShopId) {
+          try {
+            const { data: sres, error: sErr } = await supabase.from('shops').select('*').eq('id', candidateShopId).limit(1).single();
+            if (!sErr && sres && sres.name && !['GR Automotive', 'Demo Shop'].includes((sres.name||'').trim())) {
+              authoritative = sres;
+              authoritativeSrc = 'shops_table';
+            }
+          } catch (e) { /* ignore */ }
+        }
+
+        // If we found authoritative shop info, merge it into local data for rendering
+        if (authoritative) {
+          const allData = Object.assign({}, data || {});
+          allData.settings = allData.settings || {};
+          allData.settings.shop = authoritative;
+          renderInvoice(inv, allData, authoritativeSrc);
+          return;
+        }
+        // 3) If still not authoritative, and we have a candidateShopId, fetch exactly like settings page:
+        //    - shops row from `shops`
+        //    - settings from `data` table
+        try {
+          if (!authoritative && supabase && candidateShopId) {
+            const { data: shopRow, error: shopErr } = await supabase.from('shops').select('*').eq('id', candidateShopId).single();
+            let settingsRow = null;
+            try {
+              const { data: drow, error: dErr } = await supabase.from('data').select('settings').eq('shop_id', candidateShopId).single();
+              if (!dErr && drow) settingsRow = drow.settings || null;
+            } catch(e) {}
+
+            // Debug show what we fetched
+            // ...existing code...
+
+            if (shopRow && shopRow.name && !['GR Automotive', 'Demo Shop'].includes((shopRow.name||'').trim())) {
+              const allData = Object.assign({}, data || {});
+              allData.settings = settingsRow || {};
+              allData.settings.shop = shopRow;
+              renderInvoice(inv, allData, 'shops_table');
+              return;
+            }
+          }
+        } catch (e) { /* ignore */ }
+      } catch (e) {
+        // ignore any failure and fall back to local caches below
+        console.warn('Invoice local path: authoritative shop lookup failed', e);
+      }
+
+      // No authoritative info found — render with local cache source
+      renderInvoice(inv, data, src);
+      return;
+    }
+
+    // If not in local xm_data, try xm_invoices or xm_shops
+    const alt = JSON.parse(localStorage.getItem('xm_invoices') || 'null');
+    if (!inv && alt && Array.isArray(alt)) {
+      inv = alt.find(i => String(i.id) === id || String(i.number) === id);
+      if (inv) { renderInvoice(inv, data); return; }
+    }
+
+    // Try to fetch the invoices from the Supabase-backed `invoices` table (via shared helper)
+    try {
+      const supabase = await getSupabaseClient();
+
+      // Helper: fetch shop info robustly (use storage helper first, then shops table)
+      async function fetchShopInfo(shopId) {
+        try {
+          if (typeof getShopData === 'function') {
+            const shopBlob = await getShopData(shopId);
+            if (shopBlob && shopBlob.settings && shopBlob.settings.shop) {
+              const s = Array.isArray(shopBlob.settings.shop) ? shopBlob.settings.shop[0] : shopBlob.settings.shop;
+              if (s && s.name) return s;
+            }
+          }
+        } catch (e) { /* ignore */ }
+
+        try {
+          if (supabase && typeof supabase.from === 'function') {
+            const { data: sres, error: sErr } = await supabase.from('shops').select('*').eq('id', shopId).limit(1).single();
+            if (!sErr && sres) return sres;
+          }
+        } catch (e) { /* ignore */ }
+
+        return null;
+      }
+
+      if (supabase) {
+        // Try invoices table first
+        const { data: rows, error } = await supabase.from('invoices').select('*').or(`id.eq.${id},number.eq.${id}`).limit(1);
+        if (!error && rows && rows.length) {
+          inv = rows[0];
+
+          // Attempt to fetch shop info if not present in local data
+          let allData = data;
+          let shopSrc = undefined;
+          if ((!allData.settings || !allData.settings.shop) && inv && inv.shop_id) {
+            const fetched = await fetchShopInfo(inv.shop_id);
+            if (fetched) {
+              allData = Object.assign({}, allData);
+              allData.settings = allData.settings || {};
+              allData.settings.shop = fetched.shop;
+              shopSrc = fetched.source;
+            }
+          }
+
+          renderInvoice(inv, allData, shopSrc);
+          return;
+        }
+      }
+    } catch (e) { console.warn('Supabase invoice fetch failed', e); }
+
+  } catch (e) { console.error('Failed to render invoice', e); }
+
+  // Override print handler: wait for print logo loader (or images) to load before calling print,
+  // so the print preview includes the correct shop logo.
+  window.printInvoice = async function(timeout = 1500){
+    try{
+  const ids = ['printFooterLogoLoader','printFooterLogo'];
+      for(const id of ids){
+        const el = document.getElementById(id);
+        if(!el || !el.src) continue;
+        if(el.complete && el.naturalWidth && el.naturalWidth>0) break;
+        await new Promise(res => {
+          let done = false;
+          const ondone = ()=>{ if(done) return; done=true; cleanup(); res(); };
+          const onerr = ()=>{ if(done) return; done=true; cleanup(); res(); };
+          function cleanup(){ el.removeEventListener('load', ondone); el.removeEventListener('error', onerr); }
+          el.addEventListener('load', ondone);
+          el.addEventListener('error', onerr);
+          setTimeout(()=>{ if(done) return; done=true; cleanup(); res(); }, timeout);
+        });
+        break;
+      }
+    }catch(e){}
+    try{ window.print(); }catch(e){ window.print(); }
+  };
+
+})();
+</script>
+</body></html>

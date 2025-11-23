@@ -1,0 +1,62 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Profile</title><link rel="stylesheet" href="styles.css"></head><body>
+<header class="top">
+  <div class="container row top row">
+    <a class="brand" href="dashboard.html" aria-label="Home">
+      <img id="headerLogo" src="assets/XposeManagementCRMlogo.png" alt="Logo">
+    </a>
+    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button><nav id="mainNav">
+      <a href="dashboard.html" class="">Dashboard</a>
+      <a href="appointments.html" class="">Appointments</a>
+      <a href="jobs.html" class="">Jobs</a>
+      <a href="messages.html" class="">Messages</a>
+      <a href="invoices.html" class="">Invoices</a>
+      <a href="customers.html" class="">Customers</a>
+      <a href="settings.html" class="">Settings</a>
+      <a href="profile.html" class="active">Profile</a>
+    </nav>
+    <div>
+      <button id="themeToggle" class="btn" aria-label="Toggle theme">Theme</button>
+      <button id="logoutBtn" class="btn" aria-label="Logout">Logout</button>
+    </div>
+  </div>
+</header>
+<main class="container" style="padding:16px 0"><h1>Profile</h1><div class="card" style="max-width:600px"><label>First name</label><input id="pfFirst"><label>Last name</label><input id="pfLast"><label>Email (read-only)</label><input id="pfEmail" disabled><label>Role</label><input id="pfRole" disabled><div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button id="pfSave" class="btn info">Save</button><button id="changeEmailBtn" class="btn">Change Email</button><button id="changePassBtn" class="btn">Change Password</button></div><p id="pfSaved" class="notice"></p></div><p id="pfSaved" class="notice"></p></div></main><!-- Change Email Modal -->
+<div id="emailModal" class="card hidden" style="position:fixed;right:20px;bottom:20px;max-width:520px;z-index:50">
+  <div class="toolbar" style="justify-content:space-between">
+    <h3>Change Email</h3>
+    <button id="closeEmail" class="btn">Close</button>
+  </div>
+  <label>New Email</label>
+  <input id="newEmail" type="email" placeholder="name@example.com">
+  <label>Current Password (re-auth)</label>
+  <input id="curPassForEmail" type="password" placeholder="Current password">
+  <div class="toolbar" style="margin-top:10px;justify-content:flex-end">
+  <button id="saveEmail" class="btn info">Save</button>
+  </div>
+  <p id="emailNotice" class="notice"></p>
+</div>
+
+<!-- Change Password Modal -->
+<div id="passModal" class="card hidden" style="position:fixed;right:20px;bottom:20px;max-width:520px;z-index:50">
+  <div class="toolbar" style="justify-content:space-between">
+    <h3>Change Password</h3>
+    <button id="closePass" class="btn">Close</button>
+  </div>
+  <label>Current Password</label>
+  <input id="curPass" type="password" placeholder="Current password">
+  <div class="grid cols-2">
+    <div>
+      <label>New Password</label>
+      <input id="newPass" type="password" placeholder="At least 6 characters">
+    </div>
+    <div>
+      <label>Confirm New Password</label>
+      <input id="confPass" type="password" placeholder="Repeat new password">
+    </div>
+  </div>
+  <div class="toolbar" style="margin-top:10px;justify-content:flex-end">
+  <button id="savePass" class="btn info">Save</button>
+  </div>
+  <p id="passNotice" class="notice"></p>
+</div>
+<footer class="container">© Xpose Management</footer><script src="vendor/supabase.umd.js"></script><script type="module" src="app.js"></script><script src="multi-tenant.js"></script></body></html>

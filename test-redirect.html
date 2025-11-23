@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Redirect</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container" style="padding: 40px; max-width: 600px; margin: 0 auto;">
+    <h1>Test Subscription Redirect</h1>
+    <p>This page will check your subscription and redirect you to the correct page.</p>
+    
+    <div id="status" style="margin: 20px 0; padding: 20px; background: #f3f4f6; border-radius: 8px;">
+      Checking...
+    </div>
+    
+    <button id="manualCheck" class="btn primary" style="margin-top: 20px;">
+      Check Subscription
+    </button>
+    
+    <button id="goAdmin" class="btn secondary" style="margin-top: 10px;">
+      Go to Admin (Force)
+    </button>
+    
+    <button id="goDashboard" class="btn secondary" style="margin-top: 10px;">
+      Go to Dashboard (Force)
+    </button>
+  </div>
+
+  <script type="module">
+    import { getSupabaseClient } from './helpers/supabase.js';
+    
+    const statusDiv = document.getElementById('status');
+    
+    async function checkAndRedirect() {
+      const supabase = getSupabaseClient();
+      
+      if (!supabase) {
+        statusDiv.innerHTML = '❌ Supabase not available';
+        return;
+      }
+      
+      try {
+        statusDiv.innerHTML = '🔍 Getting user...';
+        
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        
+        if (authError || !user) {
+          statusDiv.innerHTML = '❌ Not logged in: ' + (authError?.message || 'No user');
+          return;
+        }
+        
+        statusDiv.innerHTML = `✅ Logged in as: ${user.email}<br>🔍 Checking subscription...`;
+        
+        const { data: profile, error: profileError } = await supabase
+          .from('users')
+          .select('subscription_tier, subscription_plan, subscription_status')
+          .eq('id', user.id)
+          .single();
+        
+        if (profileError || !profile) {
+          statusDiv.innerHTML = `❌ Error fetching profile: ${profileError?.message || 'No profile'}`;
+          return;
+        }
+        
+        const tier = (profile.subscription_tier || profile.subscription_plan || 'single').toLowerCase();
+        const status = (profile.subscription_status || 'inactive').toLowerCase();
+        
+        statusDiv.innerHTML = `
+          <strong>User:</strong> ${user.email}<br>
+          <strong>Subscription Tier:</strong> ${tier} (raw: ${profile.subscription_tier || profile.subscription_plan})<br>
+          <strong>Subscription Status:</strong> ${status} (raw: ${profile.subscription_status})<br>
+          <br>
+          ${(['active', 'trialing'].includes(status) && ['local', 'multi'].includes(tier)) 
+            ? '✅ <strong>Should redirect to ADMIN</strong>' 
+            : '✅ <strong>Should redirect to DASHBOARD</strong>'}
+        `;
+        
+        // Auto redirect after 2 seconds
+        setTimeout(() => {
+          if (['active', 'trialing'].includes(status) && ['local', 'multi'].includes(tier)) {
+            statusDiv.innerHTML += '<br><br>🚀 Redirecting to admin.html...';
+            setTimeout(() => window.location.href = 'admin.html', 1000);
+          } else {
+            statusDiv.innerHTML += '<br><br>🚀 Redirecting to dashboard.html...';
+            setTimeout(() => window.location.href = 'dashboard.html', 1000);
+          }
+        }, 2000);
+        
+      } catch (error) {
+        statusDiv.innerHTML = `❌ Error: ${error.message}`;
+        console.error(error);
+      }
+    }
+    
+    // Check on load
+    checkAndRedirect();
+    
+    // Manual check button
+    document.getElementById('manualCheck').addEventListener('click', checkAndRedirect);
+    
+    // Force buttons
+    document.getElementById('goAdmin').addEventListener('click', () => {
+      window.location.href = 'admin.html';
+    });
+    
+    document.getElementById('goDashboard').addEventListener('click', () => {
+      window.location.href = 'dashboard.html';
+    });
+  </script>
+</body>
+</html>

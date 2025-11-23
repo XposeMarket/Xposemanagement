@@ -1,0 +1,201 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Invoices</title><link rel="stylesheet" href="styles.css">
+<style>
+  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:70; }
+  .modal-card { width:min(720px,92vw); background:var(--card,#fff); color:inherit; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+  .modal-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border,#e5e5e5); }
+  .modal-body { padding:12px 14px; }
+  .modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 14px; border-top:1px solid var(--border,#e5e5e5); }
+  .hidden { display:none; }
+</style>
+</head><body>
+<header class="top">
+  <div class="container row top row">
+    <a class="brand" href="dashboard.html" aria-label="Home">
+      <img id="headerLogo" src="assets/XposeManagementCRMlogo.png" alt="Logo">
+    </a>
+    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button><nav id="mainNav">
+      <a href="dashboard.html" class="">Dashboard</a>
+      <a href="appointments.html" class="">Appointments</a>
+      <a href="jobs.html" class="">Jobs</a>
+      <a href="messages.html" class="">Messages</a>
+      <a href="invoices.html" class="active">Invoices</a>
+      <a href="customers.html" class="">Customers</a>
+      <a href="settings.html" class="">Settings</a>
+      <a href="profile.html" class="">Profile</a>
+    </nav>
+    <div>
+      <button id="themeToggle" class="btn" aria-label="Toggle theme">Theme</button>
+      <button id="logoutBtn" class="btn" aria-label="Logout">Logout</button>
+    </div>
+  </div>
+</header>
+<main class="container" style="padding:16px 0"><h1>Invoices</h1>
+  <div class="card">
+    <div class="toolbar">
+      <button id="newInvoice" class="btn primary">New Invoice</button>
+      <input id="invSearch" placeholder="Search open…">
+    </div>
+    <table class="table" id="invTable">
+      <thead>
+        <tr>
+          <th class="sortable" data-col="number">#</th>
+          <th class="sortable" data-col="customer">Customer</th>
+          <th class="sortable" data-col="total">Total</th>
+          <th class="sortable" data-col="status">Status</th>
+          <th class="sortable" data-col="due">Due</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p class="notice" id="invEmpty"></p>
+  </div>
+
+  <details id="prevWrap" class="card" style="margin-top:14px">
+    <summary><b>Previous Invoices (Paid)</b></summary>
+    <div class="toolbar"><input id="prevSearch" placeholder="Search paid…"></div>
+    <table class="table" id="prevTable">
+      <thead>
+        <tr>
+          <th class="sortable" data-col="number">#</th>
+          <th class="sortable" data-col="customer">Customer</th>
+          <th class="sortable" data-col="total">Total</th>
+          <th class="sortable" data-col="status">Status</th>
+          <th class="sortable" data-col="due">Due</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p class="notice" id="prevEmpty"></p>
+  </details>
+<div id="invModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="invTitle">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2 id="invTitle">New Invoice</h2>
+      <button id="closeInv" class="btn">Close</button>
+    </div>
+    <div class="modal-body" style="max-height:60vh; overflow-y:auto">
+      <div class="grid cols-2" style="margin-top:8px">
+        <div><label>First Name</label><input id="invCustomerFirst" placeholder="First name" /></div>
+        <div><label>Last Name</label><input id="invCustomerLast" placeholder="Last name" /></div>
+        <div><label>Appointment ID (optional)</label><input id="invAppt" placeholder="a123..." /></div>
+        <div><label>Tax %</label><input id="invTax" type="number" value="6" /></div>
+        <div><label>Discount %</label><input id="invDisc" type="number" value="0" /></div>
+        <div><label>Due</label><input id="invDue" type="date" /></div>
+      </div>
+      <div style="margin-top:10px; position:relative">
+          <div class="toolbar" style="justify-content:space-between">
+            <h3>Items</h3>
+            <div>
+              <button id="addPart" class="btn">Add Parts</button>
+              <button id="addLabor" class="btn">Add Labor</button>
+              <button id="addService" class="btn">Add Service</button>
+            </div>
+          </div>
+          <div id="items"></div>
+          <!-- Floating centered + button (large, tappable) -->
+          <div style="text-align:center; padding:10px 0 36px 0">
+            <button id="floatingAdd" class="btn" aria-label="Add item" style="width:44px; height:44px; border-radius:50%; font-size:20px; line-height:20px; display:inline-flex; align-items:center; justify-content:center">+</button>
+          </div>
+        </div>
+    </div>
+    <div class="modal-foot">
+      <div>Subtotal: $<span id="subTotal">0.00</span></div><div style="width:14px"></div>
+      <div>Grand Total: $<span id="grandTotal">0.00</span></div><div style="width:14px"></div>
+      <button id="saveInv" class="btn primary">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Item Type Selection Modal -->
+<div id="itemTypeModal" class="modal-backdrop hidden">
+  <div class="modal-card" style="max-width:400px">
+    <div class="modal-head">
+      <h3>Add Item Type</h3>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:20px">Select the type of item to add:</p>
+      <div style="display:flex;gap:10px;justify-content:center">
+        <button id="addPartBtn" class="btn primary">Part</button>
+        <button id="addLaborBtn" class="btn primary">Labor</button>
+        <button id="addServiceBtn" class="btn primary">Service</button>
+        <button id="cancelItemBtn" class="btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Item Remove Modal (modal-themed confirmation for removing an item) -->
+<div id="confirmItemRemoveModal" class="modal-backdrop hidden" onclick="closeConfirmItemRemoveModal()">
+  <div class="modal-card" onclick="event.stopPropagation()" style="max-width:380px">
+    <div class="modal-head">
+      <h3>Remove Item</h3>
+      <button onclick="closeConfirmItemRemoveModal()" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirmItemRemoveMessage">Are you sure you want to remove this item?</p>
+    </div>
+    <div class="modal-foot">
+      <button id="confirmItemRemoveCancel" class="btn">Cancel</button>
+      <button id="confirmItemRemoveConfirm" class="btn danger">Remove</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Mark Paid Modal -->
+<div id="removeInvModal" class="modal-backdrop hidden" onclick="closeRemoveInvModal()">
+  <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 400px;">
+    <div class="modal-head">
+      <h3>Remove Invoice</h3>
+      <button onclick="closeRemoveInvModal()" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p>Are you sure you want to remove this invoice?</p>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 20px;">
+        <button id="removeInvBtn" class="btn danger" style="width: 100%;">Remove Invoice</button>
+        <button id="removeInvApptBtn" class="btn danger" style="width: 100%;">Remove Invoice & Appointment</button>
+        <button id="cancelRemoveInvBtn" class="btn" style="width: 100%;">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<!-- Confirm Mark Paid/Unpaid Modal -->
+<div id="confirmPayModal" class="modal-backdrop hidden" onclick="closeConfirmPayModal()">
+  <div class="modal-card" onclick="event.stopPropagation()" style="max-width:420px">
+    <div class="modal-head">
+      <h3 id="confirmPayTitle">Confirm</h3>
+      <button onclick="closeConfirmPayModal()" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirmPayMessage">Are you sure you want to proceed?</p>
+    </div>
+    <div class="modal-foot">
+      <button id="confirmPayCancel" class="btn">Cancel</button>
+      <button id="confirmPayConfirm" class="btn info">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<footer class="container">© Xpose Market</footer><script src="vendor/supabase.umd.js"></script><script type="module" src="app.js"></script><script src="multi-tenant.js"></script>
+<script>
+  // Check for #new hash to open modal
+  if (window.location.hash === '#new') {
+    document.getElementById('invModal').classList.remove('hidden');
+    setTimeout(() => document.getElementById('invCustomer').focus(), 50);
+  }
+</script>
+<!-- Defensive fallback: make sure Close button always hides modal -->
+<script>
+  (function(){
+    const closeBtn = document.getElementById('closeInv');
+    const modal = document.getElementById('invModal');
+    if (closeBtn && modal) {
+      closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+    }
+  })();
+</script>
+</body></html>

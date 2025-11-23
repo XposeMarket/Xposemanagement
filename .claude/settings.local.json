@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "SlashCommand(/init)",
+      "Bash(dir /b \"D:\\CRM''s\\CRM1 - Official\\helpers\" 2)",
+      "Bash(nul)",
+      "Bash(dir /b \"D:\\CRM''s\\CRM1 - Official\\components\" 2)",
+      "Bash(dir /b \"D:\\CRM''s\\CRM1 - Official\\pages\" 2)",
+      "Bash(test:*)",
+      "Bash(node --check:*)",
+      "Bash(for file in \"D:\\CRM''s\\CRM1 - Official\\helpers\\invoices.js\" \"D:\\CRM''s\\CRM1 - Official\\helpers\\storage.js\" \"D:\\CRM''s\\CRM1 - Official\\pages\\dashboard.js\" \"D:\\CRM''s\\CRM1 - Official\\pages\\appointments.js\" \"D:\\CRM''s\\CRM1 - Official\\app.js\")",
+      "Bash(done)",
+      "Bash(for file in \"D:\\CRM''''s\\CRM1 - Official\\helpers\"/*.js)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

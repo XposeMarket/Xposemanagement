@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CRM Diagnostic</title>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #f5f5f5; }
+        .check { margin: 10px 0; padding: 10px; background: white; border-left: 4px solid #ccc; }
+        .pass { border-left-color: #10b981; background: #f0fdf4; }
+        .fail { border-left-color: #ef4444; background: #fef2f2; }
+        .warn { border-left-color: #f59e0b; background: #fffbeb; }
+        code { background: #e5e7eb; padding: 2px 4px; border-radius: 3px; }
+        h1 { color: #1f2937; }
+        .section { margin: 20px 0; }
+        button { padding: 8px 16px; margin: 5px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #2563eb; }
+        #output { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>🔍 CRM Tool Diagnostic</h1>
+    <p>This page checks if your auth setup is working correctly.</p>
+    
+    <div class="section">
+        <button onclick="runDiagnostics()">Run Diagnostics</button>
+        <button onclick="clearLocalStorage()">Clear localStorage</button>
+        <button onclick="viewLocalStorage()">View localStorage</button>
+    </div>
+
+    <div id="output"></div>
+
+    <!-- MUST load Supabase first -->
+    <script src="vendor/supabase.umd.js"></script>
+    <!-- THEN init-globals.js -->
+    <script src="init-globals.js"></script>
+
+    <script>
+        function addCheck(title, pass, message) {
+            const output = document.getElementById('output');
+            const check = document.createElement('div');
+            check.className = 'check ' + (pass ? 'pass' : 'fail');
+            const icon = pass ? '✅' : '❌';
+            check.innerHTML = `${icon} <strong>${title}</strong><br><small>${message}</small>`;
+            output.appendChild(check);
+        }
+
+        function addWarn(title, message) {
+            const output = document.getElementById('output');
+            const check = document.createElement('div');
+            check.className = 'check warn';
+            check.innerHTML = `⚠️ <strong>${title}</strong><br><small>${message}</small>`;
+            output.appendChild(check);
+        }
+
+        function runDiagnostics() {
+            const output = document.getElementById('output');
+            output.innerHTML = '<h2>Running Diagnostics...</h2>';
+
+            // Check 1: Supabase UMD
+            addCheck('Supabase UMD Library', typeof window.supabase !== 'undefined', 
+                window.supabase ? 'Loaded successfully' : 'Not loaded - check vendor/supabase.umd.js');
+
+            // Check 2: Global functions
+            addCheck('Global readLS function', typeof window.readLS === 'function',
+                typeof window.readLS === 'function' ? 'Available' : 'Missing from init-globals.js');
+
+            addCheck('Global writeLS function', typeof window.writeLS === 'function',
+                typeof window.writeLS === 'function' ? 'Available' : 'Missing from init-globals.js');
+
+            // Check 3: LS constants
+            addCheck('Global LS constants', window.LS && window.LS.users,
+                window.LS ? `Found: ${Object.keys(window.LS).join(', ')}` : 'Missing LS object');
+
+            // Check 4: Supabase client
+            addCheck('Supabase client initialized', window.supabase && window.supabase.from,
+                window.supabase?.from ? 'Supabase client ready' : 'Supabase client not ready (check init-globals.js)');
+
+            addCheck('Supabase auth available', window.supabase && window.supabase.auth,
+                window.supabase?.auth ? 'Auth module loaded' : 'Auth module not loaded');
+
+            // Check 5: localStorage data
+            const users = window.readLS('xm_users', null);
+            const shops = window.readLS('xm_shops', null);
+            const session = window.readLS('xm_session', null);
+            const data = window.readLS('xm_data', null);
+
+            addCheck('Users in localStorage', users && users.length > 0,
+                users ? `${users.length} users found` : 'No users (expected for fresh setup)');
+
+            addCheck('Shops in localStorage', shops && shops.length > 0,
+                shops ? `${shops.length} shops found` : 'No shops (expected for fresh setup)');
+
+            addCheck('Active session', session && session.email,
+                session ? `Logged in as: ${session.email}` : 'No active session (expected)');
+
+            addCheck('Shop data initialized', data && data.appointments,
+                data ? 'Shop data structure found' : 'No shop data (expected for fresh setup)');
+
+            // Check 6: Browser APIs
+            addCheck('localStorage available', typeof localStorage !== 'undefined',
+                'localStorage API working');
+
+            addCheck('crypto.randomUUID available', typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function',
+                'UUID generation available');
+
+            // Check 7: Page files exist
+            const pages = ['login.html', 'signup.html', 'create-shop.html'];
+            addCheck('Required HTML files', true,
+                'Check if these files exist: ' + pages.join(', '));
+
+            // Check 8: Helper modules
+            addCheck('Helper modules', true,
+                'Verify: helpers/constants.js, helpers/storage.js, helpers/utils.js exist');
+
+            // Summary
+            const summary = document.createElement('div');
+            summary.style.marginTop = '30px';
+            summary.style.padding = '15px';
+            summary.style.background = '#e0f2fe';
+            summary.style.borderLeft = '4px solid #0ea5e9';
+            summary.innerHTML = `
+                <h3>✓ Diagnostic Complete</h3>
+                <p>If you see mostly green checks, your setup should work!</p>
+                <p><strong>Next steps:</strong></p>
+                <ul>
+                    <li>Open login.html in a browser tab</li>
+                    <li>Open DevTools console (F12)</li>
+                    <li>Try creating a shop or signing up</li>
+                    <li>Check this diagnostic again after creating data</li>
+                </ul>
+            `;
+            output.appendChild(summary);
+        }
+
+        function clearLocalStorage() {
+            if (confirm('Clear all localStorage data? This will delete all users, shops, and sessions.')) {
+                localStorage.clear();
+                document.getElementById('output').innerHTML = '<div class="check pass">✅ localStorage cleared</div>';
+            }
+        }
+
+        function viewLocalStorage() {
+            const output = document.getElementById('output');
+            output.innerHTML = '<h2>localStorage Contents</h2>';
+
+            const keys = ['xm_users', 'xm_shops', 'xm_session', 'xm_data'];
+            
+            keys.forEach(key => {
+                const value = localStorage.getItem(key);
+                if (value) {
+                    try {
+                        const parsed = JSON.parse(value);
+                        output.innerHTML += `<div class="check pass">
+                            <strong>${key}</strong><br>
+                            <pre style="background: #f3f4f6; padding: 10px; border-radius: 4px; overflow-x: auto;">
+${JSON.stringify(parsed, null, 2)}
+                            </pre>
+                        </div>`;
+                    } catch (e) {
+                        output.innerHTML += `<div class="check fail"><strong>${key}</strong><br>
+                            Invalid JSON: ${value.substring(0, 100)}...
+                        </div>`;
+                    }
+                } else {
+                    output.innerHTML += `<div class="check warn"><strong>${key}</strong><br>
+                        Not found in localStorage (this is normal if you haven't created data yet)
+                    </div>`;
+                }
+            });
+        }
+
+        // Auto-run on load
+        window.addEventListener('load', () => {
+            console.log('Diagnostic page loaded. Click "Run Diagnostics" button above.');
+        });
+    </script>
+</body>
+</html>
