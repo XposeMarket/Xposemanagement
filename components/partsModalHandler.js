@@ -148,25 +148,17 @@ class PartsModalHandler {
   async loadMakes() {
     const makeSelect = document.getElementById('catalogMake');
     const modelSelect = document.getElementById('catalogModel');
-    
     if (!makeSelect || !modelSelect) return;
-    
     // Reset
     makeSelect.innerHTML = '<option value="">Select Make</option>';
     modelSelect.innerHTML = '<option value="">Select Model</option>';
     modelSelect.disabled = true;
     this.selectedMake = null;
     this.selectedModel = null;
-
     if (!this.selectedYear) {
       makeSelect.disabled = true;
       return;
     }
-
-    // Use VEHICLE_DATA for makes
-    const makeSelect = document.getElementById('catalogMake');
-    const modelSelect = document.getElementById('catalogModel');
-    if (!makeSelect || !modelSelect) return;
     makeSelect.innerHTML = '<option value="">Select Make</option>';
     modelSelect.innerHTML = '<option value="">Select Model</option>';
     modelSelect.disabled = true;
@@ -207,18 +199,6 @@ class PartsModalHandler {
    * Load models for selected year + make
    */
   async loadModels() {
-    const modelSelect = document.getElementById('catalogModel');
-    if (!modelSelect) return;
-    
-    modelSelect.innerHTML = '<option value="">Select Model</option>';
-    this.selectedModel = null;
-
-    if (!this.selectedYear || !this.selectedMake) {
-      modelSelect.disabled = true;
-      return;
-    }
-
-    // Use VEHICLE_DATA for models
     const modelSelect = document.getElementById('catalogModel');
     if (!modelSelect) return;
     modelSelect.innerHTML = '<option value="">Select Model</option>';
