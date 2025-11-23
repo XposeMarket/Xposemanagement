@@ -22,21 +22,42 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 
+// Normalize frontend origin from env (ensure scheme and no trailing slash)
+function normalizeOrigin(val) {
+  if (!val) return val;
+  let v = String(val).trim();
+  // remove trailing slashes
+  v = v.replace(/\/+$/, '');
+  // prepend https:// if no scheme present
+  if (!/^https?:\/\//i.test(v)) {
+    v = 'https://' + v;
+  }
+  return v;
+}
+
 // Configure CORS - allow your frontend domain
 const allowedOrigins = [
   'http://localhost:5500',
   'http://127.0.0.1:5500',
-  process.env.FRONTEND_URL // Your production domain will go here
+  normalizeOrigin(process.env.FRONTEND_URL) // Your production domain will go here (normalized)
 ].filter(Boolean);
 
 app.use(cors({
   origin: function(origin, callback) {
     // Allow requests with no origin (like mobile apps or curl)
-    if (!origin) return callback(null, true);
-    
+    if (!origin) {
+      console.log('CORS check: no origin (allowing)');
+      return callback(null, true);
+    }
+
+    console.log('CORS check: incoming origin=', origin, 'allowedOrigins=', allowedOrigins);
+
+    // If a FRONTEND_URL is set but the incoming origin doesn't exactly match, reject
     if (allowedOrigins.indexOf(origin) === -1 && process.env.FRONTEND_URL) {
+      console.warn('CORS not allowed for origin:', origin);
       return callback(new Error('CORS not allowed'), false);
     }
+
     return callback(null, true);
   },
   credentials: true
@@ -76,7 +97,10 @@ app.post('/create-checkout-session', async (req, res) => {
       return res.status(400).json({ error: 'Price ID is required' });
     }
 
-    console.log('🔄 Creating Stripe checkout session...');
+    // Determine origin: prefer request Origin header, then normalized FRONTEND_URL env, then a sensible default
+    const envFrontend = normalizeOrigin(process.env.FRONTEND_URL);
+    const origin = req.headers.origin || envFrontend || 'https://xpose-stripe-server.vercel.app';
+    console.log('🔄 Creating Stripe checkout session... using origin:', origin, ' (raw req.headers.origin=', req.headers.origin, ', envFrontend=', envFrontend, ')');
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
@@ -103,8 +127,8 @@ app.post('/create-checkout-session', async (req, res) => {
       // Allow customers to enter promo codes
       allow_promotion_codes: true,
       // Redirect to create-shop page after successful payment (not dashboard)
-      success_url: `${req.headers.origin}/create-shop.html?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${req.headers.origin}/paywall.html`,
+      success_url: `${origin}/create-shop.html?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/paywall.html`,
     });
 
     res.json({ url: session.url });
@@ -305,7 +329,11 @@ async function handleSubscriptionUpdate(subscription) {
   
   // Update Supabase
   const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+<<<<<<< HEAD
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
+=======
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
+>>>>>>> f1b5945 (Deploy all Stripe/Supabase integration and fixes for production (CORS, env, webhook, keys, frontend))
   
   if (!supabaseUrl || !supabaseKey) {
     console.warn('⚠️ Supabase credentials not configured - skipping database update');
@@ -365,7 +393,11 @@ async function handleSubscriptionCanceled(subscription) {
   
   // Update Supabase
   const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+<<<<<<< HEAD
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
+=======
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
+>>>>>>> f1b5945 (Deploy all Stripe/Supabase integration and fixes for production (CORS, env, webhook, keys, frontend))
   
   if (!supabaseUrl || !supabaseKey) {
     console.warn('⚠️ Supabase credentials not configured - skipping database update');
@@ -428,7 +460,11 @@ async function handlePaymentFailed(invoice) {
   
   // Update Supabase to mark subscription as past_due
   const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+<<<<<<< HEAD
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
+=======
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
+>>>>>>> f1b5945 (Deploy all Stripe/Supabase integration and fixes for production (CORS, env, webhook, keys, frontend))
   
   if (!supabaseUrl || !supabaseKey) return;
   
