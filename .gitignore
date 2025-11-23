@@ -1,3 +1,15 @@
+# Local env files
+.env
+.env.local
+.env.*.local
+
+# Node modules and logs (common)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# VS Code
+.vscode/
 .env
 node_modules/
 .DS_Store
