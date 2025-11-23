@@ -109,53 +109,33 @@ class PartsModalHandler {
    * Load all years
    */
   async loadYears() {
+    // Use VEHICLE_DATA for years
     try {
-      console.log('Loading years from /api/catalog/years');
-      const response = await fetch('/api/catalog/years');
-      
-      if (!response.ok) {
-        throw new Error(`API returned ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log('Years loaded from API:', data);
-
-      // Merge with local VEHICLE_DATA if available so Parts Finder shows the
-      // same makes/models/years as the Appointments page (which uses VEHICLE_DATA).
-      const yearsSet = new Set((data.years || []).map(y => Number(y)));
-      if (window.VEHICLE_DATA) {
-        try {
-          Object.values(window.VEHICLE_DATA).forEach(entry => {
-            if (entry && Array.isArray(entry.years)) {
-              const [s, e] = entry.years.map(n => Number(n) || 0);
-              for (let y = s; y <= e; y++) yearsSet.add(y);
-            }
-            if (entry && entry.models) {
-              Object.values(entry.models).forEach(range => {
-                const [s2, e2] = range.map(n => Number(n) || 0);
-                for (let y = s2; y <= e2; y++) yearsSet.add(y);
-              });
-            }
-          });
-        } catch (e) {
-          console.warn('Failed to merge VEHICLE_DATA years', e);
+      if (!window.VEHICLE_DATA) throw new Error('VEHICLE_DATA not found');
+      const yearsSet = new Set();
+      Object.values(window.VEHICLE_DATA).forEach(entry => {
+        if (entry && Array.isArray(entry.years)) {
+          const [s, e] = entry.years.map(n => Number(n) || 0);
+          for (let y = s; y <= e; y++) yearsSet.add(y);
         }
-      }
-
+        if (entry && entry.models) {
+          Object.values(entry.models).forEach(range => {
+            const [s2, e2] = range.map(n => Number(n) || 0);
+            for (let y = s2; y <= e2; y++) yearsSet.add(y);
+          });
+        }
+      });
       const yearArr = Array.from(yearsSet).filter(Boolean).sort((a,b)=>b-a);
-
       const yearSelect = document.getElementById('catalogYear');
       if (!yearSelect) {
         console.error('Year select element not found');
         return;
       }
-
       yearSelect.innerHTML = '<option value="">Select Year</option>';
       yearArr.forEach(year => {
         yearSelect.innerHTML += `<option value="${year}">${year}</option>`;
       });
-
-      console.log(`Loaded ${yearArr.length} years into dropdown (merged)`);
+      console.log(`Loaded ${yearArr.length} years into dropdown (VEHICLE_DATA)`);
     } catch (error) {
       console.error('Error loading years:', error);
       alert('Failed to load years. Check console for details.');
@@ -183,40 +163,40 @@ class PartsModalHandler {
       return;
     }
 
+    // Use VEHICLE_DATA for makes
+    const makeSelect = document.getElementById('catalogMake');
+    const modelSelect = document.getElementById('catalogModel');
+    if (!makeSelect || !modelSelect) return;
+    makeSelect.innerHTML = '<option value="">Select Make</option>';
+    modelSelect.innerHTML = '<option value="">Select Model</option>';
+    modelSelect.disabled = true;
+    this.selectedMake = null;
+    this.selectedModel = null;
+    if (!this.selectedYear) {
+      makeSelect.disabled = true;
+      return;
+    }
     try {
-      const response = await fetch(`/api/catalog/makes/${this.selectedYear}`);
-      const data = await response.json();
-
-      const makesSet = new Set((data.makes || []).map(m => String(m)));
-
-      // Merge in makes from VEHICLE_DATA that cover the selected year
-      if (window.VEHICLE_DATA) {
-        try {
-          Object.keys(window.VEHICLE_DATA).forEach(make => {
-            const entry = window.VEHICLE_DATA[make];
-            if (!entry) return;
-            if (Array.isArray(entry.years)) {
-              const [s, e] = entry.years.map(n => Number(n) || 0);
-              const y = Number(this.selectedYear);
-              if (y >= s && y <= e) makesSet.add(make);
-            } else if (entry.models) {
-              // If models have ranges, include the make when any model matches year
-              const y = Number(this.selectedYear);
-              Object.values(entry.models).forEach(range => {
-                const [s2,e2] = range.map(n=>Number(n)||0);
-                if (y >= s2 && y <= e2) makesSet.add(make);
-              });
-            }
+      if (!window.VEHICLE_DATA) throw new Error('VEHICLE_DATA not found');
+      const makesSet = new Set();
+      Object.keys(window.VEHICLE_DATA).forEach(make => {
+        const entry = window.VEHICLE_DATA[make];
+        if (!entry) return;
+        if (Array.isArray(entry.years)) {
+          const [s, e] = entry.years.map(n => Number(n) || 0);
+          const y = Number(this.selectedYear);
+          if (y >= s && y <= e) makesSet.add(make);
+        } else if (entry.models) {
+          const y = Number(this.selectedYear);
+          Object.values(entry.models).forEach(range => {
+            const [s2,e2] = range.map(n=>Number(n)||0);
+            if (y >= s2 && y <= e2) makesSet.add(make);
           });
-        } catch (e) {
-          console.warn('Failed to merge VEHICLE_DATA makes', e);
         }
-      }
-
+      });
       Array.from(makesSet).sort().forEach(make => {
         makeSelect.innerHTML += `<option value="${make}">${make}</option>`;
       });
-
       makeSelect.disabled = false;
     } catch (error) {
       console.error('Error loading makes:', error);
@@ -238,33 +218,30 @@ class PartsModalHandler {
       return;
     }
 
+    // Use VEHICLE_DATA for models
+    const modelSelect = document.getElementById('catalogModel');
+    if (!modelSelect) return;
+    modelSelect.innerHTML = '<option value="">Select Model</option>';
+    this.selectedModel = null;
+    if (!this.selectedYear || !this.selectedMake) {
+      modelSelect.disabled = true;
+      return;
+    }
     try {
-      const response = await fetch(`/api/catalog/models/${this.selectedYear}/${this.selectedMake}`);
-      const data = await response.json();
-
-      const modelsSet = new Set((data.models || []).map(m => String(m)));
-
-      // Merge in models from VEHICLE_DATA for the selected make/year
-      if (window.VEHICLE_DATA && window.VEHICLE_DATA[this.selectedMake]) {
-        try {
-          const modelsObj = window.VEHICLE_DATA[this.selectedMake].models || {};
-          const y = Number(this.selectedYear);
-          Object.keys(modelsObj).forEach(model => {
-            const range = modelsObj[model];
-            const [s,e] = (range || []).map(n=>Number(n)||0);
-            if (!s || !e || (y >= s && y <= e)) {
-              modelsSet.add(model);
-            }
-          });
-        } catch (e) {
-          console.warn('Failed to merge VEHICLE_DATA models', e);
+      if (!window.VEHICLE_DATA || !window.VEHICLE_DATA[this.selectedMake]) throw new Error('VEHICLE_DATA not found for selected make');
+      const modelsSet = new Set();
+      const modelsObj = window.VEHICLE_DATA[this.selectedMake].models || {};
+      const y = Number(this.selectedYear);
+      Object.keys(modelsObj).forEach(model => {
+        const range = modelsObj[model];
+        const [s,e] = (range || []).map(n=>Number(n)||0);
+        if (!s || !e || (y >= s && y <= e)) {
+          modelsSet.add(model);
         }
-      }
-
+      });
       Array.from(modelsSet).sort().forEach(model => {
         modelSelect.innerHTML += `<option value="${model}">${model}</option>`;
       });
-
       modelSelect.disabled = false;
     } catch (error) {
       console.error('Error loading models:', error);
