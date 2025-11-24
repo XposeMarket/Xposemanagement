@@ -294,9 +294,9 @@ app.post('/get-session-subscription', async (req, res) => {
     
     // Map price IDs to plan names (these are your actual price IDs)
     const PRICE_TO_PLAN = {
-      'price_1STABgQMIc1SOVFzyfZLVotW': 'Single Shop',
-      'price_1STACjQMIc1SOVFz1JmYq341': 'Multi Shop',
-      'price_1STADSQMIc1SOVFz6egyM0cR': 'Advanced Shop'
+      'price_1SX97Z4K55W1qqBCSwzYlDd6': 'Single Shop ($99)',
+      'price_1SX97b4K55W1qqBC7o7fJYUi': 'Multi Shop ($149)',
+      'price_1SX97d4K55W1qqBCcNM0eP00': 'Advanced Shop ($199)'
     };
     
     planName = PRICE_TO_PLAN[priceId] || subscription.items.data[0].price.nickname || 'Unknown';
