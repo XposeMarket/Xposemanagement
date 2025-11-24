@@ -35,7 +35,7 @@ function getSupabase() {
  * Get all available years (1990-2025)
  */
 export async function getYears() {
-  const sb = getSupabase();
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('catalog_vehicles')
     .select('year')
@@ -52,7 +52,7 @@ export async function getYears() {
  * Get all makes for a specific year
  */
 export async function getMakes(year) {
-  const sb = getSupabase();
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('catalog_vehicles')
     .select('make')
@@ -70,7 +70,7 @@ export async function getMakes(year) {
  * Get all models for a year + make combination
  */
 export async function getModels(year, make) {
-  const sb = getSupabase();
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('catalog_vehicles')
     .select('model')
@@ -89,7 +89,7 @@ export async function getModels(year, make) {
  * Get all part categories
  */
 export async function getCategories() {
-  const sb = getSupabase();
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('catalog_categories')
     .select('*')
@@ -103,7 +103,7 @@ export async function getCategories() {
  * Search parts with filters
  */
 export async function searchParts({ year, make, model, category, searchTerm }) {
-  const sb = getSupabase();
+  const supabase = getSupabase();
   let query = supabase
     .from('catalog_parts')
     .select(`
@@ -137,7 +137,7 @@ export async function searchParts({ year, make, model, category, searchTerm }) {
  */
 export async function addPartToJob({ jobId, partId, quantity, costPrice, sellPrice, shopId }) {
   // First get the part details
-  const sb = getSupabase();
+  const supabase = getSupabase();
   const { data: part, error: partError } = await supabase
     .from('catalog_parts')
     .select('*')
@@ -150,7 +150,6 @@ export async function addPartToJob({ jobId, partId, quantity, costPrice, sellPri
   const markup = sellPrice && costPrice ? ((sellPrice - costPrice) / costPrice * 100).toFixed(2) : 0;
 
   // Insert into job_parts
-  const sb = getSupabase();
   const { data, error } = await supabase
     .from('job_parts')
     .insert({
@@ -176,7 +175,7 @@ export async function addPartToJob({ jobId, partId, quantity, costPrice, sellPri
  * Get all parts for a specific job
  */
 export async function getJobParts(jobId) {
-  const sb = getSupabase();
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('job_parts')
     .select(`
@@ -194,7 +193,7 @@ export async function getJobParts(jobId) {
  * Remove a part from a job
  */
 export async function removeJobPart(jobPartId) {
-  const sb = getSupabase();
+  const supabase = getSupabase();
   const { error } = await supabase
     .from('job_parts')
     .delete()
@@ -208,7 +207,7 @@ export async function removeJobPart(jobPartId) {
  * Update job part quantity or pricing
  */
 export async function updateJobPart(jobPartId, updates) {
-  const sb = getSupabase();
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('job_parts')
     .update(updates)
@@ -224,7 +223,7 @@ export async function updateJobPart(jobPartId, updates) {
  * Add labor to a job
  */
 export async function addLaborToJob({ jobId, description, hours, rate, notes }) {
-  const sb = getSupabase();
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('job_labor')
     .insert({
