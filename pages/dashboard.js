@@ -734,8 +734,8 @@ async function setupDashboard() {
   const revenueModal = document.getElementById('revenueModal');
   const revModalContent = document.getElementById('revModalContent');
   const revModalClose = document.getElementById('revModalClose');
-  const revModalAI = document.getElementById('revModalAI');
   const revModalExport = document.getElementById('revModalExport');
+  const revModalPrint = document.getElementById('revModalPrint');
   const quickModal = document.getElementById('quickStatsModal');
   const quickModalContent = document.getElementById('quickModalContent');
   const quickModalClose = document.getElementById('quickModalClose');
@@ -1120,23 +1120,133 @@ async function setupDashboard() {
     if (e.target === quickModal) closeQuickStatsModal();
   });
 
-  if (revModalAI) revModalAI.addEventListener('click', async () => {
-    // Placeholder: AI summary requires server-side API key. We create a simple UX flow.
-    revModalAI.textContent = 'Generating...';
+  // Helper: attempt to open a new window and print HTML, fallback to hidden iframe if blocked
+  function openAndPrintHtml(html) {
     try {
-      // Best-effort: generate a short heuristic summary locally
-      const paidInvAll = (data.invoices || []).filter(i => i.status === 'paid');
-      const totalRev = paidInvAll.reduce((a, i) => a + calcInvTotal(i), 0);
-      const sentence = `In the last period, total paid revenue is $${fmtMoney(totalRev)}. Top customers and services are listed on the right.`;
-      const node = document.createElement('div'); node.style.fontStyle = 'italic'; node.textContent = sentence;
-      revModalContent.prepend(node);
-      // If you provide an AI endpoint/key, we can call it here to replace the heuristic summary.
-    } catch (err) {
-      console.warn('AI summary failed', err);
-    } finally {
-      revModalAI.textContent = 'Summarize with AI';
+      const w = window.open('', '_blank', 'noopener,noreferrer');
+      if (w) {
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
+        setTimeout(() => {
+          try { w.focus(); w.print(); } catch (e) { console.warn('Export/Print failed in new window', e); }
+        }, 500);
+        return;
+      }
+    } catch (e) {
+      console.warn('window.open failed', e);
     }
+
+    // Popup blocked or window.open unavailable — use an off-screen iframe fallback
+    try {
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.style.overflow = 'hidden';
+      iframe.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(iframe);
+      const doc = iframe.contentWindow || iframe.contentDocument;
+      const wdoc = iframe.contentWindow.document || iframe.contentDocument;
+      wdoc.open();
+      wdoc.write(html);
+      wdoc.close();
+      // Wait for load event to ensure images/styles are applied
+      const tryPrint = () => {
+        try {
+          (iframe.contentWindow || window).focus();
+          (iframe.contentWindow || window).print();
+        } catch (err) {
+          console.warn('Iframe print failed', err);
+        } finally {
+          setTimeout(() => { try { document.body.removeChild(iframe); } catch (e) {} }, 500);
+        }
+      };
+      // If iframe has onload, use it; otherwise try after a short timeout
+      if ('onload' in iframe) {
+        iframe.onload = () => { setTimeout(tryPrint, 250); };
+      } else {
+        setTimeout(tryPrint, 750);
+      }
+    } catch (err) {
+      alert('Unable to open export/print window. Please enable popups or use the browser print (Ctrl/Cmd+P).');
+      console.warn('Print fallback failed', err);
+    }
+  }
+  // Print via off-screen iframe (skip window.open) to avoid popup blockers
+  function printViaIframe(html) {
+    try {
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.style.overflow = 'hidden';
+      iframe.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(iframe);
+      const wdoc = iframe.contentWindow.document || iframe.contentDocument;
+      wdoc.open();
+      wdoc.write(html);
+      wdoc.close();
+      const tryPrint = () => {
+        try {
+          (iframe.contentWindow || window).focus();
+          (iframe.contentWindow || window).print();
+        } catch (err) {
+          console.warn('Iframe print failed', err);
+        } finally {
+          setTimeout(() => { try { document.body.removeChild(iframe); } catch (e) {} }, 500);
+        }
+      };
+      if ('onload' in iframe) {
+        iframe.onload = () => { setTimeout(tryPrint, 250); };
+      } else {
+        setTimeout(tryPrint, 750);
+      }
+    } catch (err) {
+      alert('Unable to print. Please use the browser print (Ctrl/Cmd+P).');
+      console.warn('Print via iframe failed', err);
+    }
+  }
+
+  // Export revenue modal content: try client-side PDF generator (no popup), fallback to print
+  if (revModalExport) revModalExport.addEventListener('click', () => {
+    if (!revModalContent) return;
+    // Prefer html2pdf if available (generates a downloadable PDF without the print dialog)
+    if (window.html2pdf) {
+      try {
+        const opt = {
+          margin:       10,
+          filename:     'revenue-summary.pdf',
+          image:        { type: 'jpeg', quality: 0.98 },
+          html2canvas:  { scale: 2 },
+          jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+        html2pdf().set(opt).from(revModalContent).save();
+        return;
+      } catch (err) {
+        console.warn('html2pdf generation failed, falling back to print', err);
+      }
+    }
+
+    // Fallback: open print-friendly window/iframe
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Revenue Export</title><link rel="stylesheet" href="${location.origin}/styles.css"></head><body>${revModalContent.innerHTML}</body></html>`;
+    openAndPrintHtml(html);
   });
+
+  // Print button: use iframe-only print to avoid popup blockers
+  if (revModalPrint) revModalPrint.addEventListener('click', () => {
+    if (!revModalContent) return;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Revenue Print</title><link rel="stylesheet" href="${location.origin}/styles.css"></head><body>${revModalContent.innerHTML}</body></html>`;
+    printViaIframe(html);
+  });
+
+  // AI summary button removed from markup; no client-side handler needed.
   
   document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape') {

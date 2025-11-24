@@ -97,6 +97,21 @@ async function __mainBase() {
     });
   }
 
+  // Mobile nav quick actions (forward to header handlers)
+  if (byId('mobileThemeToggle')) {
+    byId('mobileThemeToggle').addEventListener('click', (e) => {
+      e.preventDefault();
+      // call the same toggle as the header button
+      toggleTheme();
+    });
+  }
+  if (byId('mobileLogoutBtn')) {
+    byId('mobileLogoutBtn').addEventListener('click', async (e) => {
+      e.preventDefault();
+      await logout();
+    });
+  }
+
   // Mobile burger menu toggle
   const menuToggle = byId("menuToggle");
   const mainNav = document.getElementById("mainNav");

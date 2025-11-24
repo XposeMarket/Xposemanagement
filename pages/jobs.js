@@ -400,16 +400,13 @@ function openJobActionsModal(job) {
   }
   const btns = modal.querySelector('#jobActionsBtns');
   btns.innerHTML = '';
-  // Add action buttons (Edit, Parts, Remove)
-  const editBtn = document.createElement('button');
-  editBtn.className = 'btn info';
-  editBtn.textContent = 'Edit';
-  editBtn.onclick = () => { modal.classList.add('hidden'); openEditModal(job); };
-  btns.appendChild(editBtn);
+  // Add action buttons (Parts, Remove)
   const partsBtn = document.createElement('button');
   partsBtn.className = 'btn';
   partsBtn.textContent = 'Parts';
-  partsBtn.onclick = () => { modal.classList.add('hidden'); openPartsModal(job); };
+  // Find related appointment for YMM info
+  const appt = allAppointments.find(a => a.id === job.appointment_id);
+  partsBtn.onclick = () => { modal.classList.add('hidden'); openPartsModal(job, appt); };
   btns.appendChild(partsBtn);
   const manualPartsBtn = document.createElement('button');
   manualPartsBtn.className = 'btn';

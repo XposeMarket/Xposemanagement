@@ -141,13 +141,17 @@ function toggleTheme() {
   const html = document.documentElement;
   html.classList.toggle('dark');
   const dark = html.classList.contains('dark');
+  // Persist to localStorage so selection survives page reloads even before user is loaded
+  try { localStorage.setItem('xm_theme', dark ? 'dark' : 'light'); } catch (e) {}
+
   const u = currentUser();
-  if (!u) return;
-  const users = readLS(LS.users, []);
-  const i = users.findIndex(x => x.id === u.id);
-  if (i >= 0) {
-    users[i].theme = dark ? 'dark' : 'light';
-    writeLS(LS.users, users);
+  if (u) {
+    const users = readLS(LS.users, []);
+    const i = users.findIndex(x => x.id === u.id);
+    if (i >= 0) {
+      users[i].theme = dark ? 'dark' : 'light';
+      writeLS(LS.users, users);
+    }
   }
 }
 
@@ -155,9 +159,21 @@ function toggleTheme() {
  * Set theme from user preference
  */
 function setThemeFromUser() {
+  // Priority: explicit localStorage override -> user preference -> do nothing
+  try {
+    const stored = localStorage.getItem('xm_theme');
+    if (stored) {
+      document.documentElement.classList.toggle('dark', stored === 'dark');
+      return;
+    }
+  } catch (e) {
+    // ignore
+  }
+
   const u = currentUser();
-  const t = (u && u.theme) || 'light';
-  document.documentElement.classList.toggle('dark', t === 'dark');
+  if (u && u.theme) {
+    document.documentElement.classList.toggle('dark', u.theme === 'dark');
+  }
 }
 
 export {

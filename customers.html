@@ -45,6 +45,9 @@
       <a href="customers.html" class="active">Customers</a>
       <a href="settings.html">Settings</a>
       <a href="profile.html">Profile</a>
+      <!-- Mobile-only entries so Theme and Logout are accessible from the mobile nav dropdown -->
+      <a href="#" id="mobileThemeToggle" class="mobile-nav-btn mobile-special">Theme</a>
+      <a href="#" id="mobileLogoutBtn" class="mobile-nav-btn mobile-special">Logout</a>
     </nav>
     <div>
       <button id="themeToggle" class="btn" aria-label="Toggle theme">Theme</button>
@@ -264,6 +267,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (menuToggle && mainNav) {
     menuToggle.addEventListener('click', () => {
       mainNav.classList.toggle('active');
+      // toggle active state on the button so CSS animation runs
+      menuToggle.classList.toggle('active');
     });
   }
 
@@ -315,6 +320,25 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
   })();
+  // Wire mobile nav theme/logout anchors to existing handlers
+  document.addEventListener('DOMContentLoaded', () => {
+    const mobileTheme = document.getElementById('mobileThemeToggle');
+    const mobileLogout = document.getElementById('mobileLogoutBtn');
+    const themeToggle = document.getElementById('themeToggle');
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (mobileTheme) {
+      mobileTheme.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (themeToggle) themeToggle.click();
+      });
+    }
+    if (mobileLogout) {
+      mobileLogout.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (logoutBtn) logoutBtn.click();
+      });
+    }
+  });
 </script>
 </body>
 </html>
