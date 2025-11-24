@@ -5,16 +5,27 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Supabase configuration (same as frontend)
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_KEY;
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// Lazily initialize Supabase client. Creating the client at module load
+// time can throw or produce hard-to-debug function failures when env
+// variables are missing in serverless runtimes. Use `getSupabase()`
+// inside route handlers so we can surface a clear error message.
+let _supabase = null;
+function getSupabase() {
+  if (_supabase) return _supabase;
+  const SUPABASE_URL = process.env.SUPABASE_URL;
+  const SUPABASE_KEY = process.env.SUPABASE_KEY;
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error('Missing Supabase env: require SUPABASE_URL and SUPABASE_KEY');
+  }
+  _supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  return _supabase;
+}
 
 /**
  * Get all available years (1990-2025)
  */
 export async function getYears() {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('catalog_vehicles')
     .select('year')
@@ -31,6 +42,7 @@ export async function getYears() {
  * Get all makes for a specific year
  */
 export async function getMakes(year) {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('catalog_vehicles')
     .select('make')
@@ -48,6 +60,7 @@ export async function getMakes(year) {
  * Get all models for a year + make combination
  */
 export async function getModels(year, make) {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('catalog_vehicles')
     .select('model')
@@ -66,6 +79,7 @@ export async function getModels(year, make) {
  * Get all part categories
  */
 export async function getCategories() {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('catalog_categories')
     .select('*')
@@ -79,6 +93,7 @@ export async function getCategories() {
  * Search parts with filters
  */
 export async function searchParts({ year, make, model, category, searchTerm }) {
+  const supabase = getSupabase();
   let query = supabase
     .from('catalog_parts')
     .select(`
@@ -112,6 +127,7 @@ export async function searchParts({ year, make, model, category, searchTerm }) {
  */
 export async function addPartToJob({ jobId, partId, quantity, costPrice, sellPrice, shopId }) {
   // First get the part details
+  const supabase = getSupabase();
   const { data: part, error: partError } = await supabase
     .from('catalog_parts')
     .select('*')
@@ -124,6 +140,7 @@ export async function addPartToJob({ jobId, partId, quantity, costPrice, sellPri
   const markup = sellPrice && costPrice ? ((sellPrice - costPrice) / costPrice * 100).toFixed(2) : 0;
 
   // Insert into job_parts
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('job_parts')
     .insert({
@@ -149,6 +166,7 @@ export async function addPartToJob({ jobId, partId, quantity, costPrice, sellPri
  * Get all parts for a specific job
  */
 export async function getJobParts(jobId) {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('job_parts')
     .select(`
@@ -166,6 +184,7 @@ export async function getJobParts(jobId) {
  * Remove a part from a job
  */
 export async function removeJobPart(jobPartId) {
+  const supabase = getSupabase();
   const { error } = await supabase
     .from('job_parts')
     .delete()
@@ -179,6 +198,7 @@ export async function removeJobPart(jobPartId) {
  * Update job part quantity or pricing
  */
 export async function updateJobPart(jobPartId, updates) {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('job_parts')
     .update(updates)
@@ -194,6 +214,7 @@ export async function updateJobPart(jobPartId, updates) {
  * Add labor to a job
  */
 export async function addLaborToJob({ jobId, description, hours, rate, notes }) {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('job_labor')
     .insert({
@@ -214,6 +235,7 @@ export async function addLaborToJob({ jobId, description, hours, rate, notes }) 
  * Get all labor for a specific job
  */
 export async function getJobLabor(jobId) {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('job_labor')
     .select('*')
