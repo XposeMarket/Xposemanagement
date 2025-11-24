@@ -391,8 +391,9 @@ class PartsModalHandler {
     }
 
     // Use the pricing modal component if available
-    if (window.partPricingModal) {
-      window.partPricingModal.show(part, this.currentJob.id, () => {
+    const ppm = window.xm_partPricingModal || window.partPricingModal;
+    if (ppm) {
+      ppm.show(part, this.currentJob.id, () => {
         this.closeModal();
         if (window.showNotification) {
           window.showNotification('Part added to job!', 'success');
