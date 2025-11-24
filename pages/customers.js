@@ -275,8 +275,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 			tableBody.innerHTML = customersArr.map((cust, idx) => {
 				const name = ((cust.customer_first || '') + ' ' + (cust.customer_last || '')).trim();
-				const phone = cust.phone || '';
-				const email = cust.email || '';
+				let phone = cust.phone || '';
+				let email = cust.email || '';
+				if (!phone) phone = '—';
+				else if (phone.length === 10 && /^\d{10}$/.test(phone)) phone = `(${phone.slice(0,3)}) ${phone.slice(3,6)}-${phone.slice(6)}`;
+				else if (phone.length === 11 && /^1\d{10}$/.test(phone)) phone = `(${phone.slice(1,4)}) ${phone.slice(4,7)}-${phone.slice(7)}`;
+				else if (!/^\(\d{3}\) \d{3}-\d{4}$/.test(phone)) phone = phone.replace(/(\d{3})(\d{3})(\d{4})/, '($1) $2-$3');
+				if (!email) email = '—';
 				const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
 				let row;
 				if (isMobile) {
@@ -284,14 +289,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 					// This prevents the global mobile CSS rule that hides `#custTable td:last-child`
 					row = `<tr data-cust-id="${cust.id}"><td class="cust-mobile-cell">${name}${phone ? ' - ' + phone : ''}${email ? ' ' + email : ''}</td><td class="cust-actions"></td></tr>`;
 				} else {
+					// Truncate long text for mobile
+					function truncate(str, maxLen = 18) {
+					  return (str && str.length > maxLen) ? str.slice(0, maxLen - 3) + '...' : str;
+					}
 					row = `<tr data-cust-id="${cust.id}">
-						<td>${name}</td>
-						<td>${phone}</td>
-						<td>${email}</td>
-						<td class="cust-veh">${vehicleCountByCustomer[cust.id] || 0}</td>
-						<td class="cust-total">${cust.total_visits || 0}</td>
-						<td>${cust.last_visit ? new Date(cust.last_visit).toLocaleDateString() : ''}</td>
-						<td class="cust-actions">
+						<td style="text-align:center;">${truncate(name, 18)}</td>
+						<td style="text-align:center;">${truncate(phone, 18)}</td>
+						<td style="text-align:center;"><span style='margin-left:32px;display:inline-block;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>${truncate(email, 18)}</span></td>
+						<td class="cust-veh" style="text-align:center;">${vehicleCountByCustomer[cust.id] !== undefined ? vehicleCountByCustomer[cust.id] : '—'}</td>
+						<td class="cust-total" style="text-align:center;">${cust.total_visits !== undefined ? cust.total_visits : '—'}</td>
+						<td class="cust-last-visit" style="text-align:center;">${cust.last_visit ? new Date(cust.last_visit).toLocaleDateString() : '—'}</td>
+						<td class="cust-actions" style="text-align:center;">
 							<button class="btn small info btn-view" data-idx="${idx}">View</button>
 							<button class="btn small danger btn-delete" data-idx="${idx}" aria-label="Delete customer"><svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg></button>
 						</td>
