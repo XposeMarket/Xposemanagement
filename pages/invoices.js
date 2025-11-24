@@ -373,19 +373,31 @@ function setupInvoices() {
     document.getElementById('invTitle').textContent = `Invoice #${inv.number || inv.id}`;
     // Prefer job customer if available
     let job = jobs.find(j => j.appointment_id === inv.appointment_id);
-    // Use standardized customer fields for modal
-    // If customer_first/last missing, look up by customer_id
     let first = inv.customer_first || '';
     let last = inv.customer_last || '';
+    // Try job customer fields
+    if ((!first || !last) && job) {
+      first = job.customer_first || job.first_name || first;
+      last = job.customer_last || job.last_name || last;
+    }
+    // Try appointment customer fields
+    let appt = appointments.find(a => a.id === inv.appointment_id);
+    if ((!first || !last) && appt) {
+      first = appt.customer_first || appt.first_name || first;
+      last = appt.customer_last || appt.last_name || last;
+    }
+    // Try customer_id lookup
     if ((!first || !last) && inv.customer_id) {
-      // Try to find customer in global customers array if available
       let customers = window.customers || [];
       let cust = customers.find(c => c.id === inv.customer_id);
       if (cust) {
-        first = cust.customer_first || cust.first_name || '';
-        last = cust.customer_last || cust.last_name || '';
+        first = cust.customer_first || cust.first_name || first;
+        last = cust.customer_last || cust.last_name || last;
       }
     }
+    // Fallback to any available name fields
+    if (!first) first = inv.first_name || inv.customer || '';
+    if (!last) last = inv.last_name || '';
     document.getElementById('invCustomerFirst').value = first;
     document.getElementById('invCustomerLast').value = last;
     // Always use customer_id for linking
@@ -415,7 +427,10 @@ function setupInvoices() {
     document.getElementById('subTotal').textContent = calcTotal(inv).toFixed(2);
     document.getElementById('grandTotal').textContent = calcTotal(inv).toFixed(2);
     // Save button
-    document.getElementById('saveInv').onclick = () => saveInvoice(inv);
+    document.getElementById('saveInv').onclick = () => {
+      console.log('[InvoiceModal] Save button clicked', inv);
+      saveInvoice(inv);
+    };
       // Close button
       document.getElementById('closeInv').onclick = () => {
         document.getElementById('invModal').classList.add('hidden');
@@ -1050,6 +1065,7 @@ function setupInvoices() {
 
   // Save invoice (upserts to invoices table)
   async function saveInvoice(inv) {
+    console.log('[saveInvoice] called with:', inv);
     // Update invoice fields
     // Always set customer_id from selected customer if available
     // Always require first and last name from modal
@@ -1186,6 +1202,15 @@ function setupInvoices() {
       }
     }
 
+    // Update invoice in global invoices array
+    const idx = invoices.findIndex(i => i.id === inv.id);
+    if (idx !== -1) {
+      invoices[idx] = { ...inv };
+      console.log('[saveInvoice] Updated invoice in global array:', invoices[idx]);
+    } else {
+      invoices.push({ ...inv });
+      console.log('[saveInvoice] Added new invoice to global array:', inv);
+    }
     // Save to Supabase/localStorage
     if (supabase) {
       // Get current data
@@ -1275,6 +1300,7 @@ function setupInvoices() {
     renderInvoices();
     renderPrevInvoices();
     showNotification('Invoice saved successfully!');
+    console.log('[saveInvoice] Modal closed and UI refreshed.');
   }
 
   // Mark invoice paid - FIXED to update Supabase
