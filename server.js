@@ -3,7 +3,12 @@ import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import dotenv from 'dotenv';
-import * as catalogAPI from './helpers/catalog-api.js';
+// Defer importing the catalog API until route handlers run. Importing at
+// module-load time can throw if environment variables are missing in the
+// serverless runtime and will cause the function invocation to fail.
+async function loadCatalogAPI(){
+  return await import('./helpers/catalog-api.js');
+}
 import { createClient } from '@supabase/supabase-js';
 import serverless from 'serverless-http';
 
@@ -154,42 +159,49 @@ console.log('🔧 Registering catalog API routes...');
 app.get('/api/catalog/years', async (req, res) => {
   console.log('📅 Years endpoint called');
   try {
+    const catalogAPI = await loadCatalogAPI();
     const years = await catalogAPI.getYears();
-    console.log('✅ Years fetched:', years.length);
+    console.log('✅ Years fetched:', Array.isArray(years) ? years.length : typeof years);
     res.json({ years });
   } catch (err) {
-    console.error('❌ Years error:', err);
-    res.status(500).json({ error: err.message });
+    console.error('❌ Years error:', err && err.stack ? err.stack : err);
+    res.status(500).json({ error: String(err && err.message ? err.message : err) });
   }
 });
 
 // Get makes for a year
 app.get('/api/catalog/makes/:year', async (req, res) => {
   try {
+    const catalogAPI = await loadCatalogAPI();
     const makes = await catalogAPI.getMakes(req.params.year);
     res.json({ makes });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('❌ Makes error:', err && err.stack ? err.stack : err);
+    res.status(500).json({ error: String(err && err.message ? err.message : err) });
   }
 });
 
 // Get models for year + make
 app.get('/api/catalog/models/:year/:make', async (req, res) => {
   try {
+    const catalogAPI = await loadCatalogAPI();
     const models = await catalogAPI.getModels(req.params.year, req.params.make);
     res.json({ models });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('❌ Models error:', err && err.stack ? err.stack : err);
+    res.status(500).json({ error: String(err && err.message ? err.message : err) });
   }
 });
 
 // Get categories
 app.get('/api/catalog/categories', async (req, res) => {
   try {
+    const catalogAPI = await loadCatalogAPI();
     const categories = await catalogAPI.getCategories();
     res.json({ categories });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('❌ Categories error:', err && err.stack ? err.stack : err);
+    res.status(500).json({ error: String(err && err.message ? err.message : err) });
   }
 });
 
@@ -197,18 +209,26 @@ app.get('/api/catalog/categories', async (req, res) => {
 app.post('/api/catalog/search', async (req, res) => {
   try {
     const { year, make, model, category, searchTerm } = req.body;
+    const catalogAPI = await loadCatalogAPI();
     const parts = await catalogAPI.searchParts({ year, make, model, category, searchTerm });
     res.json({ parts });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('❌ Search parts error:', err && err.stack ? err.stack : err);
+    res.status(500).json({ error: String(err && err.message ? err.message : err) });
   }
 });
 
 // Add part to job
 app.post('/api/catalog/add-part', async (req, res) => {
-  const { jobId, partId, quantity, costPrice, sellPrice, shopId } = req.body;
-  const result = await catalogAPI.addPartToJob({ jobId, partId, quantity, costPrice, sellPrice, shopId });
-  res.json(result);
+  try {
+    const { jobId, partId, quantity, costPrice, sellPrice, shopId } = req.body;
+    const catalogAPI = await loadCatalogAPI();
+    const result = await catalogAPI.addPartToJob({ jobId, partId, quantity, costPrice, sellPrice, shopId });
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Add part error:', err && err.stack ? err.stack : err);
+    res.status(500).json({ error: String(err && err.message ? err.message : err) });
+  }
 });
 
 // Cron endpoint: auto-transition 'new' -> 'scheduled' for platform-created appointments older than 1 hour
@@ -291,8 +311,8 @@ app.post('/api/cron/auto-schedule', async (req, res) => {
     console.log(`Cron: transitioned ${ids.length} appointment(s) from new->scheduled`);
     return res.json({ transitioned: ids.length });
   } catch (err) {
-    console.error('Cron exception:', err);
-    return res.status(500).json({ error: err.message });
+    console.error('Cron exception:', err && err.stack ? err.stack : err);
+    return res.status(500).json({ error: String(err && err.message ? err.message : err) });
   }
 });
 
