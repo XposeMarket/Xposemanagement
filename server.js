@@ -5,6 +5,7 @@ import { dirname } from 'path';
 import dotenv from 'dotenv';
 import * as catalogAPI from './helpers/catalog-api.js';
 import { createClient } from '@supabase/supabase-js';
+import serverless from 'serverless-http';
 
 // Load environment variables
 dotenv.config();
@@ -343,6 +344,12 @@ app.get('/', (req, res) => {
 // Serve static files LAST
 app.use(express.static('.'));
 
-app.listen(PORT, () => {
-  console.log(`Xpose Management API on http://localhost:${PORT}`);
-});
+// If running on Vercel (serverless), export handler; otherwise start server normally
+if (process.env.VERCEL) {
+  console.log('Running as Vercel serverless function');
+  export default serverless(app);
+} else {
+  app.listen(PORT, () => {
+    console.log(`Xpose Management API on http://localhost:${PORT}`);
+  });
+}
