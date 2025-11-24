@@ -13,11 +13,10 @@ const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY;
 const PORT = process.env.PORT || 3000;
 
 if (!CLAUDE_API_KEY) {
-  console.error('MISSING CLAUDE_API_KEY in .env! Get one at https://console.anthropic.com/settings/keys');
-  process.exit(1);
+  console.warn('CLAUDE_API_KEY not set. /api/grok-parts will be disabled.');
+} else {
+  console.log('Claude API loaded - Key ready');
 }
-
-console.log('Claude API loaded - Key ready');
 
 // Node 18+ provides global fetch. Ensure your local Node is >=18 (`node -v`).
 // Simple Express server exposing 3 routes backed by free public APIs.
@@ -156,6 +155,7 @@ app.post('/search-parts', async (req, res) => {
 app.post('/api/grok-parts', async (req, res) => {
   try {
     const { zipcode, vehicle, query, vin } = req.body;
+    if (!CLAUDE_API_KEY) return res.status(501).json({ error: 'Claude integration not configured on server' });
     if (!zipcode || !vehicle || !query) return res.status(400).json({ error: 'Missing data' });
 
     const vinPart = vin ? ` VIN:${vin}` : '';
