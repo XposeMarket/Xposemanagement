@@ -201,57 +201,67 @@ class PartPricingModal {
     const shopId = this.getCurrentShopId();
 
     if (!shopId) {
-      showNotification('Shop ID not found', 'error');
+      try { showNotification('Shop ID not found', 'error'); } catch (e) { PartPricingModal._fallbackNotification('Shop ID not found', 'error'); }
       return;
     }
 
     // Validation
     if (quantity < 1) {
-      showNotification('Quantity must be at least 1', 'error');
+      try { showNotification('Quantity must be at least 1', 'error'); } catch (e) { PartPricingModal._fallbackNotification('Quantity must be at least 1', 'error'); }
       return;
     }
 
     if (costPrice < 0 || sellPrice < 0) {
-      showNotification('Prices cannot be negative', 'error');
+      try { showNotification('Prices cannot be negative', 'error'); } catch (e) { PartPricingModal._fallbackNotification('Prices cannot be negative', 'error'); }
       return;
     }
 
     if (sellPrice < costPrice) {
-      const confirm = await this.showConfirmation(
-        'Sell price is lower than cost. Continue anyway?'
-      );
+      const confirm = await this.showConfirmation('Sell price is lower than cost. Continue anyway?');
       if (!confirm) return;
     }
 
     // Show loading state
-    document.getElementById('savePricingBtn').disabled = true;
-    document.getElementById('savePricingBtn').textContent = 'Adding...';
+    const saveBtn = document.getElementById('savePricingBtn');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Adding...';
+    }
 
     try {
+      const payload = {
+        jobId: this.currentJobId,
+        partId: this.currentPart.id,
+        quantity: quantity,
+        costPrice: costPrice,
+        sellPrice: sellPrice,
+        shopId: shopId,
+        notes: notes
+      };
+      console.log('[PartPricingModal] sending add-part payload', payload);
+
       const response = await fetch('/api/catalog/add-part', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jobId: this.currentJobId,
-          partId: this.currentPart.id,
-          quantity: quantity,
-          costPrice: costPrice,
-          sellPrice: sellPrice,
-          shopId: shopId,
-          notes: notes
-        })
+        body: JSON.stringify(payload)
       });
 
-      if (!response.ok) throw new Error('Failed to add part');
+      if (!response.ok) {
+        const respText = await response.text().catch(() => null);
+        console.error('[PartPricingModal] add-part response not ok', response.status, respText);
+        throw new Error(`Failed to add part (status ${response.status})`);
+      }
 
-      const data = await response.json();
-      
+      let data = null;
+      try { data = await response.json(); } catch (e) { data = null; }
+
       // Close modal
-      this.modal.style.display = 'none';
-      
+      if (this.overlay) this.overlay.style.display = 'none';
+      if (this.modal) this.modal.style.display = 'none';
+
       // Call callback if provided
       if (this.callback) {
-        this.callback(data);
+        try { this.callback(data); } catch (e) { console.warn('[PartPricingModal] callback threw', e); }
       }
 
       // Also add to invoice via client-side invoice flow if available
@@ -271,21 +281,28 @@ class PartPricingModal {
       } catch (err) {
         console.error('[PartPricingModal] failed to add part to invoice locally', err);
       }
+
       // Show a success notification to the user
       try { showNotification('Part added to invoice', 'success'); } catch (e) { PartPricingModal._fallbackNotification('Part added to invoice', 'success'); }
 
     } catch (error) {
       console.error('Error adding part:', error);
       try { showNotification('Failed to add part to job', 'error'); } catch (e) { PartPricingModal._fallbackNotification('Failed to add part to job', 'error'); }
-    // Static fallback notification method
-    PartPricingModal._fallbackNotification = function(msg, type) {
-      alert((type === 'error' ? '❌ ' : '✅ ') + msg);
-    };
+
     } finally {
       // Reset button state
-      document.getElementById('savePricingBtn').disabled = false;
-      document.getElementById('savePricingBtn').textContent = 'Add Part';
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Add Part';
+      }
     }
+  }
+
+  /**
+   * Static fallback notification method
+   */
+  static _fallbackNotification(msg, type) {
+    alert((type === 'error' ? '❌ ' : '✅ ') + msg);
   }
 
   /**
@@ -560,5 +577,12 @@ class PartPricingModal {
   }
 }
 
-// Export as global instance
-window.partPricingModal = new PartPricingModal();
+// Export as global instance (use a namespaced global to avoid id/name collisions with DOM)
+window.xm_partPricingModal = new PartPricingModal();
+try {
+  // Try to also set the legacy name when possible
+  window.partPricingModal = window.xm_partPricingModal;
+} catch (e) {
+  // Some environments make certain named globals non-writable; that's ok.
+  console.warn('[PartPricingModal] could not set legacy global window.partPricingModal', e);
+}

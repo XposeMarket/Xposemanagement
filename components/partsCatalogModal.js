@@ -260,8 +260,9 @@ class PartsCatalogModal {
    */
   showPricingModal(part) {
     // This will be handled by the separate PartPricingModal component
-    if (window.partPricingModal) {
-      window.partPricingModal.show(part, this.currentJobId, () => {
+      const ppm = window.xm_partPricingModal || window.partPricingModal;
+      if (ppm) {
+        ppm.show(part, this.currentJobId, () => {
         // Callback after part is added
         // Keep the parts catalog open so the user can continue browsing
         showNotification('Part added to job!', 'success');
