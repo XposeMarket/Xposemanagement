@@ -46,31 +46,54 @@ const allowedOrigins = [
 >>>>>>> backup-main
 ].filter(Boolean);
 
+// Robust CORS handling: allow listed origins or match hostnames (ignoring leading www.)
 app.use(cors({
   origin: function(origin, callback) {
     // Allow requests with no origin (like mobile apps or curl)
-<<<<<<< HEAD
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) === -1 && process.env.FRONTEND_URL) {
-      return callback(new Error('CORS not allowed'), false);
-    }
-=======
     if (!origin) {
       console.log('CORS check: no origin (allowing)');
       return callback(null, true);
     }
 
-    console.log('CORS check: incoming origin=', origin, 'allowedOrigins=', allowedOrigins);
+    try {
+      const incoming = String(origin).toLowerCase();
+      console.log('CORS check: incoming origin=', incoming, 'allowedOrigins=', allowedOrigins);
 
-    // If a FRONTEND_URL is set but the incoming origin doesn't exactly match, reject
-    if (allowedOrigins.indexOf(origin) === -1 && process.env.FRONTEND_URL) {
-      console.warn('CORS not allowed for origin:', origin);
-      return callback(new Error('CORS not allowed'), false);
+      // Direct exact-match first
+      if (allowedOrigins.indexOf(incoming) !== -1) {
+        return callback(null, true);
+      }
+
+      // Compare hostnames ignoring a leading www.
+      const stripWww = (h) => h.replace(/^www\./, '');
+      const incomingHost = (() => {
+        try { return stripWww(new URL(incoming).hostname); } catch (e) { return null; }
+      })();
+
+      if (incomingHost) {
+        for (const a of allowedOrigins) {
+          try {
+            const ah = stripWww(new URL(a).hostname);
+            if (ah === incomingHost) {
+              return callback(null, true);
+            }
+          } catch (e) {
+            // ignore parse errors and continue
+          }
+        }
+      }
+
+      // If a FRONTEND_URL is set but the incoming origin doesn't match, reject
+      if (process.env.FRONTEND_URL) {
+        console.warn('CORS not allowed for origin:', origin);
+        return callback(new Error('CORS not allowed'), false);
+      }
+
+      return callback(null, true);
+    } catch (err) {
+      console.error('CORS check failed:', err);
+      return callback(new Error('CORS check failed'), false);
     }
-
->>>>>>> backup-main
-    return callback(null, true);
   },
   credentials: true
 }));
