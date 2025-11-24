@@ -1184,6 +1184,19 @@ function setupInvoices() {
       if (job) job.items = JSON.parse(JSON.stringify(inv.items));
     }
 
+    // --- PATCH: Save vehicle info to invoice if present in modal ---
+    const year = document.getElementById('invVehicleYear')?.value || '';
+    const make = document.getElementById('invVehicleMake')?.value || '';
+    const model = document.getElementById('invVehicleModel')?.value || '';
+    let vehicleStr = '';
+    if (year && make && model) vehicleStr = `${year} ${make} ${model}`;
+    else if (year && make) vehicleStr = `${year} ${make}`;
+    else if (make && model) vehicleStr = `${make} ${model}`;
+    else if (year) vehicleStr = year;
+    else if (make) vehicleStr = make;
+    else if (model) vehicleStr = model;
+    inv.vehicle = vehicleStr;
+
     // Customer names already set from modal inputs above - no need to parse
 
     // Persist customer name to jobs and appointments
@@ -1272,6 +1285,7 @@ function setupInvoices() {
           customer_last: inv.customer_last || '',
           appointment_id: inv.appointment_id || null,
           job_id: inv.job_id || null,
+          vehicle: inv.vehicle || '',
           status: typeof inv.status === 'string' ? inv.status : 'open',
           due: inv.due || null,
           tax_rate: inv.tax_rate || 6,

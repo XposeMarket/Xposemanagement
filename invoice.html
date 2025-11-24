@@ -27,13 +27,39 @@
 </div>
 </div>
 <!-- ...existing code... -->
-<div class="no-print" style="text-align:right; margin-bottom:8px"><button class="btn" onclick="printInvoice()">Print</button></div>
+<div class="no-print" style="text-align:right; margin-bottom:8px">
+  <button class="btn" onclick="printInvoice()">Print</button>
+  <button class="btn" id="exportPdfBtn" style="margin-left:8px">Export as PDF</button>
+</div>
+<script src="vendor/jspdf.umd.min.js"></script>
 <h1>Invoice <span id="invNo"></span></h1>
 <div><b>Customer:</b> <span id="invCustomer">-</span></div><div><b>Vehicle:</b> <span id="invVehicle">-</span></div><p class="notice" id="invMeta" style="margin-top:6px"></p><div style="margin-top:16px; padding:12px; border:1px solid #ddd; border-radius:4px; background:#f9f9f9;"><b>From:</b><br><span id="invShopName"></span><br><span id="invShopPhone"></span><br><span id="invShopEmail"></span></div></div></div><table class="table" id="invItems"><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody></tbody></table><div style="text-align:right;margin-top:10px"><div><b>Subtotal:</b> <span id="iSub">0.00</span></div><div><b>Tax:</b> <span id="iTax">0.00</span></div><div><b>Discount:</b> <span id="iDisc">0.00</span></div><div style="font-size:18px;margin-top:6px"><b>Grand Total:</b> <span id="iGrand">0.00</span></div></div></div>
 <img src="assets/logo.svg" alt="Xpose Management" id="printFooterLogo" class="no-screen">
 </main><footer class="container">© <span id="footerShopName"></span></footer><script src="vendor/supabase.umd.js"></script><script type="module" src="app.js"></script><script src="multi-tenant.js"></script>
 <!-- Fallback global print handler (will be overridden by module) -->
 <script>
+  window.exportInvoiceAsPDF = async function() {
+    // Use jsPDF to export the invoice area as PDF
+    const { jsPDF } = window.jspdf || {};
+    if (!jsPDF) { alert('PDF export library not loaded.'); return; }
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    // Get invoice main content
+    const invoiceEl = document.querySelector('main.container');
+    if (!invoiceEl) { alert('Invoice content not found.'); return; }
+    // Use html2canvas for better rendering if available
+    if (window.html2canvas) {
+      const canvas = await window.html2canvas(invoiceEl);
+      const imgData = canvas.toDataURL('image/png');
+      doc.addImage(imgData, 'PNG', 20, 20, 555, 780, undefined, 'FAST');
+    } else {
+      doc.text(invoiceEl.innerText, 20, 40);
+    }
+    doc.save('invoice.pdf');
+  };
+  document.addEventListener('DOMContentLoaded', function() {
+    const btn = document.getElementById('exportPdfBtn');
+    if (btn) btn.onclick = window.exportInvoiceAsPDF;
+  });
   window.printInvoice = function(){ window.print(); };
 </script>
 <script>
@@ -232,7 +258,18 @@ import { getShopData } from './helpers/storage.js';
 
       invNoEl.textContent = invObj.number || invObj.id || '';
       invCustomerEl.textContent = invObj.customer || (invObj.customer_first ? (invObj.customer_first + ' ' + (invObj.customer_last || '')) : '');
-      invVehicleEl.textContent = invObj.vehicle || '';
+      // Vehicle: always prefer invoice.vehicle, fallback to job/appointment if missing
+      let vehicle = invObj.vehicle || '';
+      if (!vehicle && invObj.job_id && allData && Array.isArray(allData.jobs)) {
+        const job = allData.jobs.find(j => j.id === invObj.job_id || j.appointment_id === invObj.appointment_id);
+        if (job && job.vehicle) vehicle = job.vehicle;
+      }
+      if (!vehicle && invObj.appointment_id && allData && Array.isArray(allData.appointments)) {
+        const appt = allData.appointments.find(a => a.id === invObj.appointment_id);
+        if (appt && appt.vehicle) vehicle = appt.vehicle;
+      }
+      // PATCH: If invoice.vehicle is present, always show it
+      invVehicleEl.textContent = invObj.vehicle || vehicle || '';
 
   // Shop info: prefer allData.settings.shop, fall back to xm_shops.
       // Treat seeded/demo shop names as non-authoritative so they don't show in production UI.
