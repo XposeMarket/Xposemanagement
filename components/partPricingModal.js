@@ -229,32 +229,30 @@ class PartPricingModal {
     }
 
     try {
-      const payload = {
-        jobId: this.currentJobId,
-        partId: this.currentPart.id,
-        quantity: quantity,
-        costPrice: costPrice,
-        sellPrice: sellPrice,
-        shopId: shopId,
-        notes: notes
-      };
-      console.log('[PartPricingModal] sending add-part payload', payload);
+      // Use Supabase client directly to insert part into job_parts
+      const { supabase } = await import('../helpers/supabase.js');
+      const partId = this.currentPart.id;
+      const { data, error } = await supabase
+        .from('job_parts')
+        .insert({
+          shop_id: shopId,
+          job_id: this.currentJobId,
+          part_id: partId,
+          part_name: this.currentPart.name || this.currentPart.part_name || '',
+          part_number: this.currentPart.part_number || '',
+          quantity: quantity || 1,
+          cost_price: costPrice || 0,
+          sell_price: sellPrice || 0,
+          markup_percent: sellPrice && costPrice ? ((sellPrice - costPrice) / costPrice * 100).toFixed(2) : 0,
+          notes: notes || ''
+        })
+        .select()
+        .single();
 
-      const API_BASE = (window.XM_API_BASE !== undefined) ? window.XM_API_BASE : '';
-      const response = await fetch(`${API_BASE}/api/catalog/add-part`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const respText = await response.text().catch(() => null);
-        console.error('[PartPricingModal] add-part response not ok', response.status, respText);
-        throw new Error(`Failed to add part (status ${response.status})`);
+      if (error) {
+        console.error('[PartPricingModal] Supabase error adding part:', error);
+        throw new Error(`Failed to add part: ${error.message}`);
       }
-
-      let data = null;
-      try { data = await response.json(); } catch (e) { data = null; }
 
       // Close modal
       if (this.overlay) this.overlay.style.display = 'none';
