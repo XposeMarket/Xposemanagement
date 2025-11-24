@@ -9,14 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 // Load environment variables
 dotenv.config();
 
-const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY;
 const PORT = process.env.PORT || 3000;
-
-if (!CLAUDE_API_KEY) {
-  console.warn('CLAUDE_API_KEY not set. /api/grok-parts will be disabled.');
-} else {
-  console.log('Claude API loaded - Key ready');
-}
 
 // Node 18+ provides global fetch. Ensure your local Node is >=18 (`node -v`).
 // Simple Express server exposing 3 routes backed by free public APIs.
@@ -151,77 +144,7 @@ app.post('/search-parts', async (req, res) => {
   return res.json({ items });
 });
 
-// Tavily + Claude route: /api/grok-parts (REAL search with live links)
-app.post('/api/grok-parts', async (req, res) => {
-  try {
-    const { zipcode, vehicle, query, vin } = req.body;
-    if (!CLAUDE_API_KEY) return res.status(501).json({ error: 'Claude integration not configured on server' });
-    if (!zipcode || !vehicle || !query) return res.status(400).json({ error: 'Missing data' });
-
-    const vinPart = vin ? ` VIN:${vin}` : '';
-    const tavilyQuery = `${query} ${vehicle}${vinPart} near ${zipcode} (site:autozone.com OR site:advanceautoparts.com OR site:oreillyauto.com OR site:napaonline.com OR site:rockauto.com)`;
-
-    // 1. Real search
-    const tavily = await fetch('https://api.tavily.com/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key: process.env.TAVILY_API_KEY,
-        query: tavilyQuery,
-        search_depth: "advanced",
-        max_results: 20
-      })
-    });
-
-    if (!tavily.ok) throw new Error('Tavily failed');
-    const results = await tavily.json();
-
-    const snippets = results.results
-      .map(r => `STORE: ${r.title}\nPART: ${r.content}\nPRICE: ${extractPrice(r.content)}\nURL: ${r.url}`)
-      .join('\n\n');
-
-    // 2. Claude formats perfectly
-    const claude = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': CLAUDE_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'claude-3-5-haiku-20241022',
-        max_tokens: 4000,
-        temperature: 0,
-        system: `Take these LIVE search results and return ONLY valid JSON. CRITICAL: All HTML must be on ONE LINE with NO newlines inside the string.
-
-{
-  "resultsHtml": "<div class='grid cols-1 gap-8'>[6-8 cards all on this same line]</div>",
-  "noteText": "7 parts found. Cheapest: $28.79 at RockAuto"
-}
-
-IMPORTANT: The entire resultsHtml value must be a single line with no \\n or \\r characters. Use single quotes in HTML. Use ONLY data from snippets below. NO hallucinations.
-
-Card format (all one line): <div class='card parts-card' data-link='URL'><div class='row' style='align-items:center'><div style='flex:1'><b>Part Name</b><br><span class='tag success'>Confirmed Fit</span></div><div style='text-align:right'><b>$XX.XX</b><br><small>Store</small></div></div><div class='toolbar' style='margin-top:8px'><button class='btn small primary add-part'>Add to Job</button><a href='URL' target='_blank' class='btn small'>View</a></div></div>`,
-        messages: [{ role: "user", content: snippets.slice(0, 12000) }]
-      })
-    });
-
-    if (!claude.ok) throw new Error('Claude failed');
-    const data = await claude.json();
-    let json = data.content[0].text;
-    json = json.replace(/```json/g, '').replace(/```/g, '').trim();
-    res.json(JSON.parse(json));
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Search failed', details: err.message });
-  }
-});
-
-function extractPrice(text) {
-  const match = text.match(/\$([0-9]+\.?[0-9]*)/);
-  return match ? '$' + match[1] : '??';
-}
+// NOTE: grok/Claude/Tavily integration removed — platform is AI-free.
 
 // ===== PARTS CATALOG API ROUTES =====
 console.log('🔧 Registering catalog API routes...');
@@ -414,12 +337,12 @@ app.delete('/api/catalog/job-parts/:id', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.json({ message: 'Claude Parts API LIVE. Test: POST /api/grok-parts with {zipcode:"90210",vehicle:"2014 BMW 335i",query:"brake pads"}' });
+  res.json({ message: 'Xpose Management API LIVE. Use /api/* endpoints as documented.' });
 });
 
 // Serve static files LAST
 app.use(express.static('.'));
 
 app.listen(PORT, () => {
-  console.log(`Claude Parts API on http://localhost:${PORT} (Model: claude-3-5-haiku-20241022)`);
+  console.log(`Xpose Management API on http://localhost:${PORT}`);
 });
