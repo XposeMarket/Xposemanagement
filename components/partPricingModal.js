@@ -272,11 +272,15 @@ class PartPricingModal {
         console.error('[PartPricingModal] failed to add part to invoice locally', err);
       }
       // Show a success notification to the user
-      try { showNotification('Part added to invoice', 'success'); } catch (e) {}
+      try { showNotification('Part added to invoice', 'success'); } catch (e) { PartPricingModal._fallbackNotification('Part added to invoice', 'success'); }
 
     } catch (error) {
       console.error('Error adding part:', error);
-      showNotification('Failed to add part to job', 'error');
+      try { showNotification('Failed to add part to job', 'error'); } catch (e) { PartPricingModal._fallbackNotification('Failed to add part to job', 'error'); }
+    // Static fallback notification method
+    PartPricingModal._fallbackNotification = function(msg, type) {
+      alert((type === 'error' ? '❌ ' : '✅ ') + msg);
+    };
     } finally {
       // Reset button state
       document.getElementById('savePricingBtn').disabled = false;
