@@ -423,7 +423,8 @@ class PartsModalHandler {
       const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
       const shopId = session.shopId;
 
-      const response = await fetch('/api/catalog/add-part', {
+      const API_BASE = (window.XM_API_BASE !== undefined) ? window.XM_API_BASE : '';
+      const response = await fetch(`${API_BASE}/api/catalog/add-part`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
