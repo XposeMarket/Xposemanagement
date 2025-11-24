@@ -320,17 +320,28 @@
             }),
           });
 
+          // If the network request succeeded but returned a non-2xx, capture body for debugging
+          if (!response.ok) {
+            let bodyText = null;
+            try { bodyText = await response.text(); } catch (e) { bodyText = '<unreadable>'; }
+            console.error('Checkout error response:', response.status, response.statusText, bodyText);
+            throw new Error(`Server responded ${response.status}: ${bodyText}`);
+          }
+
           const data = await response.json();
 
-          if (data.url) {
+          if (data && data.url) {
             // Redirect to Stripe Checkout
             window.location.href = data.url;
           } else {
-            throw new Error(data.error || 'Failed to create checkout session');
+            console.error('Invalid checkout payload from server:', data);
+            throw new Error((data && data.error) || 'Failed to create checkout session (no url returned)');
           }
         } catch (error) {
-          console.error('Error:', error);
-          alert('Failed to start checkout. Please try again.');
+          console.error('Checkout exception:', error);
+          // Show more detailed message to help debugging on mobile
+          const msg = (error && error.message) ? error.message : 'Failed to start checkout. Please try again.';
+          alert('Failed to start checkout: ' + msg);
           btn.disabled = false;
           btn.textContent = btn.textContent.replace('Loading...', 'Start ' + ['Single', 'Local', 'Multi'][index]);
         }
