@@ -1,3 +1,54 @@
+
+// Modal for invoice actions (mobile) - must be global for row click
+window.openInvoiceActionsModal = function(inv) {
+  let modal = document.getElementById('invoiceActionsModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'invoiceActionsModal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-content card" style="max-width:340px;margin:18vh auto;">
+        <h3>Invoice Actions</h3>
+        <div id="invoiceActionsBtns" style="display:flex;flex-direction:column;gap:12px;margin:18px 0;"></div>
+        <button class="btn" id="closeInvoiceActions">Close</button>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
+  const btns = modal.querySelector('#invoiceActionsBtns');
+  btns.innerHTML = '';
+  // Add action buttons (View, Edit, Mark Paid/Unpaid, Remove)
+  const viewBtn = document.createElement('button');
+  viewBtn.className = 'btn';
+  viewBtn.textContent = 'View';
+  viewBtn.onclick = () => { modal.classList.add('hidden'); window.dispatchEvent(new CustomEvent('xm:invoiceAction', {detail:{action:'view', invoice: inv}})); };
+  btns.appendChild(viewBtn);
+  const editBtn = document.createElement('button');
+  editBtn.className = 'btn info';
+  editBtn.textContent = 'Edit';
+  editBtn.onclick = () => { modal.classList.add('hidden'); window.dispatchEvent(new CustomEvent('xm:invoiceAction', {detail:{action:'edit', invoice: inv}})); };
+  btns.appendChild(editBtn);
+  if ((inv.status || '').toString().trim().toLowerCase() === 'paid') {
+    const markUnpaidBtn = document.createElement('button');
+    markUnpaidBtn.className = 'btn';
+    markUnpaidBtn.textContent = 'Mark Unpaid';
+    markUnpaidBtn.onclick = () => { modal.classList.add('hidden'); window.dispatchEvent(new CustomEvent('xm:invoiceAction', {detail:{action:'markUnpaid', invoice: inv}})); };
+    btns.appendChild(markUnpaidBtn);
+  } else {
+    const markPaidBtn = document.createElement('button');
+    markPaidBtn.className = 'btn';
+    markPaidBtn.textContent = 'Mark Paid';
+    markPaidBtn.onclick = () => { modal.classList.add('hidden'); window.dispatchEvent(new CustomEvent('xm:invoiceAction', {detail:{action:'markPaid', invoice: inv}})); };
+    btns.appendChild(markPaidBtn);
+  }
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'btn danger';
+  removeBtn.textContent = 'Remove';
+  removeBtn.onclick = () => { modal.classList.add('hidden'); window.dispatchEvent(new CustomEvent('xm:invoiceAction', {detail:{action:'remove', invoice: inv}})); };
+  btns.appendChild(removeBtn);
+  modal.classList.remove('hidden');
+  modal.querySelector('#closeInvoiceActions').onclick = () => modal.classList.add('hidden');
+};
 /**
  * pages/invoices.js
  * Invoices page setup - FIXED VERSION
@@ -35,6 +86,37 @@ function setupInvoices() {
   // Confirm modal state
   let currentConfirmInvoice = null;
   let currentConfirmAction = null; // 'paid' or 'unpaid'
+
+  // Handle invoice actions dispatched from the global mobile modal
+  window.addEventListener('xm:invoiceAction', async (ev) => {
+    const detail = ev && ev.detail ? ev.detail : {};
+    const action = detail.action;
+    const inv = detail.invoice;
+    if (!action || !inv) return;
+    try {
+      switch (action) {
+        case 'view':
+          openInvoiceModal(inv);
+          break;
+        case 'edit':
+          openInvoiceModal(inv, true);
+          break;
+        case 'markPaid':
+          await markInvoicePaid(inv);
+          break;
+        case 'markUnpaid':
+          await markInvoiceUnpaid(inv);
+          break;
+        case 'remove':
+          openRemoveModal(inv);
+          break;
+        default:
+          console.warn('[Invoices] Unknown action from modal:', action);
+      }
+    } catch (e) {
+      console.error('[Invoices] xm:invoiceAction handler error:', e);
+    }
+  });
 
   // Helper to get shop/session
   function getCurrentShopId() {
@@ -152,48 +234,8 @@ function setupInvoices() {
       }
       tb.appendChild(tr);
 
-// Modal for invoice actions (mobile) - must be global for row click
-window.openInvoiceActionsModal = function(inv) {
-  let modal = document.getElementById('invoiceActionsModal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'invoiceActionsModal';
-    modal.className = 'modal-overlay';
-    modal.innerHTML = `
-      <div class="modal-content card" style="max-width:340px;margin:18vh auto;">
-        <h3>Invoice Actions</h3>
-        <div id="invoiceActionsBtns" style="display:flex;flex-direction:column;gap:12px;margin:18px 0;"></div>
-        <button class="btn" id="closeInvoiceActions">Close</button>
-      </div>
-    `;
-    document.body.appendChild(modal);
-  }
-  const btns = modal.querySelector('#invoiceActionsBtns');
-  btns.innerHTML = '';
-  // Add action buttons (View, Edit, Mark Paid, Remove)
-  const viewBtn = document.createElement('button');
-  viewBtn.className = 'btn';
-  viewBtn.textContent = 'View';
-  viewBtn.onclick = () => { modal.classList.add('hidden'); openInvoiceModal(inv); };
-  btns.appendChild(viewBtn);
-  const editBtn = document.createElement('button');
-  editBtn.className = 'btn info';
-  editBtn.textContent = 'Edit';
-  editBtn.onclick = () => { modal.classList.add('hidden'); openInvoiceModal(inv, true); };
-  btns.appendChild(editBtn);
-  const markPaidBtn = document.createElement('button');
-  markPaidBtn.className = 'btn';
-  markPaidBtn.textContent = 'Mark Paid';
-  markPaidBtn.onclick = () => { modal.classList.add('hidden'); markInvoicePaid(inv); };
-  btns.appendChild(markPaidBtn);
-  const removeBtn = document.createElement('button');
-  removeBtn.className = 'btn danger';
-  removeBtn.textContent = 'Remove';
-  removeBtn.onclick = () => { modal.classList.add('hidden'); openRemoveModal(inv); };
-  btns.appendChild(removeBtn);
-  modal.classList.remove('hidden');
-  modal.querySelector('#closeInvoiceActions').onclick = () => modal.classList.add('hidden');
-};
+// ...existing code...
+// Move this definition above renderInvoices and renderPrevInvoices so it's always available
     });
   }
 
@@ -224,8 +266,7 @@ window.openInvoiceActionsModal = function(inv) {
         <td>${inv.number || inv.id}</td>
         <td>${customer}</td>
         <td>$${calcTotal(inv).toFixed(2)}</td>
-  <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1">${(inv.status || 'paid').replace(/_/g, ' ')}</span></td>
-
+        <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1">${(inv.status || 'paid').replace(/_/g, ' ')}</span></td>
         <td>${inv.due || ''}</td>
         <td style="text-align:right">
           <div class="appt-actions-grid" style="display:inline-grid;">
@@ -235,6 +276,14 @@ window.openInvoiceActionsModal = function(inv) {
           </div>
         </td>
       `;
+      // Enable mobile modal for paid invoices
+      if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
+        tr.classList.add('inv-row-clickable');
+        tr.addEventListener('click', (e) => {
+          if (e.target.closest('button')) return;
+          window.openInvoiceActionsModal(inv);
+        });
+      }
       tb.appendChild(tr);
     });
   }

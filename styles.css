@@ -116,7 +116,8 @@
   #custTable .cust-veh,
   #custTable th:nth-child(4),
   #custTable .cust-total,
-  #custTable th:nth-child(5) {
+  #custTable th:nth-child(5),
+  #custTable td:nth-child(5) {
     display: none !important;
   }
   #custTable tr.cust-row-clickable {
@@ -127,6 +128,28 @@
   #custTable tr.cust-row-clickable:active {
     background: #f3f4f6;
   }
+}
+
+/* Mobile condensed customer cell formatting */
+@media (max-width: 768px) {
+  #custTable td.cust-mobile-cell {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  /* Ensure the hidden trailing actions cell doesn't collapse the row height */
+  #custTable td.cust-actions {
+    display: none !important;
+    width: 1px; /* keep a tiny cell so :last-child rules target it */
+    padding: 0; margin: 0; border: none;
+  }
+}
+
+/* Mobile-only nav links (visible inside the mobile dropdown) */
+.mobile-nav-btn { display: none; }
+@media (max-width: 768px) {
+  .mobile-nav-btn { display: block; padding: 8px 10px; }
 }
 /* Hide invoice number column on mobile */
 @media (max-width: 768px) {
@@ -1217,30 +1240,50 @@ button,
   }
   
   header nav a {
-    padding: 8px 12px;
-    border-bottom: 1px solid #eee;
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
     width: 100%;
     text-align: left;
-    font-size: 14px;
+    font-size: 15px;
+    display: block;
   }
   
   /* Hamburger animation when active */
   .menu-toggle.active span:nth-child(1) {
-    transform: rotate(45deg) translate(6px, 6px);
+     transform: rotate(45deg) translate(6px, 6px);
+     border-radius: 10px;
   }
-  
+
   .menu-toggle.active span:nth-child(2) {
-    opacity: 0;
+     opacity: 0;
   }
-  
+
   .menu-toggle.active span:nth-child(3) {
-    transform: rotate(-45deg) translate(6px, -6px);
+     transform: rotate(-45deg) translate(6px, -6px);
+     border-radius: 10px;
   }
+
+    .menu-toggle.active span {
+     transition: all 0.3s cubic-bezier(.4,2,.3,1);
+    }
   
   /* Hide or adjust header actions on mobile */
   header .container > div:last-child {
     display: none;
   }
+
+  /* Spread menu links slightly and group special actions */
+  header nav { padding: 18px 20px; }
+  header nav a { margin-bottom: 8px; border-radius: 8px; }
+  header nav a:hover { background: rgba(0,0,0,0.04); }
+
+  /* Theme / Logout special buttons (bigger and separated) */
+  .mobile-nav-btn { font-weight:600; border-radius:10px; }
+  .mobile-nav-btn + .mobile-nav-btn { margin-top:6px; }
+  /* Make theme/logout visually larger and sit below the main links */
+  .mobile-nav-btn.mobile-special { padding: 12px 14px; font-size:16px; margin-top:12px; }
+  /* If both special buttons exist, ensure they stack nicely */
+  .mobile-nav-btn.mobile-special:first-of-type { margin-top:12px; }
 }
 
 

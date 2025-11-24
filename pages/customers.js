@@ -274,18 +274,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 		
 
 			tableBody.innerHTML = customersArr.map((cust, idx) => {
-				let row = `<tr data-cust-id="${cust.id}">
-					<td>${(cust.customer_first || '') + ' ' + (cust.customer_last || '')}</td>
-					<td>${cust.phone || ''}</td>
-					<td>${cust.email || ''}</td>
-					<td class="cust-veh">${vehicleCountByCustomer[cust.id] || 0}</td>
-					<td class="cust-total">${cust.total_visits || 0}</td>
-					<td>${cust.last_visit ? new Date(cust.last_visit).toLocaleDateString() : ''}</td>
-					<td class="cust-actions">
-						<button class="btn small info btn-view" data-idx="${idx}">View</button>
-						<button class="btn small danger btn-delete" data-idx="${idx}" aria-label="Delete customer"><svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg></button>
-					</td>
-				</tr>`;
+				const name = ((cust.customer_first || '') + ' ' + (cust.customer_last || '')).trim();
+				const phone = cust.phone || '';
+				const email = cust.email || '';
+				const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+				let row;
+				if (isMobile) {
+					// Render two cells: visible content cell and a trailing actions cell
+					// This prevents the global mobile CSS rule that hides `#custTable td:last-child`
+					row = `<tr data-cust-id="${cust.id}"><td class="cust-mobile-cell">${name}${phone ? ' - ' + phone : ''}${email ? ' ' + email : ''}</td><td class="cust-actions"></td></tr>`;
+				} else {
+					row = `<tr data-cust-id="${cust.id}">
+						<td>${name}</td>
+						<td>${phone}</td>
+						<td>${email}</td>
+						<td class="cust-veh">${vehicleCountByCustomer[cust.id] || 0}</td>
+						<td class="cust-total">${cust.total_visits || 0}</td>
+						<td>${cust.last_visit ? new Date(cust.last_visit).toLocaleDateString() : ''}</td>
+						<td class="cust-actions">
+							<button class="btn small info btn-view" data-idx="${idx}">View</button>
+							<button class="btn small danger btn-delete" data-idx="${idx}" aria-label="Delete customer"><svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg></button>
+						</td>
+					</tr>`;
+				}
 				return row;
 			}).join('');
 
