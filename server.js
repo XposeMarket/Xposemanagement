@@ -344,12 +344,13 @@ app.get('/', (req, res) => {
 // Serve static files LAST
 app.use(express.static('.'));
 
-// If running on Vercel (serverless), export handler; otherwise start server normally
-if (process.env.VERCEL) {
-  console.log('Running as Vercel serverless function');
-  export default serverless(app);
-} else {
+// Export the Express app so a serverless wrapper in `/api` can import it.
+export { app };
+
+if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`Xpose Management API on http://localhost:${PORT}`);
   });
+} else {
+  console.log('Running on Vercel - expect a serverless wrapper in /api');
 }
