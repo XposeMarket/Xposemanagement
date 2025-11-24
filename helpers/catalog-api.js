@@ -15,9 +15,19 @@ function getSupabase() {
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_KEY = process.env.SUPABASE_KEY;
   if (!SUPABASE_URL || !SUPABASE_KEY) {
+    console.error('Supabase ENV ERROR:', {
+      SUPABASE_URL,
+      SUPABASE_KEY,
+      SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY
+    });
     throw new Error('Missing Supabase env: require SUPABASE_URL and SUPABASE_KEY');
   }
-  _supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  try {
+    _supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+  } catch (err) {
+    console.error('Supabase client creation error:', err);
+    throw err;
+  }
   return _supabase;
 }
 
