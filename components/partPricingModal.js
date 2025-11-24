@@ -282,7 +282,7 @@ class PartPricingModal {
       }
 
       // Show a success notification to the user
-      try { showNotification('Part added to invoice', 'success'); } catch (e) { PartPricingModal._fallbackNotification('Part added to invoice', 'success'); }
+      showNotification('Part added to invoice', 'success');
 
     } catch (error) {
       console.error('Error adding part:', error);
@@ -300,9 +300,7 @@ class PartPricingModal {
   /**
    * Static fallback notification method
    */
-  static _fallbackNotification(msg, type) {
-    alert((type === 'error' ? '❌ ' : '✅ ') + msg);
-  }
+  // Removed fallback notification logic to prevent duplicate banners
 
   /**
    * Show confirmation modal after part pricing
@@ -571,8 +569,43 @@ class PartPricingModal {
    */
   showConfirmation(message) {
     return new Promise((resolve) => {
-      const result = confirm(message);
-      resolve(result);
+      // Remove any existing banner
+      let banner = document.getElementById('partConfirmBanner');
+      if (banner) banner.remove();
+      banner = document.createElement('div');
+      banner.id = 'partConfirmBanner';
+      banner.style.position = 'fixed';
+      banner.style.top = '24px';
+      banner.style.left = '50%';
+      banner.style.transform = 'translateX(-50%)';
+      banner.style.background = '#0284c7';
+      banner.style.color = '#fff';
+      banner.style.padding = '16px 24px';
+      banner.style.borderRadius = '8px';
+      banner.style.zIndex = '9999';
+      banner.style.boxShadow = '0 2px 12px rgba(0,0,0,0.15)';
+      banner.style.display = 'flex';
+      banner.style.alignItems = 'center';
+      banner.style.gap = '18px';
+      banner.innerHTML = `<span>${message}</span>`;
+      const yesBtn = document.createElement('button');
+      yesBtn.textContent = 'Yes';
+      yesBtn.className = 'btn info';
+      yesBtn.style.marginLeft = '12px';
+      const noBtn = document.createElement('button');
+      noBtn.textContent = 'No';
+      noBtn.className = 'btn danger';
+      banner.appendChild(yesBtn);
+      banner.appendChild(noBtn);
+      document.body.appendChild(banner);
+      yesBtn.onclick = () => {
+        banner.remove();
+        resolve(true);
+      };
+      noBtn.onclick = () => {
+        banner.remove();
+        resolve(false);
+      };
     });
   }
 }
