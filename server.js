@@ -159,13 +159,26 @@ console.log('🔧 Registering catalog API routes...');
 app.get('/api/catalog/years', async (req, res) => {
   console.log('📅 Years endpoint called');
   try {
+    // Debug: print envs and Supabase client creation
+    const envDebug = {
+      SUPABASE_URL: process.env.SUPABASE_URL,
+      SUPABASE_KEY: process.env.SUPABASE_KEY,
+      SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+      NODE_ENV: process.env.NODE_ENV,
+    };
+    console.log('ENV DEBUG:', envDebug);
     const catalogAPI = await loadCatalogAPI();
     const years = await catalogAPI.getYears();
     console.log('✅ Years fetched:', Array.isArray(years) ? years.length : typeof years);
-    res.json({ years });
+    res.json({ years, envDebug });
   } catch (err) {
     console.error('❌ Years error:', err && err.stack ? err.stack : err);
-    res.status(500).json({ error: String(err && err.message ? err.message : err) });
+    res.status(500).json({ error: String(err && err.message ? err.message : err), envDebug: {
+      SUPABASE_URL: process.env.SUPABASE_URL,
+      SUPABASE_KEY: process.env.SUPABASE_KEY,
+      SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+      NODE_ENV: process.env.NODE_ENV,
+    }});
   }
 });
 
