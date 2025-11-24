@@ -36,15 +36,30 @@ function normalizeOrigin(val) {
 }
 
 >>>>>>> backup-main
-const allowedOrigins = [
-  'http://localhost:5500',
-  'http://127.0.0.1:5500',
-<<<<<<< HEAD
-  process.env.FRONTEND_URL // Your production domain will go here
-=======
-  normalizeOrigin(process.env.FRONTEND_URL) // Your production domain will go here (normalized)
->>>>>>> backup-main
-].filter(Boolean);
+const allowedOrigins = (() => {
+  const list = [
+    'http://localhost:5500',
+    'http://127.0.0.1:5500'
+  ];
+
+  const envFrontend = normalizeOrigin(process.env.FRONTEND_URL);
+  if (envFrontend) {
+    list.push(envFrontend);
+    try {
+      const host = new URL(envFrontend).hostname;
+      const noWww = host.replace(/^www\./, '');
+      const withWww = host.startsWith('www.') ? host : `www.${noWww}`;
+      list.push(`https://${noWww}`);
+      list.push(`https://${withWww}`);
+    } catch (e) {
+      // ignore invalid URL
+    }
+  }
+
+  return Array.from(new Set(list.filter(Boolean).map(s => s.replace(/\/$/, ''))));
+})();
+
+console.log('Configured allowedOrigins:', allowedOrigins);
 
 // Robust CORS handling: allow listed origins or match hostnames (ignoring leading www.)
 app.use(cors({
