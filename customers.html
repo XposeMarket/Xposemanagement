@@ -27,6 +27,18 @@
     .modal-body { padding:12px 14px; }
     .modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 14px; border-top:1px solid var(--border,#e5e5e5); }
     .hidden { display:none; }
+    @media (max-width: 768px) {
+      .cust-last-visit-col, th.cust-last-visit-col, td.cust-last-visit {
+        display: none !important;
+      }
+      #custTable td {
+        font-size: 0.92em;
+        max-width: 110px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
   </style>
 </head>
 <body>
@@ -69,14 +81,14 @@
     <div class="table-wrap">
       <table class="table" id="custTable">
         <thead>
-          <tr>
-            <th>Name</th>
-            <th>Phone</th>
-            <th>Email</th>
-            <th>Vehicles</th>
-            <th>Total Visits</th>
-            <th>Last Visit</th>
-            <th></th>
+          <tr class="cust-table-header">
+            <th style="text-align:center;">Name</th>
+            <th style="text-align:center;">Phone</th>
+            <th style="text-align:center;">Email</th>
+            <th style="text-align:center;">Vehicles</th>
+            <th style="text-align:center;">Total Visits</th>
+            <th style="text-align:center;" class="cust-last-visit-col">Last Visit</th>
+            <th style="text-align:center;">Actions</th>
           </tr>
         </thead>
         <tbody id="custTbody"></tbody>
