@@ -384,9 +384,9 @@ async function handleSubscriptionUpdate(subscription) {
   
   // Map price ID to plan name
   const PRICE_TO_PLAN = {
-    'price_1STABgQMIc1SOVFzyfZLVotW': 'Single Shop',
-    'price_1STACjQMIc1SOVFz1JmYq341': 'Multi Shop',
-    'price_1STADSQMIc1SOVFz6egyM0cR': 'Advanced Shop'
+    'price_1SX97Z4K55W1qqBCSwzYlDd6': 'Single Shop ($99)',
+    'price_1SX97b4K55W1qqBC7o7fJYUi': 'Multi Shop ($149)',
+    'price_1SX97d4K55W1qqBCcNM0eP00': 'Advanced Shop ($199)'
   };
   
   const planName = PRICE_TO_PLAN[priceId] || 'Unknown';
