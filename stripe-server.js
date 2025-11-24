@@ -103,6 +103,8 @@ app.post('/create-checkout-session', async (req, res) => {
     const { priceId, customerEmail } = req.body;
 
     console.log('📝 Checkout request received:', { priceId, customerEmail });
+    console.log('🔎 Request origin/header:', { origin: req.headers.origin, host: req.headers.host });
+    console.log('📥 Full request body:', req.body);
 
     if (!priceId) {
       return res.status(400).json({ error: 'Price ID is required' });
@@ -151,11 +153,16 @@ app.post('/create-checkout-session', async (req, res) => {
     });
 
     res.json({ url: session.url });
-    console.log('✅ Checkout session created successfully:', session.id);
+    console.log('✅ Checkout session created successfully:', session.id, 'url:', session.url);
   } catch (error) {
-    console.error('❌ Stripe error:', error.message);
-    console.error('Full error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('❌ Stripe error:', error && error.message);
+    console.error('Full error object:', error);
+    // If DEBUG or not in production, include stack for troubleshooting
+    const payload = { error: (error && error.message) || 'Unknown error' };
+    if (process.env.NODE_ENV !== 'production' || process.env.DEBUG === 'true') {
+      payload.stack = (error && error.stack) || null;
+    }
+    res.status(500).json(payload);
   }
 });
 
