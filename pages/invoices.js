@@ -21,7 +21,11 @@ window.openInvoiceActionsModal = function(inv) {
   const viewBtn = document.createElement('button');
   viewBtn.className = 'btn';
   viewBtn.textContent = 'View';
-  viewBtn.onclick = () => { modal.classList.add('hidden'); window.dispatchEvent(new CustomEvent('xm:invoiceAction', {detail:{action:'view', invoice: inv}})); };
+  viewBtn.onclick = () => {
+    modal.classList.add('hidden');
+    // Route to invoice.html with invoice id
+    window.location.href = `invoice.html?id=${encodeURIComponent(inv.id)}`;
+  };
   btns.appendChild(viewBtn);
   const editBtn = document.createElement('button');
   editBtn.className = 'btn info';
