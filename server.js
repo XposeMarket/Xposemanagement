@@ -378,7 +378,7 @@ app.get('/', (req, res) => {
 app.use(express.static('.'));
 
 // Export the Express app so a serverless wrapper in `/api` can import it.
-export { app };
+export default app;
 
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
