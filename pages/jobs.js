@@ -1237,7 +1237,8 @@ async function addPartToInvoice(jobId, partName, quantity, price, cost) {
   // If cost_price is missing, try to fetch job_parts for a fallback
   if (typeof partItem.cost_price === 'undefined' || partItem.cost_price === null) {
     try {
-      const resp = await fetch(`/api/catalog/job-parts/${encodeURIComponent(jobId)}`);
+      const API_BASE = (window.XM_API_BASE !== undefined) ? window.XM_API_BASE : '';
+      const resp = await fetch(`${API_BASE}/api/catalog/job-parts/${encodeURIComponent(jobId)}`);
       if (resp && resp.ok) {
         const json = await resp.json();
         const parts = json.parts || [];
