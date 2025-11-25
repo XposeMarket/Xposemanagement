@@ -54,7 +54,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           name: shopName, 
           type: shopType || 'Mechanic', 
           join_code, 
-          staff_limit: 3 
+          staff_limit: 3,
+          owner_id: session.user.id // Link shop to owner
         };
         
         const { data: shopData, error: shopErr } = await supabase
