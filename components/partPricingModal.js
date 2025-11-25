@@ -1,10 +1,11 @@
-// Simple notification function for modal errors and success
+
+// Place notification functions after class definition to avoid ReferenceError
+
 function showNotification(msg, type) {
   // You can replace this with a custom UI notification system
   alert((type === 'error' ? 'Error: ' : '') + msg);
 }
 
-// Fallback notification method for PartPricingModal
 PartPricingModal._fallbackNotification = function(msg, type) {
   alert('Fallback: ' + ((type === 'error' ? 'Error: ' : '') + msg));
 };
