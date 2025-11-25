@@ -55,7 +55,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           type: shopType || 'Mechanic', 
           join_code, 
           staff_limit: 3,
-          owner_id: session.user.id // Link shop to owner
+          owner_id: session.user && session.user.id ? session.user.id : null // Link shop to owner
         };
         
         const { data: shopData, error: shopErr } = await supabase
@@ -64,9 +64,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           .select()
           .single();
         
-        if (shopErr || !shopData) {
-          console.error('❌ Shop creation failed:', shopErr);
-          throw shopErr || new Error('Could not create shop.');
+        if (shopErr || !shopData || !shopInsert.owner_id) {
+          console.error('❌ Shop creation failed:', shopErr, 'Owner ID:', shopInsert.owner_id);
+          throw shopErr || new Error('Could not create shop. Owner ID missing.');
         }
         
         console.log('✅ Shop created:', shopData);
@@ -411,7 +411,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           await saveSubscriptionInfo(supabase, auth_id);
         } else {
           console.error('❌ Invalid auth_id after signup:', auth_id);
-          throw new Error('Invalid auth_id after signup.');
+          throw new Error('User creation failed: auth_id missing or invalid.');
         }
         
         // Initialize empty data record for the shop
