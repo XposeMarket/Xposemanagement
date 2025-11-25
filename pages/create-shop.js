@@ -34,6 +34,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       if (session && session.user) {
         console.log('✅ OAuth session found:', session.user.email);
+        // Robustly check for valid Auth ID
+        if (!session.user.id || typeof session.user.id !== 'string' || session.user.id.length < 16) {
+          console.error('❌ Invalid or missing Auth ID:', session.user.id);
+          err.textContent = 'Authentication error: Missing or invalid Auth ID. Please sign in again.';
+          err.style.color = 'red';
+          return;
+        }
         
         // Retrieve stored shop data from sessionStorage
         const shopName = sessionStorage.getItem('create_shop_name');
