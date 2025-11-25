@@ -421,6 +421,13 @@ class PartPricingModal {
     }
     modal.style.display = 'block';
     modal.style.zIndex = '9999';
+    // Clear description and default hours to 1 to match manual labor modal behavior
+    const labDescEl = document.getElementById('labDesc');
+    const labHoursEl = document.getElementById('labHours');
+    const labNoteEl = document.getElementById('labNote');
+    if (labDescEl) labDescEl.value = '';
+    if (labHoursEl) labHoursEl.value = '1';
+    if (labNoteEl) labNoteEl.textContent = '';
     // Populate labor rates into the select and chips
     let chipsDiv = document.getElementById('laborRateChips');
     const sel = document.getElementById('labRateSel');
@@ -444,6 +451,10 @@ class PartPricingModal {
           opt.text = `${r.name} - $${r.rate}/hr`;
           sel.appendChild(opt);
         });
+        // Ensure numeric rate input is visible and default selection is Custom (so user can type)
+        if (customInp) customInp.style.display = '';
+        sel.value = '__custom__';
+        if (customInp) { customInp.value = ''; try { customInp.focus(); } catch(e){} }
       }
       laborRates.forEach(rate => {
         if (!chipsDiv) return;
