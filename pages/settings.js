@@ -33,8 +33,15 @@ function setupSettings() {
         }
 
         if (authId) {
-          const { data: userRows } = await supabase.from('users').select('*').eq('auth_id', authId).limit(1);
-          currentUser = userRows && userRows[0] ? userRows[0] : null;
+          // Try matching against primary `id` first (most records use `id` = auth user id)
+          const { data: byId } = await supabase.from('users').select('*').eq('id', authId).limit(1);
+          currentUser = byId && byId[0] ? byId[0] : null;
+
+          // Fallback to legacy `auth_id` column if present
+          if (!currentUser) {
+            const { data: userRows } = await supabase.from('users').select('*').eq('auth_id', authId).limit(1);
+            currentUser = userRows && userRows[0] ? userRows[0] : null;
+          }
         }
 
         if (!currentUser && authEmail) {

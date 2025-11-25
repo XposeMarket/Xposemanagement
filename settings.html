@@ -201,12 +201,19 @@ document.addEventListener('DOMContentLoaded', function(){
         tbody.innerHTML = '<tr><td colspan="4" style="color:red;">[ERROR] No Supabase Auth user found. Please log in.</td></tr>';
         return;
       }
-      // 2. Query users table for this auth_id
+      // 2. Query users table for this auth user id (try `id` first, then legacy `auth_id`)
       let currentUser = null;
       try{
-        const { data: userRows } = await sup.from('users').select('*').eq('auth_id', authId).limit(1);
-        currentUser = userRows && userRows[0] ? userRows[0] : null;
-      }catch(uErr){ console.warn('Error querying users by auth_id', uErr); }
+        const { data: byId } = await sup.from('users').select('*').eq('id', authId).limit(1);
+        currentUser = byId && byId[0] ? byId[0] : null;
+      }catch(iErr){ console.warn('Error querying users by id', iErr); }
+
+      if(!currentUser){
+        try{
+          const { data: userRows } = await sup.from('users').select('*').eq('auth_id', authId).limit(1);
+          currentUser = userRows && userRows[0] ? userRows[0] : null;
+        }catch(uErr){ console.warn('Error querying users by auth_id', uErr); }
+      }
 
       
 
@@ -250,90 +257,101 @@ document.addEventListener('DOMContentLoaded', function(){
       if(elJoin) elJoin.value = shop.join_code || '';
       if(slotsMaxEl) slotsMaxEl.textContent = String(shop.staff_limit || 3);
 
-      // Fetch staff from both users and shop_staff then merge
-      let usersLocal = [];
-      try{ const { data: udata } = await sup.from('users').select('*').eq('shop_id', shop.id); if(udata) usersLocal = udata; }catch(e){ console.warn('Error querying users table', e); }
-      let staffData = [];
-      try{ const { data: sdata } = await sup.from('shop_staff').select('*').eq('shop_id', shop.id); if(sdata) staffData = sdata.map(s => ({ id: s.id, first: s.first_name, last: s.last_name, email: s.email, role: s.role, shop_id: s.shop_id, is_staff:true })); }catch(e){ console.warn('Error querying shop_staff', e); }
+      // Render team helper (fetch and render staff/users combined)
+      async function renderTeam() {
+        // Fetch staff from both users and shop_staff then merge
+        let usersLocal = [];
+        try{ const { data: udata } = await sup.from('users').select('*').eq('shop_id', shop.id); if(udata) usersLocal = udata; }catch(e){ console.warn('Error querying users table', e); }
+        let staffData = [];
+        try{ const { data: sdata } = await sup.from('shop_staff').select('*').eq('shop_id', shop.id); if(sdata) staffData = sdata.map(s => ({ shop_staff_id: s.id, first: s.first_name, last: s.last_name, email: s.email, role: s.role, shop_id: s.shop_id, is_staff:true })); }catch(e){ console.warn('Error querying shop_staff', e); }
 
-      // Combine and dedupe by email (prefer usersLocal entries)
-      const combined = [...(usersLocal || []), ...(staffData || [])];
-      const emailMap = new Map();
-      combined.forEach(u => {
-        const key = (u.email || '').toLowerCase();
-        if(!emailMap.has(key)) emailMap.set(key, u);
-        else {
-          const existing = emailMap.get(key);
-          if(existing.is_staff && !u.is_staff) emailMap.set(key, u);
-        }
-      });
-      const allTeamMembers = Array.from(emailMap.values());
-
-      // Determine owner (admin) - prefer users table admin
-      let owner = allTeamMembers.find(x => x.role === 'admin' && !x.is_staff) || allTeamMembers.find(x => x.role === 'admin') || null;
-      if(owner){ ownerEl.textContent = `${owner.first || ''} ${owner.last || ''} - ${owner.email || ''}`; }
-      else ownerEl.textContent = 'None';
-
-      // Populate staff table
-      tbody.innerHTML = '';
-      if(!allTeamMembers.length){ tbody.innerHTML = '<tr><td colspan="4" class="muted">No team members found.</td></tr>'; if(slotsUsedEl) slotsUsedEl.textContent = '0'; }
-      else {
-        let used = 0;
-        // Find owner by owner_id
-        let shopOwnerId = shop.owner_id ? String(shop.owner_id).trim() : null;
-        // (No debug row in production) - owner_id and user IDs are used below for owner detection
-        allTeamMembers.forEach(u => {
-          const tr = document.createElement('tr');
-          
-          const isOwner = shopOwnerId && String(u.id).trim() === shopOwnerId;
-          // Name cell with badge for owner
-          const tdName = document.createElement('td');
-          tdName.textContent = `${u.first||u.first_name||''} ${u.last||u.last_name||''}`;
-          if(isOwner){
-            const badge = document.createElement('span');
-            badge.className = 'owner-badge';
-            badge.textContent = 'Owner';
-            tdName.appendChild(badge);
+        // Combine and dedupe by email, but prefer shop_staff entries for role/display
+        const combined = [...(usersLocal || []), ...(staffData || [])];
+        const emailMap = new Map();
+        combined.forEach(u => {
+          const key = (u.email || '').toLowerCase();
+          if(!emailMap.has(key)) {
+            emailMap.set(key, Object.assign({}, u));
+          } else {
+            const existing = emailMap.get(key);
+            // If shop_staff entry, prefer its role and shop_staff_id
+            if(u.is_staff) {
+              existing.role = u.role;
+              existing.shop_staff_id = u.shop_staff_id || existing.shop_staff_id;
+              existing.is_staff = true;
+              // prefer staff name if users row lacks it
+              existing.first = existing.first || u.first;
+              existing.last = existing.last || u.last;
+            } else {
+              // If existing is staff and current is users, don't overwrite role
+              existing.first = existing.first || u.first || u.first_name;
+              existing.last = existing.last || u.last || u.last_name;
+              existing.email = existing.email || u.email;
+            }
           }
-          tr.appendChild(tdName);
-          // Email cell
-          const tdEmail = document.createElement('td'); tdEmail.textContent = u.email || ''; tr.appendChild(tdEmail);
-          // Role cell
-          const tdRole = document.createElement('td');
-          if(isOwner){
-            tdRole.textContent = 'owner';
-          }else{
-            // clickable bordered role badge that opens a role selection modal
-            const roleEl = document.createElement('span');
-            roleEl.className = 'role-badge';
-            roleEl.textContent = (u.role || 'staff');
-            roleEl.style.border = '1px solid #ddd';
-            roleEl.style.padding = '4px 8px';
-            roleEl.style.borderRadius = '6px';
-            roleEl.style.cursor = 'pointer';
-            roleEl.style.display = 'inline-block';
-            roleEl.style.background = '#fff';
-            roleEl.title = 'Click to change role';
-            // store identifying info
-            roleEl.dataset.email = (u.email || '').toLowerCase();
-            roleEl.dataset.role = (u.role || 'staff');
-            roleEl.addEventListener('click', () => openRoleModal(roleEl.dataset.email, roleEl.dataset.role, tr, roleEl));
-            tdRole.appendChild(roleEl);
-          }
-          tr.appendChild(tdRole);
-          // Actions cell
-          const tdAct = document.createElement('td');
-          if(isOwner){
-            tdAct.textContent = '';
-          }else{
-            tdAct.innerHTML = '<button class="btn" disabled>Remove</button>';
-          }
-          tr.appendChild(tdAct);
-          tbody.appendChild(tr);
-          if(!isOwner) used++;
         });
-        if(slotsUsedEl) slotsUsedEl.textContent = String(used);
+        const allTeamMembers = Array.from(emailMap.values());
+
+        // Determine owner (admin) - prefer users table admin
+        let owner = allTeamMembers.find(x => x.role === 'admin' && !x.is_staff) || allTeamMembers.find(x => x.role === 'admin') || null;
+        if(owner){ ownerEl.textContent = `${owner.first || ''} ${owner.last || ''} - ${owner.email || ''}`; }
+        else ownerEl.textContent = 'None';
+
+        // Populate staff table
+        tbody.innerHTML = '';
+        if(!allTeamMembers.length){ tbody.innerHTML = '<tr><td colspan="4" class="muted">No team members found.</td></tr>'; if(slotsUsedEl) slotsUsedEl.textContent = '0'; }
+        else {
+          let used = 0;
+          let shopOwnerId = shop.owner_id ? String(shop.owner_id).trim() : null;
+          allTeamMembers.forEach(u => {
+            const tr = document.createElement('tr');
+            const isOwner = shopOwnerId && String(u.id).trim() === shopOwnerId;
+            // Prefer explicit shop_staff_id for staffId
+            if (!isOwner && u.shop_staff_id) tr.dataset.staffId = u.shop_staff_id;
+            if (u.id) tr.dataset.userId = u.id;
+
+            const tdName = document.createElement('td');
+            tdName.textContent = `${u.first||u.first_name||''} ${u.last||u.last_name||''}`;
+            if(isOwner){
+              const badge = document.createElement('span');
+              badge.className = 'owner-badge';
+              badge.textContent = 'Owner';
+              tdName.appendChild(badge);
+            }
+            tr.appendChild(tdName);
+            const tdEmail = document.createElement('td'); tdEmail.textContent = u.email || ''; tr.appendChild(tdEmail);
+            const tdRole = document.createElement('td');
+            if(isOwner){
+              tdRole.textContent = 'owner';
+            } else {
+              const roleEl = document.createElement('span');
+              roleEl.className = 'role-badge';
+              roleEl.textContent = (u.role || 'staff');
+              roleEl.style.border = '1px solid #ddd';
+              roleEl.style.padding = '4px 8px';
+              roleEl.style.borderRadius = '6px';
+              roleEl.style.cursor = 'pointer';
+              roleEl.style.display = 'inline-block';
+              roleEl.style.background = '#fff';
+              roleEl.title = 'Click to change role';
+              roleEl.dataset.email = (u.email || '').toLowerCase();
+              roleEl.dataset.role = (u.role || 'staff');
+              roleEl.addEventListener('click', () => openRoleModal(roleEl.dataset.email, roleEl.dataset.role, tr, roleEl));
+              tdRole.appendChild(roleEl);
+            }
+            tr.appendChild(tdRole);
+            const tdAct = document.createElement('td');
+            if(isOwner){ tdAct.textContent = ''; } else { tdAct.innerHTML = '<button class="btn" disabled>Remove</button>'; }
+            tr.appendChild(tdAct);
+            tbody.appendChild(tr);
+            if(!isOwner) used++;
+          });
+          if(slotsUsedEl) slotsUsedEl.textContent = String(used);
+        }
       }
+
+      // Initial render
+      await renderTeam();
 
       // Wire copy button
       if(btnCopy && elJoin){
@@ -354,17 +372,21 @@ document.addEventListener('DOMContentLoaded', function(){
       const roleModalTarget = document.getElementById('roleModalTarget');
       const roleSaveBtn = document.getElementById('roleSave');
       const roleCancelBtn = document.getElementById('roleCancel');
-      let roleModalContext = { email: null, row: null, badge: null };
+      // modal context must be declared early to avoid TDZ when openRoleModal is invoked
+      let roleModalContext = { email: null, staffId: null, row: null, badge: null };
 
       function openRoleModal(email, currentRole, row, badgeEl){
-        roleModalContext = { email: (email||'').toLowerCase(), row: row, badge: badgeEl };
+        // Try to get staffId from row dataset if present
+        let staffId = null;
+        if (row && row.dataset && row.dataset.staffId) staffId = row.dataset.staffId;
+        roleModalContext = { email: (email||'').toLowerCase(), staffId, row: row, badge: badgeEl };
         if(roleModalTarget) roleModalTarget.textContent = roleModalContext.email || 'user';
         if(roleSelect) roleSelect.value = currentRole || 'staff';
         if(roleModal) roleModal.classList.remove('hidden');
       }
 
       function closeRoleModal(){
-        roleModalContext = { email: null, row: null, badge: null };
+        roleModalContext = { email: null, staffId: null, row: null, badge: null };
         if(roleModal) roleModal.classList.add('hidden');
       }
 
@@ -373,28 +395,42 @@ document.addEventListener('DOMContentLoaded', function(){
       roleSaveBtn?.addEventListener('click', async (e) => {
         e.preventDefault();
         const newRole = roleSelect.value;
-        const email = roleModalContext.email;
+        const staffId = roleModalContext.staffId;
         const badge = roleModalContext.badge;
 
-        // optimistic UI update
-        if(badge) { badge.textContent = newRole; badge.dataset.role = newRole; }
+        let updateSuccess = false;
+        let updateError = null;
+        let affectedRows = 0;
 
-        // Try to persist to Supabase: update users then shop_staff by email
-        if(sup){
-          try{
-            if(email){
-              // attempt users table update
-              try{
-                await sup.from('users').update({ role: newRole }).eq('email', email);
-              }catch(uErr){ /* ignore user update error - try shop_staff next */ }
+        // Debug log
+        console.log('[RoleChange] Attempting shop_staff update:', { staffId, newRole });
 
-              try{
-                await sup.from('shop_staff').update({ role: newRole }).eq('email', email);
-              }catch(sErr){ /* ignore */ }
+        // Only update shop_staff by staffId
+        if(sup && staffId){
+          try {
+            const staffRes = await sup.from('shop_staff').update({ role: newRole }).eq('id', staffId).select();
+            console.log('[RoleChange] Supabase shop_staff update response:', staffRes);
+            const staffRows = Array.isArray(staffRes?.data) ? staffRes.data.length : 0;
+            affectedRows = staffRows;
+            if (affectedRows > 0) {
+              updateSuccess = true;
+            } else {
+              updateError = staffRes?.error || new Error('No matching shop_staff row found for update.');
             }
-          }catch(ex){
-            console.warn('Failed to persist role change', ex);
+          } catch (ex) {
+            console.error('[RoleChange] Supabase shop_staff update exception:', ex);
+            updateError = ex;
           }
+        }
+
+        if(updateSuccess){
+          // optimistic UI update
+          if(badge) { badge.textContent = newRole; badge.dataset.role = newRole; }
+          // Re-fetch and re-render team list to reflect persisted changes
+          try { await renderTeam(); } catch(e){ console.warn('Could not refresh team after role update', e); }
+        } else {
+          // Show error notification
+          alert('Failed to save role change. No matching user/staff found for update. Please check the email or try again. ' + (updateError?.message || ''));
         }
 
         closeRoleModal();

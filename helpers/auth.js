@@ -30,11 +30,35 @@ function canAccessPage(page, user = null) {
 /**
  * Hide nav links user can't access
  */
-function applyNavPermissions() {
-  const u = currentUser();
+async function applyNavPermissions(userRow = null) {
+  // Hide nav links user can't access. Accepts an optional user record (from Supabase users table).
+  let u = userRow || currentUser();
+
+  // If no local user and supabase is available, try to fetch the users row for the authenticated user
+  if (!u) {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser) {
+          const { data: byId } = await supabase.from('users').select('*').eq('id', authUser.id).limit(1);
+          u = (byId && byId[0]) ? byId[0] : null;
+        }
+      } catch (e) {
+        console.warn('applyNavPermissions supabase lookup failed', e);
+      }
+    }
+  }
+
   if (!u) return;
   const allowed = ROLE_PAGES[u.role] || [];
   document.querySelectorAll("header nav a").forEach(a => {
+    // Always show mobile quick action buttons regardless of role
+    if (a.classList && a.classList.contains('mobile-nav-btn')) {
+      a.style.display = '';
+      return;
+    }
+
     const href = (a.getAttribute("href") || "").toLowerCase();
     const pn = href.replace(".html", "").replace("./", "");
     if (href && pn && !allowed.includes(pn)) {
@@ -47,17 +71,24 @@ function applyNavPermissions() {
  * Enforce page access - redirect if no permission
  * FIXED: Doesn't enforce for Supabase users (they're already authenticated)
  */
-function enforcePageAccess() {
-  // Skip enforcement if user is authenticated via Supabase
+async function enforcePageAccess(userRow = null) {
+  // Enforce page access. If a userRow (from Supabase) is provided, use it; otherwise fall back to localStorage.
   const supabase = getSupabaseClient();
-  if (supabase) {
-    // Supabase users are already checked by requireAuth
-    // Don't double-check with localStorage
-    return;
+  let u = userRow || currentUser();
+
+  // If we don't have a local user and Supabase is available, try fetching the users row
+  if (!u && supabase) {
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        const { data: byId } = await supabase.from('users').select('*').eq('id', authUser.id).limit(1);
+        u = (byId && byId[0]) ? byId[0] : null;
+      }
+    } catch (e) {
+      console.warn('enforcePageAccess supabase lookup failed', e);
+    }
   }
-  
-  // Only enforce for localStorage users
-  const u = currentUser();
+
   if (!u) return;
   const allowed = ROLE_PAGES[u.role] || [];
   const pn = pageName();
@@ -140,10 +171,20 @@ async function requireAuth() {
     }
     
     console.log('✅ User authenticated:', user.email);
-    
-    // For Supabase users, we don't use localStorage permissions
-    // They're authenticated and can access all pages
-    // (Subscription check happens separately in app.js)
+
+    // For Supabase users, load their users row (role/shop_id) and apply permissions
+    try {
+      const { data: userRow, error: userRowErr } = await supabase.from('users').select('*').eq('id', user.id).limit(1).single();
+      if (userRowErr) {
+        console.warn('Could not load users row for permission enforcement:', userRowErr);
+      }
+
+      // Apply nav permissions and enforce page access based on fetched user row (if available)
+      await applyNavPermissions(userRow || null);
+      await enforcePageAccess(userRow || null);
+    } catch (permErr) {
+      console.warn('Permission enforcement failed:', permErr);
+    }
     
   } catch (e) {
     console.error('requireAuth failed:', e);

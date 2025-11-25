@@ -40,42 +40,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         console.log('📋 Retrieved join code:', joinCode, 'Shop ID:', shopId);
         
-        // Create user record in users table
+        // Only create staff in shop_staff table
         const userId = session.user.id;
         const email = session.user.email;
         const first = session.user.user_metadata?.given_name || session.user.user_metadata?.first || '';
         const last = session.user.user_metadata?.family_name || session.user.user_metadata?.last || '';
         
-        const { data: userData, error: userErr } = await supabase
-          .from('users')
-          .insert([{
-            id: userId,
-            first,
-            last,
-            email,
-            role: 'staff',
-            shop_id: shopId
-          }])
-          .select()
-          .single();
-        
-        if (userErr) {
-          // User may already exist, try to update instead
-          console.log('⚠️ User insert failed, trying update:', userErr);
-          const { error: updateErr } = await supabase
-            .from('users')
-            .update({ shop_id: shopId, role: 'staff' })
-            .eq('id', userId);
-          
-          if (updateErr) {
-            console.error('❌ User update failed:', updateErr);
-            throw updateErr;
-          }
-        }
-        
-        console.log('✅ User record created/updated');
-        
-        // Insert into shop_staff table
+        // Insert into shop_staff table (now includes auth_id)
         try {
           const { error: staffErr } = await supabase
             .from('shop_staff')
@@ -84,9 +55,9 @@ document.addEventListener('DOMContentLoaded', async () => {
               first_name: first,
               last_name: last,
               email: email,
-              role: 'staff'
+              role: 'staff',
+              auth_id: userId
             }]);
-          
           if (staffErr) {
             console.warn('⚠️ shop_staff insert warning:', staffErr);
           } else {
@@ -220,29 +191,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const userId = signData.user.id;
         
         // Step 4: Create user record in public.users table
-        const { data: userData, error: userErr } = await supabase
-          .from('users')
-          .insert([{
-            id: userId,
-            first,
-            last,
-            email,
-            role: 'staff',
-            shop_id: shop.id
-          }])
-          .select()
-          .single();
-        
-        console.log('👤 User table insert result:', userData, userErr);
-        
-        if (userErr) {
-          console.error('❌ User metadata creation error:', userErr);
-          throw userErr;
-        }
-        
-        console.log('✅ User metadata created:', userData);
-        
-        // Also insert into shop_staff so the shop_staff table reflects the new staff member
+        // Only insert staff into shop_staff table
         try {
           const { data: staffInsert, error: staffErr } = await supabase
             .from('shop_staff')
@@ -251,9 +200,9 @@ document.addEventListener('DOMContentLoaded', async () => {
               first_name: first,
               last_name: last,
               email: email,
-              role: 'staff'
+              role: 'staff',
+              auth_id: userId
             }]);
-
           if (staffErr) {
             // Log but don't block signup success — admin can fix later
             console.warn('Could not insert into shop_staff:', staffErr);
