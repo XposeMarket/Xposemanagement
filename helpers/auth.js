@@ -9,6 +9,43 @@ import { readLS, writeLS } from './storage.js';
 import { currentUser, currentShop } from './user.js';
 import { getSupabaseClient } from './supabase.js';
 
+// Helper: check if authenticated user is a shop_staff and return a normalized user-like object
+async function getStaffAsAppUser(supabase, authUser){
+  if(!supabase || !authUser) return null;
+  try{
+    // Prefer auth_id lookup, fallback to email
+    const { data: byAuth, error: authErr } = await supabase.from('shop_staff').select('*').eq('auth_id', authUser.id).limit(1).single();
+    if(!authErr && byAuth){
+      return {
+        id: authUser.id,
+        auth_id: authUser.id,
+        first: byAuth.first_name || '',
+        last: byAuth.last_name || '',
+        email: byAuth.email || authUser.email,
+        role: byAuth.role || 'staff',
+        shop_id: byAuth.shop_id
+      };
+    }
+    if(authUser.email){
+      const { data: byEmail, error: emailErr } = await supabase.from('shop_staff').select('*').ilike('email', authUser.email).limit(1).single();
+      if(!emailErr && byEmail){
+        return {
+          id: authUser.id,
+          auth_id: authUser.id,
+          first: byEmail.first_name || '',
+          last: byEmail.last_name || '',
+          email: byEmail.email || authUser.email,
+          role: byEmail.role || 'staff',
+          shop_id: byEmail.shop_id
+        };
+      }
+    }
+  }catch(e){
+    console.warn('getStaffAsAppUser failed', e);
+  }
+  return null;
+}
+
 /**
  * Get current page name
  */
@@ -41,8 +78,14 @@ async function applyNavPermissions(userRow = null) {
       try {
         const { data: { user: authUser } } = await supabase.auth.getUser();
         if (authUser) {
-          const { data: byId } = await supabase.from('users').select('*').eq('id', authUser.id).limit(1);
-          u = (byId && byId[0]) ? byId[0] : null;
+          // First check if this auth user maps to a shop_staff entry (prefer staff)
+          const staffLike = await getStaffAsAppUser(supabase, authUser);
+          if (staffLike) {
+            u = staffLike;
+          } else {
+            const { data: byId } = await supabase.from('users').select('*').eq('id', authUser.id).limit(1);
+            u = (byId && byId[0]) ? byId[0] : null;
+          }
         }
       } catch (e) {
         console.warn('applyNavPermissions supabase lookup failed', e);
@@ -81,8 +124,14 @@ async function enforcePageAccess(userRow = null) {
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (authUser) {
-        const { data: byId } = await supabase.from('users').select('*').eq('id', authUser.id).limit(1);
-        u = (byId && byId[0]) ? byId[0] : null;
+        // Prefer shop_staff mapping if present
+        const staffLike = await getStaffAsAppUser(supabase, authUser);
+        if (staffLike) {
+          u = staffLike;
+        } else {
+          const { data: byId } = await supabase.from('users').select('*').eq('id', authUser.id).limit(1);
+          u = (byId && byId[0]) ? byId[0] : null;
+        }
       }
     } catch (e) {
       console.warn('enforcePageAccess supabase lookup failed', e);
@@ -172,16 +221,24 @@ async function requireAuth() {
     
     console.log('✅ User authenticated:', user.email);
 
-    // For Supabase users, load their users row (role/shop_id) and apply permissions
+    // For Supabase users, prefer mapping from `shop_staff` (if present) before loading the `users` row
     try {
-      const { data: userRow, error: userRowErr } = await supabase.from('users').select('*').eq('id', user.id).limit(1).single();
-      if (userRowErr) {
-        console.warn('Could not load users row for permission enforcement:', userRowErr);
+      const staffLike = await getStaffAsAppUser(supabase, user);
+      if (staffLike) {
+        await applyNavPermissions(staffLike);
+        await enforcePageAccess(staffLike);
+      } else {
+        try {
+          const { data: userRow, error: userRowErr } = await supabase.from('users').select('*').eq('id', user.id).limit(1).single();
+          if (userRowErr) {
+            console.warn('Could not load users row for permission enforcement:', userRowErr);
+          }
+          await applyNavPermissions(userRow || null);
+          await enforcePageAccess(userRow || null);
+        } catch (innerErr) {
+          console.warn('Permission enforcement failed fetching users row:', innerErr);
+        }
       }
-
-      // Apply nav permissions and enforce page access based on fetched user row (if available)
-      await applyNavPermissions(userRow || null);
-      await enforcePageAccess(userRow || null);
     } catch (permErr) {
       console.warn('Permission enforcement failed:', permErr);
     }

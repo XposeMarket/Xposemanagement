@@ -98,53 +98,7 @@ function setupLogin() {
           const email = session.user.email;
           let shop_id = null;
 
-          // Check if user exists in custom users table
-          try {
-            const { data: customUser, error: customUserErr } = await supabase
-              .from('users')
-              .select('id, shop_id, role')
-              .eq('id', auth_id)
-              .single();
-            
-            if (!customUser) {
-              console.log('👤 User not in custom users table, creating record...');
-              
-              // Get shop_id from user metadata
-              shop_id = session.user.user_metadata?.shop_id;
-              const first = session.user.user_metadata?.given_name || session.user.user_metadata?.first || '';
-              const last = session.user.user_metadata?.family_name || session.user.user_metadata?.last || '';
-              const zipcode = session.user.user_metadata?.zipcode || '';
-              const role = session.user.user_metadata?.role || 'staff';
-              
-              const userInsert = {
-                id: auth_id,
-                email,
-                first,
-                last,
-                role,
-                shop_id,
-                zipcode,
-                created_at: new Date().toISOString()
-              };
-              
-              const { data: userData, error: userErr } = await supabase
-                .from('users')
-                .insert([userInsert])
-                .select()
-                .single();
-              
-              if (userErr) {
-                console.error('❌ Failed to insert user into users table:', userErr);
-              } else {
-                console.log('✅ User record created:', userData);
-              }
-            } else {
-              console.log('✅ User found in custom users table:', customUser);
-              shop_id = customUser.shop_id;
-            }
-          } catch (ex) {
-            console.warn('⚠️ Failed to check/insert user after OAuth login:', ex);
-          }
+          // ...existing code... (removed post-login user creation logic)
 
           // Save session locally with shop_id
           localStorage.setItem('xm_session', JSON.stringify({ 
@@ -213,52 +167,58 @@ function setupLogin() {
           const auth_id = data.user.id;
           let shop_id = null;
 
-          // Check if user exists in custom users table
+          // Check if user is staff (shop_staff)
+          let staffShopId = null;
+          let ownerShopId = null;
+          let isStaff = false;
           try {
-            const { data: customUser, error: customUserErr } = await supabase
-              .from('users')
-              .select('id, shop_id')
-              .eq('id', auth_id)
+            const { data: staffRow, error: staffErr } = await supabase
+              .from('shop_staff')
+              .select('shop_id')
+              .eq('auth_id', auth_id)
               .single();
-            
-            if (!customUser) {
-              console.log('👤 User not in custom users table, creating record...');
-              
-              // Get shop_id from user metadata
-              shop_id = data.user.user_metadata?.shop_id;
-              const first = data.user.user_metadata?.first || '';
-              const last = data.user.user_metadata?.last || '';
-              const zipcode = data.user.user_metadata?.zipcode || '';
-              const role = data.user.user_metadata?.role || 'admin';
-              
-              const userInsert = {
-                id: auth_id,
-                email,
-                first,
-                last,
-                role,
-                shop_id,
-                zipcode,
-                created_at: new Date().toISOString()
-              };
-              
-              const { data: userData, error: userErr } = await supabase
-                .from('users')
-                .insert([userInsert])
-                .select()
-                .single();
-              
-              if (userErr) {
-                console.error('❌ Failed to insert user into users table:', userErr);
-              } else {
-                console.log('✅ User record created:', userData);
-              }
-            } else {
-              console.log('✅ User found in custom users table:', customUser);
-              shop_id = customUser.shop_id;
+            if (!staffErr && staffRow && staffRow.shop_id) {
+              staffShopId = staffRow.shop_id;
+              shop_id = staffShopId;
+              isStaff = true;
+              console.log('✅ Staff login, found shop_id:', shop_id);
             }
-          } catch (ex) {
-            console.warn('⚠️ Failed to check/insert user after login:', ex);
+          } catch (e) {
+            console.warn('Staff shop_id lookup failed:', e);
+          }
+
+          // If not staff, check for owner/admin shops
+          if (!isStaff) {
+            try {
+              // Prefer user_shops for owner/admin roles
+              const { data: userShops, error: userShopsErr } = await supabase
+                .from('user_shops')
+                .select('shop_id, role')
+                .eq('user_id', auth_id);
+              if (!userShopsErr && userShops && userShops.length) {
+                // Find first shop where role is owner/admin
+                const ownerShop = userShops.find(s => ['owner','admin'].includes((s.role||'').toLowerCase()));
+                if (ownerShop && ownerShop.shop_id) {
+                  ownerShopId = ownerShop.shop_id;
+                  shop_id = ownerShopId;
+                  console.log('✅ Owner/Admin login, found shop_id:', shop_id);
+                }
+              }
+              // Fallback: check shops table for owner_id
+              if (!shop_id) {
+                const { data: ownedShops, error: ownedShopsErr } = await supabase
+                  .from('shops')
+                  .select('id')
+                  .eq('owner_id', auth_id);
+                if (!ownedShopsErr && ownedShops && ownedShops.length) {
+                  ownerShopId = ownedShops[0].id;
+                  shop_id = ownerShopId;
+                  console.log('✅ Owner login, found shop_id from shops table:', shop_id);
+                }
+              }
+            } catch (e) {
+              console.warn('Owner shop_id lookup failed:', e);
+            }
           }
 
           // Save session locally with shop_id

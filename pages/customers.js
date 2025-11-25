@@ -44,6 +44,35 @@ let vehicleCountByCustomer = {};
 
 
 document.addEventListener('DOMContentLoaded', async () => {
+	// Enforce page permission: only service_writer, receptionist, admin/owner
+	import('../helpers/auth.js').then(async ({ canAccessPage }) => {
+		const allowedRoles = ['admin', 'service_writer', 'receptionist'];
+		let userRole = null;
+		try {
+			const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+			userRole = session.role || null;
+		} catch (e) {}
+		// If no role in session, try Supabase
+		if (!userRole) {
+			try {
+				const supabase = getSupabaseClient();
+				const { data: { user } } = await supabase.auth.getUser();
+				if (user) {
+					// Try to get staff role
+					const { data: staffRow } = await supabase.from('shop_staff').select('role').eq('auth_id', user.id).single();
+					if (staffRow && staffRow.role) userRole = staffRow.role;
+					else {
+						const { data: userRow } = await supabase.from('users').select('role').eq('id', user.id).single();
+						if (userRow && userRow.role) userRole = userRow.role;
+					}
+				}
+			} catch (e) {}
+		}
+		if (!allowedRoles.includes((userRole || '').toLowerCase())) {
+			window.location.href = 'dashboard.html';
+			return;
+		}
+	});
 			// New Appointment button logic with modal
 			const cdNewApptBtn = document.getElementById('cdNewApptBtn');
 			const vehSelectModal = document.getElementById('vehSelectModal');

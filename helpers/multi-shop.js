@@ -86,27 +86,38 @@ async function shouldShowAdminPage(userId) {
     return { showAdmin: false, reason: 'no_auth', shopCount: 0 };
   }
   try {
-    const { data: user, error: userError } = await supabase
+    // Prefer shop_staff for staff users
+    let user = null;
+    let userError = null;
+    const { data: staff, error: staffErr } = await supabase
+      .from('shop_staff')
+      .select('role, shop_id')
+      .eq('auth_id', userId)
+      .single();
+    if (staff) {
+      // Staff: no admin page
+      return { showAdmin: false, reason: 'staff', shopCount: 0 };
+    }
+    // If not staff, check users table
+    const { data: userData, error: userErr } = await supabase
       .from('users')
       .select('subscription_plan, max_shops')
       .eq('id', userId)
       .single();
+    user = userData;
+    userError = userErr;
     if (userError) {
       console.error('Error fetching user data:', userError);
       return { showAdmin: false, reason: 'error', shopCount: 0 };
     }
-    console.log('🔍 [ADMIN CHECK] User data:', { 
-      subscription_plan: user?.subscription_plan, 
-      max_shops: user?.max_shops 
-    });
     const userShops = await getUserShops(userId);
     const shopCount = userShops.length;
     const currentShopId = getCurrentShopId();
 
-    // Determine ownership robustly:
-    // - If the user's role on any shop is 'owner' or 'admin'
-    // - OR if the shop's owner_id matches the user id (trimmed string compare)
+    // Check if user is staff (not owner)
     let isOwner = false;
+    let ownerPlan = null;
+    let ownerId = null;
     try {
       if (userShops && userShops.length) {
         isOwner = userShops.some(s => {
@@ -114,10 +125,12 @@ async function shouldShowAdminPage(userId) {
           if (role === 'owner' || role === 'admin') return true;
           // fallback: check shop.owner_id if present on the joined shop object
           const shopOwnerId = s.shop?.owner_id ? String(s.shop.owner_id).trim() : null;
-          return shopOwnerId && String(userId).trim() === shopOwnerId;
+          if (shopOwnerId && String(userId).trim() === shopOwnerId) return true;
+          // If staff, capture ownerId for plan check
+          if (role !== 'owner' && shopOwnerId) ownerId = shopOwnerId;
+          return false;
         });
       }
-
       // If no userShops info matched and we have a currentShopId, fetch the shop directly
       if (!isOwner && currentShopId) {
         const { data: shop, error: shopError } = await supabase
@@ -128,22 +141,33 @@ async function shouldShowAdminPage(userId) {
         if (!shopError && shop) {
           const shopOwnerId = shop.owner_id ? String(shop.owner_id).trim() : null;
           if (shopOwnerId && String(userId).trim() === shopOwnerId) isOwner = true;
+          else if (shopOwnerId) ownerId = shopOwnerId;
         }
+      }
+      // If staff, check owner's plan
+      if (!isOwner && ownerId) {
+        const { data: owner, error: ownerError } = await supabase
+          .from('users')
+          .select('subscription_plan')
+          .eq('id', ownerId)
+          .single();
+        if (!ownerError && owner) ownerPlan = owner.subscription_plan;
       }
     } catch (ex) {
       console.warn('Error while determining owner status:', ex);
     }
 
-    const hasMultiShopPlan = ['local', 'multi'].includes((user?.subscription_plan || '').toString().toLowerCase());
-    
+    const planToCheck = isOwner ? (user?.subscription_plan || '') : (ownerPlan || '');
+    const hasMultiShopPlan = ['local', 'multi'].includes(String(planToCheck).toLowerCase());
+
     console.log('🔍 [ADMIN CHECK] Evaluation:', {
       shopCount,
       isOwner,
       hasMultiShopPlan,
-      plan_lowercase: user?.subscription_plan?.toLowerCase()
+      plan_lowercase: String(planToCheck).toLowerCase()
     });
-    
-    // FIX: Allow admin for Local and Multi plan owners, even with one shop
+
+    // Allow admin only if owner has local/multi plan, or user has 2+ shops
     if (isOwner && hasMultiShopPlan) {
       console.log('✅ [ADMIN CHECK] Show admin - owner with local/multi plan');
       return { showAdmin: true, reason: 'owner_local_or_multi_plan', shopCount };
@@ -152,9 +176,9 @@ async function shouldShowAdminPage(userId) {
       console.log('✅ [ADMIN CHECK] Show admin - has 2+ shops');
       return { showAdmin: true, reason: 'multi_shop_access', shopCount };
     }
-    // Only block if NOT owner or NOT on local/multi plan
-    console.log('❌ [ADMIN CHECK] Hide admin - not owner or not local/multi plan');
-    return { showAdmin: false, reason: 'not_owner_or_not_local_multi', shopCount };
+    // Only block if NOT owner/staff or NOT on local/multi plan
+    console.log('❌ [ADMIN CHECK] Hide admin - not owner/staff or not local/multi plan');
+    return { showAdmin: false, reason: 'not_owner_or_staff_local_multi', shopCount };
   } catch (ex) {
     console.error('Exception checking admin page access:', ex);
     return { showAdmin: false, reason: 'error', shopCount: 0 };
