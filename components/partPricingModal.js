@@ -624,11 +624,36 @@ try {
 }
 
 // === Notification functions placed here to ensure PartPricingModal is defined ===
-function showNotification(msg, type) {
-  // simple fallback notification — replace with app UI if available
-  alert((type === 'error' ? 'Error: ' : '') + msg);
+// Only define a global `showNotification` if one does not already exist (avoid overwriting page helpers)
+if (typeof window.showNotification !== 'function') {
+  window.showNotification = function(message, type = 'success') {
+    // Prefer an existing in-page banner element if present
+    const notifIds = ['notification', 'notifBanner', 'notificationBanner', 'errorBanner'];
+    for (const id of notifIds) {
+      const el = document.getElementById(id);
+      if (el) {
+        try {
+          el.textContent = message;
+          el.className = 'notification';
+          if (type === 'error') el.style.background = '#ef4444'; else el.style.background = '#10b981';
+          el.classList.remove('hidden');
+          // auto-hide after 3s
+          setTimeout(() => { if (el) el.classList.add('hidden'); }, 3000);
+          return;
+        } catch (e) { break; }
+      }
+    }
+    // If no banner element, fall back to alert as a last resort
+    alert((type === 'error' ? 'Error: ' : '') + message);
+  };
 }
 
-PartPricingModal._fallbackNotification = function(msg, type) {
-  alert('Fallback: ' + ((type === 'error' ? 'Error: ' : '') + msg));
-};
+// Provide a safe fallback notification on the PartPricingModal class only if not already set
+if (typeof PartPricingModal._fallbackNotification !== 'function') {
+  PartPricingModal._fallbackNotification = function(msg, type) {
+    if (typeof window.showNotification === 'function') {
+      try { window.showNotification(msg, type); return; } catch (e) {}
+    }
+    alert((type === 'error' ? 'Error: ' : '') + msg);
+  };
+}
