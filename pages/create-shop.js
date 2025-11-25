@@ -585,7 +585,7 @@ async function createUserRecord(supabase, auth_id, email, first, last, zipcode, 
     // Update existing record
     const { error: updateErr } = await supabase
       .from('users')
-      .update({ shop_id, first, last, zipcode, role })
+      .update({ auth_id: auth_id, shop_id, first, last, zipcode, role })
       .eq('id', auth_id);
     
     if (updateErr) {
@@ -599,6 +599,7 @@ async function createUserRecord(supabase, auth_id, email, first, last, zipcode, 
   // Create new user record
   const userInsert = {
     id: auth_id,
+    auth_id: auth_id,
     email,
     first,
     last,
