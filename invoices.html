@@ -45,9 +45,7 @@
           <th class="sortable" data-col="total">Total</th>
           <th class="sortable" data-col="status">Status</th>
           <th class="sortable" data-col="due">Due</th>
-          <th style="text-align:center;vertical-align:bottom;">
-            <div style="width:100%;text-align:center;font-weight:500;font-size:16px;margin-bottom:6px;">Actions</div>
-          </th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -66,9 +64,7 @@
           <th class="sortable" data-col="total">Total</th>
           <th class="sortable" data-col="status">Status</th>
           <th class="sortable" data-col="due">Due</th>
-          <th style="text-align:center;vertical-align:bottom;">
-            <div style="width:100%;text-align:center;font-weight:500;font-size:16px;margin-bottom:6px;">Actions</div>
-          </th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -86,60 +82,9 @@
         <div><label>First Name</label><input id="invCustomerFirst" placeholder="First name" /></div>
         <div><label>Last Name</label><input id="invCustomerLast" placeholder="Last name" /></div>
         <div><label>Appointment ID (optional)</label><input id="invAppt" placeholder="a123..." /></div>
-        <div class="grid cols-3" style="margin:12px 0 0 0; gap:18px; align-items:end;">
-          <div><label style="margin-bottom:4px;display:block;color:#6b7280;font-size:15px;">Year</label><select id="invVehicleYear" class="form-control" style="min-width:120px;"><option value="">Year</option></select></div>
-          <div><label style="margin-bottom:4px;display:block;color:#6b7280;font-size:15px;">Make</label><select id="invVehicleMake" class="form-control" style="min-width:120px;" disabled><option value="">Make</option></select></div>
-          <div><label style="margin-bottom:4px;display:block;color:#6b7280;font-size:15px;">Model</label><select id="invVehicleModel" class="form-control" style="min-width:120px;" disabled><option value="">Model</option></select></div>
-        </div>
         <div><label>Tax %</label><input id="invTax" type="number" value="6" /></div>
         <div><label>Discount %</label><input id="invDisc" type="number" value="0" /></div>
         <div><label>Due</label><input id="invDue" type="date" /></div>
-      <script>
-      // --- Vehicle YMM Dropdown Logic for Invoice Modal ---
-      // VEHICLE_DATA is exposed globally from appointments.js
-      document.addEventListener('DOMContentLoaded', function() {
-        const yearSel = document.getElementById('invVehicleYear');
-        const makeSel = document.getElementById('invVehicleMake');
-        const modelSel = document.getElementById('invVehicleModel');
-        const VEHICLE_DATA = window.VEHICLE_DATA || {};
-        // Populate years
-        if (yearSel) {
-          for (let y = 2025; y >= 1990; y--) {
-            const opt = document.createElement('option');
-            opt.value = y;
-            opt.textContent = y;
-            yearSel.appendChild(opt);
-          }
-        }
-        // Populate makes
-        if (makeSel) {
-          makeSel.innerHTML = '<option value="">Make</option>';
-          Object.keys(VEHICLE_DATA).forEach(make => {
-            const opt = document.createElement('option');
-            opt.value = make;
-            opt.textContent = make;
-            makeSel.appendChild(opt);
-          });
-          makeSel.disabled = false;
-        }
-        // Populate models when make changes
-        makeSel && makeSel.addEventListener('change', function() {
-          const make = makeSel.value;
-          modelSel.innerHTML = '<option value="">Model</option>';
-          if (make && VEHICLE_DATA[make]) {
-            Object.keys(VEHICLE_DATA[make].models).forEach(model => {
-              const opt = document.createElement('option');
-              opt.value = model;
-              opt.textContent = model;
-              modelSel.appendChild(opt);
-            });
-            modelSel.disabled = false;
-          } else {
-            modelSel.disabled = true;
-          }
-        });
-      });
-      </script>
       </div>
       <div style="margin-top:10px; position:relative">
           <div class="toolbar" style="justify-content:space-between">
