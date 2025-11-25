@@ -113,7 +113,68 @@
         }
       }
 
-      // Build payload for upsert
+      // If this is a staff user and a shop_id is provided, write to `shop_staff` instead of `users`.
+      if(role === 'staff' && shop_id){
+        const payload = { first_name: first, last_name: last, email, role, shop_id };
+        if(userId) payload.auth_id = userId;
+        // Try upsert into shop_staff with FK retry behavior similar to users
+        let { data, error } = await sup.from('shop_staff').upsert([payload]).select();
+        if(error){
+          if(String(error.code) === '23503'){
+            console.warn('createAppUser (shop_staff) FK violation (23503). Waiting for auth user and retrying...');
+            try{
+              await waitForAuthUser(sup, userId, { timeout: 15000, poll: 500 });
+              const retry = await sup.from('shop_staff').upsert([payload]).select();
+              data = retry.data; error = retry.error;
+            }catch(re){
+              console.warn('Retry after FK wait failed (shop_staff)', re);
+              error = re || error;
+            }
+          }
+          // Fallback: try with explicit id if possible
+          if(error){
+            try{
+              const fallbackId = userId || uid('ss_');
+              const fallbackObj = Object.assign({ id: fallbackId }, payload);
+              const retry2 = await sup.from('shop_staff').upsert([fallbackObj]).select();
+              data = retry2.data; error = retry2.error;
+            }catch(re2){
+              console.warn('Fallback upsert to shop_staff also failed', re2);
+              error = error || re2;
+            }
+          }
+        }
+
+        if(error){
+          console.warn('createAppUser shop_staff upsert failed', error);
+          const local = localCreate();
+          return { ok: local.ok, id: local.id, local:true, error: (error && error.message) || String(error), details: error };
+        }
+
+        const id = (Array.isArray(data) && data[0] && data[0].id) || (data && data.id) || userId || uid('ss_');
+        return { ok:true, id, local:false, data };
+      }
+
+      // Build payload for upsert into users (owners/admins)
+      // Before creating a `users` row, ensure this account isn't already present in `shop_staff`.
+      // If it is, prefer that record and avoid duplicating the account into `users`.
+      try{
+        if(userId){
+          const { data: existingStaffByAuth, error: esErr } = await sup.from('shop_staff').select('*').eq('auth_id', userId).limit(1).single();
+          if(!esErr && existingStaffByAuth){
+            return { ok:true, id: userId, local:false, data: existingStaffByAuth };
+          }
+        }
+        if(email){
+          const { data: existingStaffByEmail, error: eeErr } = await sup.from('shop_staff').select('*').ilike('email', email).limit(1).single();
+          if(!eeErr && existingStaffByEmail){
+            return { ok:true, id: userId || existingStaffByEmail.id, local:false, data: existingStaffByEmail };
+          }
+        }
+      }catch(checkErr){
+        console.warn('createAppUser: shop_staff existence check failed', checkErr);
+      }
+
       const payload = { first, last, email, role, shop_id };
       if(userId) payload.auth_id = userId;
       if(zipcode) payload.zipcode = zipcode;
@@ -713,7 +774,7 @@
   }
 
   // Google OAuth helpers
-  function handleGoogleSignup(role = 'staff', shopId = null){ if(!window.supabase){ console.warn('Supabase not available for Google signup, retrying...'); setTimeout(()=> handleGoogleSignup(role, shopId), 500); return; } const options = { provider: 'google', options: { redirectTo: window.location.origin + '/dashboard.html' } }; if(role === 'staff' && shopId) options.options.redirectTo += `?shop_id=${shopId}&role=staff`; else if(role === 'admin') options.options.redirectTo += `?role=admin`; window.supabase.auth.signInWithOAuth(options).catch(error => console.warn('Google signup failed:', error)); }
+  function handleGoogleSignup(role = 'staff', shopId = null){ if(!window.supabase){ console.warn('Supabase not available for Google signup, retrying...'); setTimeout(()=> handleGoogleSignup(role, shopId), 500); return; } const options = { provider: 'google', options: { redirectTo: window.location.origin + '/signup.html?oauth=google' } }; if(role === 'staff' && shopId) options.options.redirectTo += `&shop_id=${shopId}&role=staff`; else if(role === 'admin') options.options.redirectTo += `&role=admin`; window.supabase.auth.signInWithOAuth(options).catch(error => console.warn('Google signup failed:', error)); }
 
   function handleGoogleCreateShop(){ if(!window.supabase){ console.warn('Supabase not available for Google create shop, retrying...'); setTimeout(()=> handleGoogleCreateShop(), 500); return; } const options = { provider: 'google', options: { redirectTo: window.location.origin + '/create-shop.html?oauth=google' } }; window.supabase.auth.signInWithOAuth(options).catch(error => console.warn('Google create shop failed:', error)); }
 

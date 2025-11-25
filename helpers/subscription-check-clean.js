@@ -63,17 +63,26 @@ async function checkSubscriptionAccess() {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return true;
 
+    // Prefer shop_staff for staff users
+    const { data: staff, error: staffErr } = await supabase
+      .from('shop_staff')
+      .select('role, subscription_status, subscription_end')
+      .eq('auth_id', user.id)
+      .single();
+    if (staff) {
+      // Staff: always allow access (or handle staff-specific logic here)
+      return true;
+    }
+    // If not staff, check users table
     const { data: userRecord, error: userRecErr } = await supabase
       .from('users')
       .select('role, subscription_status, subscription_end')
       .eq('id', user.id)
       .single();
-
     if (userRecErr) {
       console.warn('⚠️ Could not load user record:', userRecErr);
       return true;
     }
-
     if (userRecord && String(userRecord.role).toLowerCase() === 'staff') {
       return true;
     }

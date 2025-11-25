@@ -28,12 +28,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (session && session.user) {
         console.log('✅ OAuth session found:', session.user.email);
         
-        // Retrieve stored join code and shop ID from sessionStorage
-        const joinCode = sessionStorage.getItem('signup_join_code');
-        const shopId = sessionStorage.getItem('signup_shop_id');
-        
-        if (!joinCode || !shopId) {
-          err.textContent = 'OAuth error: Missing join code or shop ID. Please try again.';
+        // Retrieve stored join code and shop ID from sessionStorage (fallback to URL params)
+        let joinCode = sessionStorage.getItem('signup_join_code');
+        let shopId = sessionStorage.getItem('signup_shop_id');
+        // Fallback: check URL query params (multi-tenant helper may append shop_id)
+        if ((!joinCode || !shopId) && urlParams.get('shop_id')) {
+          shopId = urlParams.get('shop_id');
+        }
+        if ((!joinCode || !shopId) && urlParams.get('join_code')) {
+          joinCode = urlParams.get('join_code');
+        }
+        if (!shopId) {
+          err.textContent = 'OAuth error: Missing shop ID. Please try again.';
           err.style.color = 'red';
           return;
         }
@@ -67,25 +73,24 @@ document.addEventListener('DOMContentLoaded', async () => {
           console.warn('Exception inserting into shop_staff:', e);
         }
         
-        // Save session locally
-        localStorage.setItem('xm_session', JSON.stringify({
-          email,
-          userId,
+        // Do not auto-sign-in; save as pending and sign out to avoid temporary elevated access
+        localStorage.setItem('xm_pending_user', JSON.stringify({
           shopId: shopId,
-          role: 'staff',
-          at: Date.now()
+          email,
+          role: 'staff'
         }));
-        
+
         // Clean up sessionStorage
         sessionStorage.removeItem('signup_join_code');
         sessionStorage.removeItem('signup_shop_id');
-        
+
         // Show success message
-        showTopBanner(`🎉 Welcome! Account created with Google.`, 'success');
-        
-        // Redirect to dashboard after a brief delay
+        showTopBanner(`🎉 Account created with Google. Please sign in to continue.`, 'success');
+
+        // Sign out the OAuth session and redirect to login
+        try { await supabase.auth.signOut(); } catch(e) { console.warn('Sign out failed', e); }
         setTimeout(() => {
-          window.location.href = 'dashboard.html';
+          window.location.href = 'login.html';
         }, 1500);
         
         return;
@@ -142,17 +147,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('✅ Shop found:', shop.name);
         
         // Step 2: Check staff limit
-        const { data: staffCount, error: countErr } = await supabase
-          .from('users')
+        // Count staff in shop_staff table (not users)
+        const { data: staffRows, error: staffErr } = await supabase
+          .from('shop_staff')
           .select('id', { count: 'exact', head: true })
-          .eq('shop_id', shop.id)
-          .neq('role', 'admin');
-        
-        if (!countErr && staffCount) {
-          const currentStaff = staffCount.length || 0;
-          if (currentStaff >= (shop.staff_limit || 3)) {
-            throw new Error('This shop has reached its staff limit. Contact your admin.');
-          }
+          .eq('shop_id', shop.id);
+
+        if (staffErr) {
+          throw new Error('Could not check staff limit. Please try again later.');
+        }
+        const currentStaff = Array.isArray(staffRows) ? staffRows.length : 0;
+        if (currentStaff >= (shop.staff_limit || 3)) {
+          throw new Error('This shop has reached its staff limit. Contact your admin.');
         }
         
         // Step 3: Create user in Auth
@@ -160,14 +166,14 @@ document.addEventListener('DOMContentLoaded', async () => {
           email,
           password: pass,
           options: { 
-            data: { 
-              first, 
-              last,
-              role: 'staff',
-              shop_id: shop.id
-            },
-            emailRedirectTo: window.location.origin + '/dashboard.html'
-          }
+              data: { 
+                first, 
+                last,
+                role: 'staff',
+                shop_id: shop.id
+              },
+              emailRedirectTo: window.location.origin + '/login.html'
+            }
         });
         
         console.log('🔐 Auth signUp result:', signData, signErr);
@@ -230,12 +236,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           }));
 
           supabaseSuccess = true;
-          console.log('🎉 Signup complete! Redirecting to dashboard...');
-          showTopBanner(`🎉 Welcome to ${shop.name}, ${first}!`, 'success');
+          console.log('🎉 Signup complete! Redirecting to login...');
+          showTopBanner(`🎉 Welcome to ${shop.name}, ${first}! Please sign in.`, 'success');
           
-          // Redirect to dashboard
+          // Sign out to avoid temporary elevated access, then redirect to login
+          try { await supabase.auth.signOut(); } catch(e) { console.warn('Sign out failed', e); }
           setTimeout(() => {
-            window.location.href = 'dashboard.html';
+            window.location.href = 'login.html';
           }, 1500);
           
         } else {
@@ -323,19 +330,17 @@ document.addEventListener('DOMContentLoaded', async () => {
           console.warn('Could not create local shop_staff record', e); 
         }
         
-        localStorage.setItem('xm_session', JSON.stringify({ 
-          email,
-          userId,
+        // Do not auto-sign-in local fallback; treat as pending and redirect to login
+        localStorage.setItem('xm_pending_user', JSON.stringify({
           shopId: shop.id,
-          role: 'staff',
-          at: Date.now() 
+          shopName: shop.name,
+          email,
+          role: 'staff'
         }));
-        
-        showTopBanner(`🎉 Welcome to ${shop.name}, ${first}!`, 'success');
-        console.log('✅ Local user created successfully. Redirecting...');
-        
+        showTopBanner(`🎉 Account created for ${shop.name}. Please sign in.`, 'success');
+        console.log('✅ Local user created (pending). Redirecting to login...');
         setTimeout(() => {
-          window.location.href = 'dashboard.html';
+          window.location.href = 'login.html';
         }, 1500);
       } catch (ex) {
   err.textContent = 'There was a problem saving your account. Please try again.';

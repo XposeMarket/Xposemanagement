@@ -1,3 +1,16 @@
+<script>
+// Show notification helper (success/error)
+function showNotification(message, type = 'success') {
+  const shopSaved = document.getElementById('shopSaved');
+  if (!shopSaved) return;
+  shopSaved.textContent = message;
+  shopSaved.className = 'notice ' + (type === 'error' ? 'danger' : 'success');
+  setTimeout(() => {
+    shopSaved.textContent = '';
+    shopSaved.className = 'notice';
+  }, 3000);
+}
+</script>
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Settings</title><link rel="stylesheet" href="styles.css"></head><body>
 <header class="top">
   <div class="container row top row">
@@ -263,7 +276,7 @@ document.addEventListener('DOMContentLoaded', function(){
         let usersLocal = [];
         try{ const { data: udata } = await sup.from('users').select('*').eq('shop_id', shop.id); if(udata) usersLocal = udata; }catch(e){ console.warn('Error querying users table', e); }
         let staffData = [];
-        try{ const { data: sdata } = await sup.from('shop_staff').select('*').eq('shop_id', shop.id); if(sdata) staffData = sdata.map(s => ({ shop_staff_id: s.id, first: s.first_name, last: s.last_name, email: s.email, role: s.role, shop_id: s.shop_id, is_staff:true })); }catch(e){ console.warn('Error querying shop_staff', e); }
+        try{ const { data: sdata } = await sup.from('shop_staff').select('*').eq('shop_id', shop.id); if(sdata) staffData = sdata.map(s => ({ shop_staff_id: s.id, auth_id: s.auth_id || null, first: s.first_name, last: s.last_name, email: s.email, role: s.role, shop_id: s.shop_id, is_staff:true })); }catch(e){ console.warn('Error querying shop_staff', e); }
 
         // Combine and dedupe by email, but prefer shop_staff entries for role/display
         const combined = [...(usersLocal || []), ...(staffData || [])];
@@ -341,7 +354,56 @@ document.addEventListener('DOMContentLoaded', function(){
             }
             tr.appendChild(tdRole);
             const tdAct = document.createElement('td');
-            if(isOwner){ tdAct.textContent = ''; } else { tdAct.innerHTML = '<button class="btn" disabled>Remove</button>'; }
+            if(isOwner){
+              tdAct.textContent = '';
+            } else {
+              // Remove button with confirmation
+              const removeBtn = document.createElement('button');
+              removeBtn.className = 'btn danger';
+              removeBtn.textContent = 'Remove';
+              removeBtn.style.marginLeft = '8px';
+              removeBtn.addEventListener('click', async () => {
+                const confirmed = await showConfirm(`Are you sure you want to remove ${u.first||u.first_name||''} ${u.last||u.last_name||''} from this shop?`, 'Remove', 'Cancel');
+                if (!confirmed) return;
+                // Remove from shop_staff
+                if (u.shop_staff_id) {
+                  try {
+                    const delRes = await sup.from('shop_staff').delete().eq('id', u.shop_staff_id).select();
+                    const delErr = delRes?.error || null;
+                    console.log('[RoleChange] shop_staff delete response:', delRes);
+                    if (delErr) {
+                      showNotification('Failed to remove staff member: ' + (delErr.message || delErr), 'error');
+                      return;
+                    }
+                    // Also set shop_id to null in users row (by email or auth_id)
+                    let userUpdateErr = null;
+                    // Prefer updating by auth_id if present
+                    if (u.auth_id) {
+                      const updRes = await sup.from('users').update({ shop_id: null }).eq('auth_id', u.auth_id).select();
+                      console.log('[RoleChange] users update by auth_id response:', updRes);
+                      if (updRes?.error) userUpdateErr = updRes.error;
+                    }
+                    // Fallback to email
+                    if (!userUpdateErr && u.email) {
+                      const updRes2 = await sup.from('users').update({ shop_id: null }).eq('email', u.email).select();
+                      console.log('[RoleChange] users update by email response:', updRes2);
+                      if (updRes2?.error) userUpdateErr = updRes2.error;
+                    }
+                    if (userUpdateErr) {
+                      showNotification('Staff removed, but could not update users row: ' + (userUpdateErr.message || userUpdateErr), 'error');
+                    } else {
+                      showNotification('Staff member removed.', 'success');
+                    }
+                    await renderTeam();
+                  } catch (ex) {
+                    showNotification('Error removing staff member: ' + (ex.message || ex), 'error');
+                  }
+                } else {
+                  showNotification('Could not find staff record to remove.', 'error');
+                }
+              });
+              tdAct.appendChild(removeBtn);
+            }
             tr.appendChild(tdAct);
             tbody.appendChild(tr);
             if(!isOwner) used++;
