@@ -15,7 +15,10 @@ export const LS = {
 };
 
 export const ROLE_PAGES = {
-  admin: ["dashboard", "invoice", "appointments", "jobs", "messages", "invoices", "customers", "settings", "profile", "admin"],
+  admin: ["dashboard", "invoice", "appointments", "jobs", "messages", "invoices", "customers", "settings", "profile", "admin", "revenue"],
+  // 'owner' role may be used on some installations to represent the shop owner.
+  // Map it to the same pages as admin so owners can access admin-only pages like revenue.
+  owner: ["dashboard", "invoice", "appointments", "jobs", "messages", "invoices", "customers", "settings", "profile", "admin", "revenue"],
   service_writer: ["dashboard", "invoice", "customers", "appointments", "messages", "invoices", "profile"],
   receptionist: ["dashboard", "messages", "customers", "appointments", "profile"],
   staff: ["dashboard", "appointments", "jobs", "profile"]

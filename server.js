@@ -350,8 +350,10 @@ app.get('/api/catalog/job-parts/:jobId', async (req, res) => {
 app.get('/api/catalog/job-labor/:jobId', async (req, res) => {
   try {
     const labor = await catalogAPI.getJobLabor(req.params.jobId);
+    console.log('[API] job-labor', req.params.jobId, 'rows:', Array.isArray(labor) ? labor.length : 'none', labor);
     res.json({ labor });
   } catch (error) {
+    console.error('[API] job-labor error', req.params.jobId, error && error.message);
     res.status(500).json({ error: error.message });
   }
 });

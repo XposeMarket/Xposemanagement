@@ -24,6 +24,7 @@ function showNotification(message, type = 'success') {
       <a href="messages.html" class="">Messages</a>
       <a href="invoices.html" class="">Invoices</a>
       <a href="customers.html" class="">Customers</a>
+      <a href="revenue.html" class="">Revenue</a>
       <a href="settings.html" class="active">Settings</a>
       <a href="profile.html" class="">Profile</a>
       <a href="#" id="mobileThemeToggle" class="mobile-nav-btn mobile-special">Theme</a>
@@ -106,7 +107,7 @@ function showNotification(message, type = 'success') {
   <div style="margin-top:16px">
     <h3>Staff List</h3>
     <div id="shopOwner" style="margin-bottom:8px; font-weight:600">Shop Owner: <span id="shopOwnerName">-</span></div>
-    <table class="table" id="staffTable"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Actions</th></tr></thead><tbody></tbody></table>
+    <table class="table" id="staffTable"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Hourly Rate</th><th>Actions</th></tr></thead><tbody></tbody></table>
         <style>
           .owner-badge {
             background: #ffd700;
@@ -206,12 +207,12 @@ document.addEventListener('DOMContentLoaded', function(){
     try{
       // Ensure we have a Supabase client
       const sup = await waitForSupabaseClient(8000);
-      if(!sup){ tbody.innerHTML = '<tr><td colspan="4" style="color:red;">[ERROR] Supabase client unavailable.</td></tr>'; return; }
+      if(!sup){ tbody.innerHTML = '<tr><td colspan="5" style="color:red;">[ERROR] Supabase client unavailable.</td></tr>'; return; }
       // 1. Get current Supabase Auth user
       const { data: authData, error: authErr } = await sup.auth.getUser();
       const authId = authData?.user?.id || null;
       if(!authId){
-        tbody.innerHTML = '<tr><td colspan="4" style="color:red;">[ERROR] No Supabase Auth user found. Please log in.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="color:red;">[ERROR] No Supabase Auth user found. Please log in.</td></tr>';
         return;
       }
       // 2. Query users table for this auth user id (try `id` first, then legacy `auth_id`)
@@ -246,12 +247,12 @@ document.addEventListener('DOMContentLoaded', function(){
       }
 
       if(!currentUser){
-        tbody.innerHTML = '<tr><td colspan="4" style="color:red;">[ERROR] No user record found for your account. Please ensure a `users` row exists with your email or auth_id.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="color:red;">[ERROR] No user record found for your account. Please ensure a `users` row exists with your email or auth_id.</td></tr>';
         return;
       }
 
       if(!currentUser.shop_id){
-        tbody.innerHTML = '<tr><td colspan="4" style="color:red;">[ERROR] Your user record does not have a `shop_id` assigned. Please ask an admin to assign your account to a shop.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="color:red;">[ERROR] Your user record does not have a `shop_id` assigned. Please ask an admin to assign your account to a shop.</td></tr>';
         return;
       }
       // 3. Query shops table for this shop_id
@@ -259,7 +260,7 @@ document.addEventListener('DOMContentLoaded', function(){
       const shop = shopRows && shopRows[0] ? shopRows[0] : null;
       
       if(!shop){
-        tbody.innerHTML = '<tr><td colspan="4" style="color:red;">[ERROR] No shop found for your user/shop assignment.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="color:red;">[ERROR] No shop found for your user/shop assignment.</td></tr>';
         return;
       }
       // shop has been resolved from the authenticated user's shop_id above
@@ -276,7 +277,7 @@ document.addEventListener('DOMContentLoaded', function(){
         let usersLocal = [];
         try{ const { data: udata } = await sup.from('users').select('*').eq('shop_id', shop.id); if(udata) usersLocal = udata; }catch(e){ console.warn('Error querying users table', e); }
         let staffData = [];
-        try{ const { data: sdata } = await sup.from('shop_staff').select('*').eq('shop_id', shop.id); if(sdata) staffData = sdata.map(s => ({ shop_staff_id: s.id, auth_id: s.auth_id || null, first: s.first_name, last: s.last_name, email: s.email, role: s.role, shop_id: s.shop_id, is_staff:true })); }catch(e){ console.warn('Error querying shop_staff', e); }
+        try{ const { data: sdata } = await sup.from('shop_staff').select('*').eq('shop_id', shop.id); if(sdata) staffData = sdata.map(s => ({ shop_staff_id: s.id, auth_id: s.auth_id || null, first: s.first_name, last: s.last_name, email: s.email, role: s.role, shop_id: s.shop_id, hourly_rate: s.hourly_rate, is_staff:true })); }catch(e){ console.warn('Error querying shop_staff', e); }
 
         // Combine and dedupe by email, but prefer shop_staff entries for role/display
         const combined = [...(usersLocal || []), ...(staffData || [])];
@@ -312,7 +313,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
         // Populate staff table
         tbody.innerHTML = '';
-        if(!allTeamMembers.length){ tbody.innerHTML = '<tr><td colspan="4" class="muted">No team members found.</td></tr>'; if(slotsUsedEl) slotsUsedEl.textContent = '0'; }
+        if(!allTeamMembers.length){ tbody.innerHTML = '<tr><td colspan="5" class="muted">No team members found.</td></tr>'; if(slotsUsedEl) slotsUsedEl.textContent = '0'; }
         else {
           let used = 0;
           let shopOwnerId = shop.owner_id ? String(shop.owner_id).trim() : null;
@@ -353,6 +354,71 @@ document.addEventListener('DOMContentLoaded', function(){
               tdRole.appendChild(roleEl);
             }
             tr.appendChild(tdRole);
+            // Hourly Rate cell
+            const tdRate = document.createElement('td');
+            const rateVal = (u.hourly_rate != null) ? u.hourly_rate : (u.rate != null ? u.rate : '');
+            const rateInput = document.createElement('input');
+            rateInput.type = 'number';
+            rateInput.step = '0.01';
+            rateInput.placeholder = '0.00';
+            rateInput.value = (rateVal !== '') ? String(rateVal) : '';
+            rateInput.style.width = '100px';
+            rateInput.dataset.email = (u.email || '').toLowerCase();
+            // Add a save button (check) to explicitly persist hourly rate
+            const saveBtn = document.createElement('button');
+            saveBtn.className = 'btn';
+            saveBtn.type = 'button';
+            saveBtn.title = 'Save hourly rate';
+            saveBtn.textContent = '✓';
+            saveBtn.style.marginLeft = '8px';
+            saveBtn.style.padding = '6px 8px';
+            saveBtn.disabled = true;
+            saveBtn.style.opacity = '0.5';
+
+            // Mark dirty when user edits the value
+            rateInput.addEventListener('input', () => {
+              saveBtn.disabled = false;
+              saveBtn.style.opacity = '1';
+            });
+
+            saveBtn.addEventListener('click', async (e) => {
+              e.preventDefault();
+              const raw = rateInput.value;
+              const num = isNaN(Number(raw)) ? 0 : Number(raw);
+              try {
+                let res = null;
+                if (u.shop_staff_id) {
+                  res = await sup.from('shop_staff').update({ hourly_rate: num }).eq('id', u.shop_staff_id).select();
+                } else if (u.id) {
+                  res = await sup.from('users').update({ hourly_rate: num }).eq('id', u.id).select();
+                } else if (u.auth_id) {
+                  res = await sup.from('users').update({ hourly_rate: num }).eq('auth_id', u.auth_id).select();
+                }
+                if (res && res.error) throw res.error;
+                showNotification('Hourly rate saved.', 'success');
+                saveBtn.disabled = true;
+                saveBtn.style.opacity = '0.5';
+                // Refresh team list to show persisted value
+                await renderTeam();
+              } catch (ex) {
+                console.error('Failed to save hourly rate', ex);
+                // Helpful guidance for missing column error (PostgREST PGRST204)
+                const missingColMsg = ex?.message || '';
+                if ((ex && ex.code === 'PGRST204') || /Could not find the 'hourly_rate' column/i.test(missingColMsg)) {
+                  showNotification('DB column `hourly_rate` missing. See console for migration SQL.', 'error');
+                  console.info('Add the `hourly_rate` column to `shop_staff` (recommended) with this SQL:\n');
+                  console.info("ALTER TABLE shop_staff ADD COLUMN hourly_rate numeric(10,2);");
+                  console.info('Optionally backfill from users.hourly_rate then set a default:');
+                  console.info("UPDATE shop_staff s SET hourly_rate = u.hourly_rate FROM users u WHERE (s.auth_id IS NOT NULL AND s.auth_id = u.auth_id) OR (s.email IS NOT NULL AND lower(s.email) = lower(u.email));");
+                } else {
+                  showNotification('Failed to save hourly rate.', 'error');
+                }
+              }
+            });
+
+            tdRate.appendChild(rateInput);
+            tdRate.appendChild(saveBtn);
+            tr.appendChild(tdRate);
             const tdAct = document.createElement('td');
             if(isOwner){
               tdAct.textContent = '';
