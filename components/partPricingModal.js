@@ -1,5 +1,6 @@
 
-// Place notification functions after class definition to avoid ReferenceError
+
+// Place notification functions at the very end of the file to avoid ReferenceError
 
 function showNotification(msg, type) {
   // You can replace this with a custom UI notification system
