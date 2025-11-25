@@ -739,6 +739,11 @@ async function updateJobStatus(jobId, newStatus) {
       };
     }
     // ...existing code...
+  // Make it global for onclick
+  window.closeStatusModal = closeStatusModal;
+  window.openLaborModal = openLaborModal;
+  window.closeRemoveModal = closeRemoveModal;
+  // `openLaborModal` is exposed above and used directly by other components.
   } else {
     if (!['in_progress', 'awaiting_parts'].includes(newStatus)) {
       // If status is not active, remove from jobs page (stays in appointments)
@@ -1087,7 +1092,8 @@ async function handleAddToInvoice() {
 /**
  * Open labor modal
  */
-function openLaborModal(jobId) {
+async function openLaborModal(jobId) {
+  console.log('[openLaborModal] called with jobId:', jobId);
   const modal = document.getElementById('laborModal');
   if (!modal) return;
   
@@ -1101,8 +1107,36 @@ function openLaborModal(jobId) {
   if (labHoursEl) labHoursEl.value = '1';
   // Populate rate select from settings (local cache)
   try {
-    const settings = JSON.parse(localStorage.getItem('xm_data') || '{}').settings || {};
-    const rates = settings.labor_rates || [];
+    let settings = JSON.parse(localStorage.getItem('xm_data') || '{}').settings || {};
+    let rates = settings.labor_rates || [];
+    console.log('[openLaborModal] labor_rates from localStorage:', rates);
+    // If no local rates, attempt to fetch from Supabase `data` table as a fallback
+    if ((!rates || rates.length === 0)) {
+      try {
+        const supabase = getSupabaseClient();
+        const shopId = getCurrentShopId();
+        if (supabase && shopId) {
+          const { data: dataRecord, error } = await supabase
+            .from('data')
+            .select('settings')
+            .eq('shop_id', shopId)
+            .single();
+          if (!error && dataRecord && dataRecord.settings) {
+            settings = dataRecord.settings || {};
+            rates = settings.labor_rates || [];
+            console.log('[openLaborModal] fetched labor_rates from Supabase:', rates);
+            // update localStorage cache so subsequent calls are fast
+            try {
+              const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
+              localData.settings = Object.assign(localData.settings || {}, settings);
+              localStorage.setItem('xm_data', JSON.stringify(localData));
+            } catch (e) { /* ignore local cache failures */ }
+          }
+        }
+      } catch (e) {
+        console.warn('[openLaborModal] Supabase fallback failed', e);
+      }
+    }
     if (labRateSel) {
       // populate select with only saved labor rates (no placeholder/custom option)
       labRateSel.innerHTML = '';
