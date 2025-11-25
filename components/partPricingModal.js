@@ -1,13 +1,6 @@
 
-
-
-// === Notification functions MUST be at the absolute end of the file ===
-function showNotification(msg, type) {
-  alert((type === 'error' ? 'Error: ' : '') + msg);
-}
-PartPricingModal._fallbackNotification = function(msg, type) {
-  alert('Fallback: ' + ((type === 'error' ? 'Error: ' : '') + msg));
-};
+// Notification functions are defined at the end of this file to avoid
+// referencing `PartPricingModal` before the class is initialized.
 /**
  * Part Pricing Modal Component
  * Allows manual entry of cost/sell prices after calling supplier
@@ -629,3 +622,13 @@ try {
   // Some environments make certain named globals non-writable; that's ok.
   console.warn('[PartPricingModal] could not set legacy global window.partPricingModal', e);
 }
+
+// === Notification functions placed here to ensure PartPricingModal is defined ===
+function showNotification(msg, type) {
+  // simple fallback notification — replace with app UI if available
+  alert((type === 'error' ? 'Error: ' : '') + msg);
+}
+
+PartPricingModal._fallbackNotification = function(msg, type) {
+  alert('Fallback: ' + ((type === 'error' ? 'Error: ' : '') + msg));
+};
