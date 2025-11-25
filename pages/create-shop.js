@@ -64,12 +64,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           staff_limit: 3,
           owner_id: session.user && session.user.id ? session.user.id : null // Link shop to owner
         };
-        
+        console.log('🛠️ Shop insert object:', shopInsert);
         const { data: shopData, error: shopErr } = await supabase
           .from('shops')
           .insert([shopInsert])
           .select()
           .single();
+        console.log('🛠️ Supabase shop response:', { shopData, shopErr });
         
         if (shopErr || !shopData || !shopInsert.owner_id) {
           console.error('❌ Shop creation failed:', shopErr, 'Owner ID:', shopInsert.owner_id);
@@ -325,7 +326,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           join_code, 
           staff_limit: 3 
         };
-        const { data: shopData, error: shopErr } = await supabase.from('shops').insert([shopInsert]).select().single();
+        console.log('🛠️ Shop insert object:', shopInsert);
+        const { data: shopData, error: shopErr } = await supabase
+          .from('shops')
+          .insert([shopInsert])
+          .select()
+          .single();
+        console.log('🛠️ Supabase shop response:', { shopData, shopErr });
         
         if (shopErr || !shopData) {
           console.error('❌ Shop creation failed:', shopErr);
@@ -350,8 +357,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             } 
           }
         });
-        
-        // ...existing code...
         
         if (signErr) {
           const msg = (signErr.message || '').toLowerCase();
@@ -590,12 +595,13 @@ async function createUserRecord(supabase, auth_id, email, first, last, zipcode, 
     zipcode,
     created_at: new Date().toISOString()
   };
-  
+  console.log('🛠️ User insert object:', userInsert);
   const { data: userData, error: userErr } = await supabase
     .from('users')
     .insert([userInsert])
     .select()
     .single();
+  console.log('🛠️ Supabase user response:', { userData, userErr });
   
   if (userErr) {
     console.error('❌ Failed to create user record:', userErr);
