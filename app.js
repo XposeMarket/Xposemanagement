@@ -19,7 +19,7 @@ import { setupInvoices } from './pages/invoices.js';
 import { setupMessages } from './pages/messages.js';
 import { setupSettings } from './pages/settings.js';
 import { setupProfile } from './pages/profile.js';
-import { checkSubscriptionAccess } from './helpers/subscription-check.js';
+import { checkSubscriptionAccess } from './helpers/subscription-check-clean.js';
 
 /**
  * Add admin link to navigation for multi-shop capable users
