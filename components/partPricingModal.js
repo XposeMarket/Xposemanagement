@@ -1,3 +1,13 @@
+// Simple notification function for modal errors and success
+function showNotification(msg, type) {
+  // You can replace this with a custom UI notification system
+  alert((type === 'error' ? 'Error: ' : '') + msg);
+}
+
+// Fallback notification method for PartPricingModal
+PartPricingModal._fallbackNotification = function(msg, type) {
+  alert('Fallback: ' + ((type === 'error' ? 'Error: ' : '') + msg));
+};
 /**
  * Part Pricing Modal Component
  * Allows manual entry of cost/sell prices after calling supplier
