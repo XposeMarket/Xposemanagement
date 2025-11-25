@@ -265,45 +265,19 @@ async function addUserToShop(userId, shopId, role = 'owner') {
   if (!supabase || !userId || !shopId) return false;
   
   try {
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('user_shops')
       .insert({
         user_id: userId,
         shop_id: shopId,
         role: role
       });
-
+    
     if (error) {
       console.error('Error adding user to shop:', error);
-      // If this error is caused by RLS (row-level security), fallback to server-side admin API
-      try {
-        const msg = (error.message || '').toString();
-        const isRls = error.code === '42501' || /row-level security/i.test(msg) || /violates row-level security/i.test(msg);
-        if (isRls) {
-          console.warn('Detected RLS error when inserting user_shops; attempting server-side admin API fallback');
-          try {
-            const resp = await fetch('/api/admin/add-user-to-shop', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ user_id: userId, shop_id: shopId, role })
-            });
-            const json = await resp.json().catch(() => null);
-            if (resp.ok && json && json.success) {
-              console.log(`✅ Added user ${userId} to shop ${shopId} as ${role} via admin API`);
-              return true;
-            } else {
-              console.error('Admin API fallback failed:', resp.status, json);
-            }
-          } catch (e) {
-            console.error('Admin API fallback exception:', e);
-          }
-        }
-      } catch (e) {
-        console.error('Error while handling insert error for user_shops:', e);
-      }
       return false;
     }
-
+    
     console.log(`✅ Added user ${userId} to shop ${shopId} as ${role}`);
     return true;
   } catch (ex) {

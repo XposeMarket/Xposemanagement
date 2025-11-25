@@ -23,6 +23,7 @@
   </div>
 </header>
 <div id="notification" class="notification hidden"></div>
+<div id="errorBanner" class="notification hidden" style="background:#ef4444;color:white;"></div>
 <!-- Error banner for user notifications (preserved) -->
 <!-- Debug banner (hidden in UI) -->
 <!-- ...existing code... -->
@@ -233,19 +234,6 @@
 
 <footer class="container">© Xpose Market</footer>
 <script src="vendor/supabase.umd.js"></script>
-<!-- Ensure API base points to local server when testing locally -->
-<script>
-  if (!window.XM_API_BASE) {
-    try {
-      if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-        window.XM_API_BASE = 'http://localhost:3000';
-        console.log('[XM] XM_API_BASE set to', window.XM_API_BASE);
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
-</script>
 <script type="module" src="app.js"></script>
 <script src="multi-tenant.js"></script>
 <!-- Parts Catalog Components -->

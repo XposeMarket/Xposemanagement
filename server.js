@@ -325,34 +325,6 @@ app.post('/api/cron/auto-schedule', async (req, res) => {
   }
 });
 
-// Admin helper: insert user into user_shops using service role (bypasses RLS)
-app.post('/api/admin/add-user-to-shop', async (req, res) => {
-  try {
-    const SUPABASE_URL = process.env.SUPABASE_URL;
-    const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return res.status(500).json({ success: false, error: 'Missing Supabase service credentials in env' });
-
-    const { user_id, shop_id, role } = req.body || {};
-    if (!user_id || !shop_id) return res.status(400).json({ success: false, error: 'user_id and shop_id are required' });
-
-    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-    const { data, error } = await supabaseAdmin
-      .from('user_shops')
-      .insert({ user_id, shop_id, role: role || 'owner' });
-
-    if (error) {
-      console.error('Admin API failed to insert user_shops:', error);
-      return res.status(500).json({ success: false, error });
-    }
-
-    return res.json({ success: true, data });
-  } catch (err) {
-    console.error('Admin add-user-to-shop exception:', err);
-    return res.status(500).json({ success: false, error: String(err && err.message ? err.message : err) });
-  }
-});
-
 // Add labor to job
 app.post('/api/catalog/add-labor', async (req, res) => {
   const { jobId, description, hours, rate, notes } = req.body;
