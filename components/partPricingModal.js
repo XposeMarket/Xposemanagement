@@ -1,12 +1,10 @@
 
 
-// Place notification functions at the very end of the file to avoid ReferenceError
 
+// === Notification functions MUST be at the absolute end of the file ===
 function showNotification(msg, type) {
-  // You can replace this with a custom UI notification system
   alert((type === 'error' ? 'Error: ' : '') + msg);
 }
-
 PartPricingModal._fallbackNotification = function(msg, type) {
   alert('Fallback: ' + ((type === 'error' ? 'Error: ' : '') + msg));
 };
