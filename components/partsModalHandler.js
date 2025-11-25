@@ -301,7 +301,8 @@ class PartsModalHandler {
         .from('catalog_parts')
         .select(`*, category:catalog_categories(name)`);
 
-      if (this.selectedYear) query = query.eq('year', this.selectedYear);
+      // Show all parts compatible with selected year and newer
+      if (this.selectedYear) query = query.lte('year', this.selectedYear);
       if (this.selectedMake) query = query.eq('make', this.selectedMake);
       if (this.selectedModel) query = query.eq('model', this.selectedModel);
       if (category) query = query.eq('category_id', category);
