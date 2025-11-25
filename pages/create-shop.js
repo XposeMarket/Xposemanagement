@@ -156,7 +156,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       const last = lastInput ? lastInput.value.trim() : '';
       const zipcode = zipcodeInput ? zipcodeInput.value.trim() : '';
       
-      // ...existing code...
+              // Only run shop/user creation if sessionStorage has shop data (i.e., after explicit user action)
+              if (sessionStorage.getItem('create_shop_name')) {
+                await createUserRecord(supabase, userId, email, first, last, zipcode || '', 'admin', shopId);
+              
+                // Only add to user_shops for multi-shop plans
+                const { data } = await supabase.from('users').select('subscription_plan').eq('id', userId).single();
+                if (typeof data !== 'undefined' && data.subscription_plan && ['local', 'multi'].includes(data.subscription_plan.toLowerCase())) {
+                  console.log('👥 Adding user to user_shops table as owner...');
+                  await addUserToShop(userId, shopId, 'owner');
+                  console.log('✅ User added to user_shops');
+                }
+              }
       
       if (!email || !pass) {
         err.textContent = 'Email and password required.';
@@ -351,15 +362,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             // Create/update user record in users table
             const auth_id = signInData.user.id;
-            await createUserRecord(supabase, auth_id, sanitizedEmail, sanitizedFirst, sanitizedLast, sanitizedZipcode, 'admin', shopId);
-            
-            // 🆕 Add user to user_shops table as owner
-            console.log('👥 Adding user to user_shops table as owner...');
-            await addUserToShop(auth_id, shopId, 'owner');
-            console.log('✅ User added to user_shops');
-            
-            // Save Stripe subscription info if available
-            await saveSubscriptionInfo(supabase, auth_id);
+            if (auth_id && typeof auth_id === 'string' && auth_id.length >= 16) {
+              await createUserRecord(supabase, auth_id, sanitizedEmail, sanitizedFirst, sanitizedLast, sanitizedZipcode, 'admin', shopId);
+              // 🆕 Add user to user_shops table as owner
+              console.log('👥 Adding user to user_shops table as owner...');
+              await addUserToShop(auth_id, shopId, 'owner');
+              console.log('✅ User added to user_shops');
+              // Save Stripe subscription info if available
+              await saveSubscriptionInfo(supabase, auth_id);
+            } else {
+              console.error('❌ Invalid auth_id after sign-in:', auth_id);
+              throw new Error('Invalid auth_id after sign-in.');
+            }
             
             // Save session locally
             localStorage.setItem('xm_session', JSON.stringify({ 
@@ -387,15 +401,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Create user record in custom users table
         const auth_id = signData.user.id;
-        await createUserRecord(supabase, auth_id, sanitizedEmail, sanitizedFirst, sanitizedLast, sanitizedZipcode, 'admin', shopId);
-        
-        // 🆕 Add user to user_shops table as owner
-        console.log('👥 Adding user to user_shops table as owner...');
-        await addUserToShop(auth_id, shopId, 'owner');
-        console.log('✅ User added to user_shops');
-        
-        // Save Stripe subscription info if available
-        await saveSubscriptionInfo(supabase, auth_id);
+        if (auth_id && typeof auth_id === 'string' && auth_id.length >= 16) {
+          await createUserRecord(supabase, auth_id, sanitizedEmail, sanitizedFirst, sanitizedLast, sanitizedZipcode, 'admin', shopId);
+          // 🆕 Add user to user_shops table as owner
+          console.log('👥 Adding user to user_shops table as owner...');
+          await addUserToShop(auth_id, shopId, 'owner');
+          console.log('✅ User added to user_shops');
+          // Save Stripe subscription info if available
+          await saveSubscriptionInfo(supabase, auth_id);
+        } else {
+          console.error('❌ Invalid auth_id after signup:', auth_id);
+          throw new Error('Invalid auth_id after signup.');
+        }
         
         // Initialize empty data record for the shop
         console.log('📊 Initializing shop data...');
