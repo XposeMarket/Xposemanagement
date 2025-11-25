@@ -21,6 +21,7 @@ let currentJobForRemove = null;
 let allJobs = [];
 let allAppointments = [];
 let allUsers = [];
+let allStaff = []; // shop_staff rows (for assignment lookups)
 // Sorting state for jobs tables
 let jobSortCol = 'created_at';
 let jobSortDir = 'desc';
@@ -470,12 +471,20 @@ function openJobActionsModal(job) {
     
     // Assigned To
     const tdAssigned = document.createElement('td');
-    const assignedUser = allUsers.find(u => u.id === job.assigned_to);
-    if (assignedUser) {
-      tdAssigned.textContent = `${assignedUser.first} ${assignedUser.last}`;
-    } else {
-      tdAssigned.textContent = 'Unassigned';
+    let assignedLabel = 'Unassigned';
+    const assignedId = job.assigned_to || job.assigned || null;
+    if (assignedId) {
+      // Try to find a matching user by id or auth_id
+      const u = allUsers.find(x => String(x.id) === String(assignedId) || String(x.auth_id || '') === String(assignedId));
+      if (u) assignedLabel = `${u.first || u.first_name || ''} ${u.last || u.last_name || ''}`.trim();
+      else {
+        // Try shop_staff rows
+        const s = allStaff.find(x => String(x.id) === String(assignedId) || String(x.auth_id || '') === String(assignedId) || String((x.email||'').toLowerCase()) === String((assignedId||'').toLowerCase()));
+        if (s) assignedLabel = `${s.first_name || s.first || ''} ${s.last_name || s.last || ''}`.trim();
+        else assignedLabel = String(assignedId);
+      }
     }
+    tdAssigned.textContent = assignedLabel || 'Unassigned';
     tr.appendChild(tdAssigned);
     
     // Actions
@@ -815,72 +824,100 @@ async function updateJobStatus(jobId, newStatus) {
  * Open assign modal (simple prompt for now)
  */
 function openAssignModal(job) {
+  // Build a modal that matches the Remove confirmation modal style
   let modal = document.getElementById('assignModal');
   if (!modal) {
     modal = document.createElement('div');
     modal.id = 'assignModal';
-    modal.className = 'modal-overlay';
+    modal.className = 'modal-overlay hidden';
     modal.innerHTML = `
-      <div class="modal-content card" style="max-width:400px;margin:14vh auto;border-radius:14px;box-shadow:0 8px 32px rgba(225,29,72,0.10);background:#fff;position:relative;">
-        <div style="background:#fff;border-bottom:2px solid #ef4444;border-radius:14px 14px 0 0;padding:16px 24px 10px 24px;display:flex;justify-content:space-between;align-items:center;">
-          <h3 style="margin:0;color:#ef4444;font-weight:500;font-size:1.12rem;">Assign Job</h3>
-          <button class="btn-close" id="closeAssignModal" style="font-size:1.6rem;background:none;border:none;color:#ef4444;">&times;</button>
+      <div class="modal-content" onclick="event.stopPropagation()" style="max-width:400px;">
+        <div class="modal-head">
+          <h3>Assign Job</h3>
+          <button onclick="document.getElementById('assignModal')?.classList.add('hidden')" class="btn-close">&times;</button>
         </div>
-        <div id="assignModalError" style="color:#ef4444;font-weight:500;margin:14px 24px 8px 24px;display:none;font-size:1rem;"></div>
-        <div style="margin:0 24px 12px 24px;">
-          <label for="roleFilter" style="font-weight:500;color:#222;font-size:1rem;">Filter by Role:</label>
-          <select id="roleFilter" style="margin-left:8px;padding:6px 12px;border-radius:7px;border:1px solid #e0e7ff;font-size:1rem;">
-            <option value="all">All</option>
-          </select>
+        <div class="modal-body" style="padding-bottom: 6px;">
+          <div style="margin-bottom:12px;">
+            <label for="assignUserSelect" style="display:block;font-weight:600;margin-bottom:6px">Select staff member</label>
+            <select id="assignUserSelect" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);">
+              <option value="">-- Select staff --</option>
+            </select>
+          </div>
+          <div id="assignModalError" style="color:#ef4444;font-weight:500;margin-top:4px;display:none;font-size:0.95rem"></div>
+          <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
+            <button id="assignConfirmBtn" class="btn info" style="width:100%">Assign</button>
+            <button id="assignCancelBtn" class="btn" style="width:100%">Cancel</button>
+          </div>
         </div>
-        <div id="assignUserList" style="max-height:220px;overflow-y:auto;margin:0 24px 16px 24px;"></div>
       </div>
     `;
     document.body.appendChild(modal);
   }
-  // Populate role filter
-  const roleFilter = modal.querySelector('#roleFilter');
-  const roles = Array.from(new Set(allUsers.map(u => u.role).filter(Boolean)));
-  roleFilter.innerHTML = '<option value="all">All</option>' + roles.map(r => `<option value="${r}">${r}</option>`).join('');
-  // Populate user list
-  function renderUserList() {
-    const selectedRole = roleFilter.value;
-    let filtered = selectedRole === 'all' ? allUsers : allUsers.filter(u => u.role === selectedRole);
-    const userList = modal.querySelector('#assignUserList');
-    userList.innerHTML = '';
-    if (filtered.length === 0) {
-      userList.innerHTML = '<div style="color:#ef4444;font-weight:600;padding:18px 0;text-align:center;">No users found for this role.</div>';
-      return;
-    }
-    filtered.forEach(u => {
-      const btn = document.createElement('button');
-      btn.className = 'btn info';
-      btn.style = 'width:100%;margin-bottom:8px;text-align:left;display:block;font-size:1.08rem;padding:10px 18px;border-radius:8px;';
-      btn.textContent = `${u.first} ${u.last} (${u.role || 'No role'})`;
-      btn.onclick = () => {
+
+  // Populate staff dropdown from shop_staff first, fallback to allUsers
+  (async function populateAssignList(){
+    const select = modal.querySelector('#assignUserSelect');
+    const errorDiv = modal.querySelector('#assignModalError');
+    select.innerHTML = '<option value="">-- Loading staff --</option>';
+
+    try {
+      const supabase = getSupabaseClient();
+      const shopId = getCurrentShopId();
+      let staffRows = [];
+      if (supabase && shopId) {
+        try {
+          const { data: sdata, error: sErr } = await supabase.from('shop_staff').select('*').eq('shop_id', shopId);
+          if (!sErr && Array.isArray(sdata) && sdata.length) {
+            staffRows = sdata.map(s => ({ id: s.auth_id || s.id, first: s.first_name || s.first || '', last: s.last_name || s.last || '', email: s.email, role: s.role || 'staff', shop_staff_id: s.id }));
+          }
+        } catch (e) { console.warn('Could not load shop_staff', e); }
+      }
+
+      // If no shop_staff found, fall back to allUsers loaded earlier
+      if (!staffRows.length) {
+        staffRows = (allUsers || []).map(u => ({ id: u.id, first: u.first || u.first_name || '', last: u.last || u.last_name || '', email: u.email, role: u.role }));
+      }
+
+      // Render options
+      if (!staffRows.length) {
+        select.innerHTML = '<option value="">No staff available</option>';
+        errorDiv.style.display = 'block';
+        errorDiv.textContent = 'No staff members available. Invite staff or add shop_staff entries.';
+      } else {
+        select.innerHTML = '<option value="">-- Select staff --</option>' + staffRows.map(s => `<option value="${s.id}">${(s.first||'').trim()} ${(s.last||'').trim()} ${s.role ? ' - ' + s.role : ''} ${s.email ? ' ('+s.email+')' : ''}</option>`).join('');
+        errorDiv.style.display = 'none';
+      }
+
+      // Wire buttons
+      const confirmBtn = modal.querySelector('#assignConfirmBtn');
+      const cancelBtn = modal.querySelector('#assignCancelBtn');
+
+      confirmBtn.onclick = async () => {
+        const selected = select.value;
+        if (!selected) {
+          errorDiv.style.display = 'block';
+          errorDiv.textContent = 'Please select a staff member to assign.';
+          return;
+        }
         modal.classList.add('hidden');
-        assignJob(job.id, u.id);
+        await assignJob(job.id, selected);
       };
-      userList.appendChild(btn);
-    });
-  }
-  roleFilter.onchange = renderUserList;
-  // Error if no users at all
-  const errorDiv = modal.querySelector('#assignModalError');
-  if (allUsers.length === 0) {
-    errorDiv.style.display = 'block';
-    errorDiv.innerHTML = 'No staff members available. Use your shop join code to invite users.';
-    modal.querySelector('#assignUserList').innerHTML = '';
-  } else {
-    errorDiv.style.display = 'none';
-    renderUserList();
-  }
-  modal.classList.remove('hidden');
-  modal.onclick = (e) => {
-    if (e.target === modal) modal.classList.add('hidden');
-  };
-  modal.querySelector('#closeAssignModal').onclick = () => modal.classList.add('hidden');
-// End of openAssignModal
+
+      cancelBtn.onclick = () => modal.classList.add('hidden');
+
+      // Show modal
+      modal.classList.remove('hidden');
+      modal.onclick = (e) => { if (e.target === modal) modal.classList.add('hidden'); };
+
+    } catch (err) {
+      console.error('Failed to populate assign list', err);
+      select.innerHTML = '<option value="">Error loading staff</option>';
+      const errorDiv = modal.querySelector('#assignModalError');
+      errorDiv.style.display = 'block';
+      errorDiv.textContent = 'Error loading staff list.';
+      modal.classList.remove('hidden');
+    }
+  })();
 }
 
 /**
@@ -1541,6 +1578,15 @@ async function setupJobs() {
   allJobs = await loadJobs();
   allAppointments = await loadAppointments();
   allUsers = await loadUsers();
+  // Load shop_staff for richer assignment lookup
+  try {
+    const supabase = getSupabaseClient();
+    const shopId = getCurrentShopId();
+    if (supabase && shopId) {
+      const { data: sdata, error: sErr } = await supabase.from('shop_staff').select('*').eq('shop_id', shopId);
+      if (!sErr && Array.isArray(sdata)) allStaff = sdata;
+    }
+  } catch (e) { console.warn('Could not load shop_staff for assignments', e); }
   
   console.log(`✅ Loaded ${allJobs.length} jobs`);
   console.log(`✅ Loaded ${allAppointments.length} appointments`);

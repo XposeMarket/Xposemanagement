@@ -243,7 +243,6 @@ export async function addLaborToJob({ jobId, description, hours, rate, notes }) 
 /**
  * Get all labor for a specific job
  */
-export async function getJobLabor(jobId) {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('job_labor')
@@ -251,5 +250,6 @@ export async function getJobLabor(jobId) {
     .eq('job_id', jobId)
     .order('created_at', { ascending: false });
   if (error) throw error;
+  console.log('[catalog-api] getJobLabor', jobId, 'rows:', Array.isArray(data) ? data.length : 'none', data);
   return data || [];
 }
