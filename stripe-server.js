@@ -294,12 +294,23 @@ app.post('/get-session-subscription', async (req, res) => {
     
     // Map price IDs to plan names (these are your actual price IDs)
     const PRICE_TO_PLAN = {
-      'price_1SX97Z4K55W1qqBCSwzYlDd6': 'Single Shop',
-      'price_1SX97b4K55W1qqBC7o7fJYUi': 'Local Shop',
-      'price_1SX97d4K55W1qqBCcNM0eP00': 'Multi Shop',
+      // Map Stripe price IDs to normalized plan keys used by the app: 'single', 'local', 'multi'
+      'price_1SX97Z4K55W1qqBCSwzYlDd6': 'single',
+      'price_1SX97b4K55W1qqBC7o7fJYUi': 'local',
+      'price_1SX97d4K55W1qqBCcNM0eP00': 'multi',
       // Add any additional live price IDs here as needed
     };
-    planName = PRICE_TO_PLAN[priceId] || subscription.items.data[0].price.nickname || 'Unknown';
+    // Prefer explicit mapping, fall back to nickname and try to normalize it, otherwise 'unknown'
+    planName = PRICE_TO_PLAN[priceId] || (subscription.items.data[0].price.nickname || 'Unknown');
+    if (typeof planName === 'string') {
+      const pn = planName.toLowerCase();
+      if (pn.includes('single')) planName = 'single';
+      else if (pn.includes('local')) planName = 'local';
+      else if (pn.includes('multi')) planName = 'multi';
+      else if (pn === 'unknown') planName = 'unknown';
+      // otherwise keep whatever nickname was provided (but lowercase it)
+      else planName = pn.replace(/\s+/g, '_');
+    }
 
     res.json({
       customer_id: typeof customer === 'string' ? customer : customer.id,
