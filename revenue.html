@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Revenue</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Revenue page: responsive staff panel fixes */
+    .staff-panel { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
+    .staff-panel > div { min-width:0; }
+    .staff-left { flex:1 1 60%; min-width:0; }
+    .staff-right { flex:1 1 35%; min-width:0; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .staff-name, .staff-email { white-space:normal; overflow-wrap:break-word; word-break:break-word; }
+    .staff-stats { text-align:right; min-width:90px; }
+    @media (max-width:480px) {
+      .staff-panel { padding:10px 12px; }
+      .staff-right { flex-basis:100%; flex-direction:row; align-items:center; justify-content:space-between; }
+      .staff-stats { text-align:left; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="container row top row">
+      <a class="brand" href="dashboard.html" aria-label="Home">
+        <img id="headerLogo" src="assets/XposeManagementCRMlogo.png" alt="Logo">
+      </a>
+      <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button><nav id="mainNav">
+        <a href="dashboard.html" class="">Dashboard</a>
+        <a href="appointments.html" class="">Appointments</a>
+        <a href="jobs.html" class="">Jobs</a>
+        <a href="messages.html" class="">Messages</a>
+        <a href="invoices.html" class="">Invoices</a>
+        <a href="customers.html" class="">Customers</a>
+        <a href="revenue.html" class="active">Revenue</a>
+        <a href="settings.html" class="">Settings</a>
+        <a href="profile.html" class="">Profile</a>
+        <a href="#" id="mobileThemeToggle" class="mobile-nav-btn mobile-special">Theme</a>
+        <a href="#" id="mobileLogoutBtn" class="mobile-nav-btn mobile-special">Logout</a>
+      </nav>
+      <div id="shopSwitcher" class="shop-switcher" style="display: none;">
+        <button id="shopSwitcherBtn" class="shop-switcher-btn" aria-label="Switch shop">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
+          <span id="currentShopName">Loading...</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+        <div id="shopDropdown" class="shop-dropdown hidden">
+          <div class="shop-dropdown-loading">Loading shops...</div>
+        </div>
+      </div>
+      <div>
+        <button id="themeToggle" class="btn" aria-label="Toggle theme">Theme</button>
+        <button id="logoutBtn" class="btn" aria-label="Logout">Logout</button>
+      </div>
+    </div>
+  </header>
+  <main class="container" style="padding:16px 0">
+    <section id="revenue-summary" class="card" style="margin-bottom:24px;">
+      <h2>Weekly Revenue Overview</h2>
+      <div id="week-selector" style="margin-bottom:16px;"></div>
+      <div id="revenue-totals" class="grid cols-3" style="margin-bottom:16px;"></div>
+    </section>
+    <section id="staff-revenue" class="card" style="margin-bottom:24px;">
+      <h2>Staff Earnings & Job Assignments</h2>
+      <div id="staff-list"></div>
+    </section>
+    <section id="job-details" class="card">
+      <h2>Job Details</h2>
+      <div id="job-list"></div>
+    </section>
+  </main>
+  <footer class="container">© Xpose Market</footer>
+  <!-- Load Supabase vendor library first (provides window.supabase) -->
+  <script src="vendor/supabase.umd.js"></script>
+  <!-- App runtime (shared header/navigation handlers) -->
+  <script type="module" src="app.js"></script>
+  <script src="multi-tenant.js"></script>
+  <script type="module" src="pages/revenue.js"></script>
+</body>
+</html>
