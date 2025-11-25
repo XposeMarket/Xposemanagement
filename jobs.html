@@ -128,7 +128,10 @@
 <!-- Parts Finder Modal (integrated with catalog) -->
 <div id="partsModal" class="card hidden" style="position:fixed; right:20px; bottom:20px; max-width:800px; z-index:60; max-height:90vh; overflow-y:auto;">
   <div class="toolbar" style="justify-content:space-between">
-    <h3>Find Parts</h3>
+    <h3 style="display: inline-block; margin: 0;">Find Parts</h3>
+    <span style="font-size: 0.7rem; color: var(--muted); margin-left: 1rem;">
+      <strong>Disclaimer:</strong> General catalog only. Fitment/availability not guaranteed. Call supplier for accurate info.
+    </span>
     <button id="closeParts" class="btn">Close</button>
   </div>
   
@@ -229,7 +232,6 @@
 </div>
 
 <!-- Parts Catalog Modals -->
-<div id="partsCatalogModal"></div>
 <div id="partPricingModal"></div>
 
 <footer class="container">© Xpose Market</footer>
