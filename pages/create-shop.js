@@ -635,13 +635,15 @@ async function assignOwner(supabase, userId, shopId) {
       console.warn('Could not read user subscription_plan, defaulting to unknown:', userRecErr);
     }
     const plan = (userRec?.subscription_plan || 'unknown').toString().toLowerCase();
+    console.log(`[assignOwner] Detected plan for user ${userId}:`, plan);
     if (['local', 'multi'].includes(plan)) {
-      console.log('👥 User has local/multi plan, adding to user_shops as owner...');
+      console.log(`[assignOwner] User ${userId} has local/multi plan, adding to user_shops as owner for shop ${shopId}...`);
       const ok = await addUserToShop(userId, shopId, 'owner');
-      if (ok) console.log('✅ User added to user_shops');
+      if (ok) console.log(`[assignOwner] ✅ User ${userId} added to user_shops for shop ${shopId}`);
+      else console.warn(`[assignOwner] ❌ Failed to add user ${userId} to user_shops for shop ${shopId}`);
       return ok;
     } else {
-      console.log('ℹ️ Single/unknown plan user — setting shop.owner_id only');
+      console.log(`[assignOwner] User ${userId} has single/unknown plan (${plan}) — setting shop.owner_id only for shop ${shopId}`);
       try {
         const { data: updatedShop, error: updateErr } = await supabase
           .from('shops')
@@ -650,18 +652,18 @@ async function assignOwner(supabase, userId, shopId) {
           .select()
           .single();
         if (updateErr) {
-          console.warn('⚠️ Failed to set shop owner_id:', updateErr);
+          console.warn(`[assignOwner] ⚠️ Failed to set shop owner_id for shop ${shopId}:`, updateErr);
           return false;
         }
-        console.log('✅ shop.owner_id updated:', updatedShop?.owner_id);
+        console.log(`[assignOwner] ✅ shop.owner_id updated for shop ${shopId}:`, updatedShop?.owner_id);
         return true;
       } catch (e) {
-        console.error('Exception updating shop owner_id:', e);
+        console.error('[assignOwner] Exception updating shop owner_id:', e);
         return false;
       }
     }
   } catch (e) {
-    console.error('assignOwner exception:', e);
+    console.error('[assignOwner] assignOwner exception:', e);
     return false;
   }
 }
