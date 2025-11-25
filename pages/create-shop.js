@@ -33,6 +33,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (sessionError) throw sessionError;
       
       if (session && session.user) {
+                // Confirm Auth user exists in auth.users before proceeding
+                const { data: authUserCheck, error: authUserCheckErr } = await supabase
+                  .from('auth.users')
+                  .select('id')
+                  .eq('id', session.user.id)
+                  .single();
+                if (authUserCheckErr || !authUserCheck) {
+                  console.error('❌ Auth user not found in auth.users:', session.user.id, authUserCheckErr);
+                  err.textContent = 'Error: Auth user not found in Supabase. Please try again.';
+                  err.style.color = 'red';
+                  return;
+                }
         console.log('✅ OAuth session found:', session.user.email);
         // Robustly check for valid Auth ID
         if (!session.user.id || typeof session.user.id !== 'string' || session.user.id.length < 16) {
