@@ -109,17 +109,17 @@ async function setupRevenuePage() {
       document.getElementById('staff-list').innerHTML = '<div>No staff found for this shop.</div>';
     } else {
       const staffHtml = staffList.map((s, idx) => `
-        <div class="staff-panel" style="padding:12px 16px; border-bottom:1px solid #eee; display:flex; align-items:center;">
-          <div style="flex:1;">
-            <div style="font-weight:bold; font-size:1.1em;">${s.first_name || ''} ${s.last_name || ''}</div>
-            <div style="color:#555;">${s.email || ''}</div>
+        <div class="staff-panel" style="padding:12px 16px; border-bottom:1px solid #eee;">
+          <div class="staff-left">
+            <div class="staff-name" style="font-weight:bold; font-size:1.05em;">${s.first_name || ''} ${s.last_name || ''}</div>
+            <div class="staff-email" style="color:#555;">${s.email || ''}</div>
           </div>
-          <div style="flex:1;display:flex;align-items:center;justify-content:space-between;">
-            <div>
+          <div class="staff-right">
+            <div class="staff-meta">
               <div style="margin-bottom:6px;"><span style="margin-right:8px;">Role: <strong>${s.role || 'staff'}</strong></span></div>
               <div>Hourly Rate: <strong>${s.hourly_rate ? formatCurrency(s.hourly_rate) : 'N/A'}</strong></div>
             </div>
-            <div style="text-align:right;min-width:160px;">
+            <div class="staff-stats">
               <div style="font-size:0.95em;">Hours (week): <strong data-staff-hours="${s.id}">...</strong></div>
               <div style="font-size:0.95em;margin-top:6px;">Earned (week): <strong data-staff-earned="${s.id}">...</strong></div>
             </div>
