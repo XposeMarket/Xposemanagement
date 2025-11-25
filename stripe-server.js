@@ -9,7 +9,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 // Debug: Check if API key is loaded
-console.log('🔑 Stripe Secret Key loaded:', process.env.STRIPE_SECRET_KEY ? 'YES (length: ' + process.env.STRIPE_SECRET_KEY.length + ')' : 'NO - CHECK .env FILE');
+// Do not log secret values. Only indicate presence.
+console.log('🔑 Stripe Secret Key present=', !!process.env.STRIPE_SECRET_KEY);
 
 if (!process.env.STRIPE_SECRET_KEY) {
   console.error('❌ ERROR: STRIPE_SECRET_KEY not found in .env file!');
@@ -140,9 +141,8 @@ app.post('/create-checkout-session', async (req, res) => {
   try {
     const { priceId, customerEmail } = req.body;
 
-    console.log('📝 Checkout request received:', { priceId, customerEmail });
+    console.log('📝 Checkout request received:', { priceId, hasCustomerEmail: !!customerEmail });
     console.log('🔎 Request origin/header:', { origin: req.headers.origin, host: req.headers.host });
-    console.log('📥 Full request body:', req.body);
 
     if (!priceId) {
       return res.status(400).json({ error: 'Price ID is required' });

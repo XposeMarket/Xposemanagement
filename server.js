@@ -166,19 +166,15 @@ app.get('/api/catalog/years', async (req, res) => {
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
       NODE_ENV: process.env.NODE_ENV,
     };
-    console.log('ENV DEBUG:', envDebug);
+    // Log only presence of key env vars (do NOT print actual secret values)
+    console.log('ENV DEBUG: SUPABASE_URL set=', !!process.env.SUPABASE_URL, ', SUPABASE_SERVICE_ROLE_KEY set=', !!process.env.SUPABASE_SERVICE_ROLE_KEY, ', NODE_ENV=', process.env.NODE_ENV);
     const catalogAPI = await loadCatalogAPI();
     const years = await catalogAPI.getYears();
     console.log('✅ Years fetched:', Array.isArray(years) ? years.length : typeof years);
-    res.json({ years, envDebug });
+    res.json({ years });
   } catch (err) {
     console.error('❌ Years error:', err && err.stack ? err.stack : err);
-    res.status(500).json({ error: String(err && err.message ? err.message : err), envDebug: {
-      SUPABASE_URL: process.env.SUPABASE_URL,
-      SUPABASE_KEY: process.env.SUPABASE_KEY,
-      SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
-      NODE_ENV: process.env.NODE_ENV,
-    }});
+    res.status(500).json({ error: String(err && err.message ? err.message : err) });
   }
 });
 
