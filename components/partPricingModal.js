@@ -345,6 +345,15 @@ class PartPricingModal {
         // Close pricing modal/overlay
         if (this.overlay) this.overlay.style.display = 'none';
         if (this.modal) this.modal.style.display = 'none';
+        // Prefer the page's openLaborModal helper so it applies the same defaults/presets
+        if (typeof window.openLaborModal === 'function') {
+          try {
+            window.openLaborModal(this.currentJobId);
+            return;
+          } catch (e) {
+            console.warn('[PartPricingModal] openLaborModal threw, falling back to manual open', e);
+          }
+        }
         // Open jobs page labor modal and set job id
         globalLaborModal.classList.remove('hidden');
         globalLaborModal.dataset.jobId = this.currentJobId;
@@ -357,13 +366,14 @@ class PartPricingModal {
         } catch (e) {
           console.warn('[PartPricingModal] failed to set z-index on global labor modal', e);
         }
-        // Clear / reset fields if present
+        // Clear / reset fields if present (fallback)
         const labDesc = document.getElementById('labDesc');
         const labHours = document.getElementById('labHours');
         const labRate = document.getElementById('labRate');
         const labNote = document.getElementById('labNote');
         if (labDesc) labDesc.value = '';
-        if (labHours) labHours.value = '';
+        // default hours to 1 as manual modal does
+        if (labHours) labHours.value = '1';
         if (labRate) labRate.value = '';
         if (labNote) labNote.textContent = '';
       } else {
