@@ -100,10 +100,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         await createUserRecord(supabase, userId, email, first, last, zipcode || '', 'admin', shopId);
         
-        // 🆕 Add user to user_shops table as owner
-        console.log('👥 Adding user to user_shops table as owner...');
-        await addUserToShop(userId, shopId, 'owner');
-        console.log('✅ User added to user_shops');
+        // Assign ownership according to plan
+        await assignOwner(supabase, userId, shopId);
         
         // Save Stripe subscription info if available
         await saveSubscriptionInfo(supabase, userId);
@@ -183,9 +181,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Only add to user_shops for multi-shop plans
                 const { data } = await supabase.from('users').select('subscription_plan').eq('id', userId).single();
                 if (typeof data !== 'undefined' && data.subscription_plan && ['local', 'multi'].includes(data.subscription_plan.toLowerCase())) {
-                  console.log('👥 Adding user to user_shops table as owner...');
-                  await addUserToShop(userId, shopId, 'owner');
-                  console.log('✅ User added to user_shops');
+                  console.log('👥 Determining ownership assignment...');
+                  await assignOwner(supabase, userId, shopId);
+                  console.log('✅ Ownership assignment attempted');
                 }
               }
       
@@ -388,10 +386,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const auth_id = signInData.user.id;
             if (auth_id && typeof auth_id === 'string' && auth_id.length >= 16) {
               await createUserRecord(supabase, auth_id, sanitizedEmail, sanitizedFirst, sanitizedLast, sanitizedZipcode, 'admin', shopId);
-              // 🆕 Add user to user_shops table as owner
-              console.log('👥 Adding user to user_shops table as owner...');
-              await addUserToShop(auth_id, shopId, 'owner');
-              console.log('✅ User added to user_shops');
+              // Assign ownership according to plan
+              await assignOwner(supabase, auth_id, shopId);
               // Save Stripe subscription info if available
               await saveSubscriptionInfo(supabase, auth_id);
             } else {
@@ -427,10 +423,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const auth_id = signData.user.id;
         if (auth_id && typeof auth_id === 'string' && auth_id.length >= 16) {
           await createUserRecord(supabase, auth_id, sanitizedEmail, sanitizedFirst, sanitizedLast, sanitizedZipcode, 'admin', shopId);
-          // 🆕 Add user to user_shops table as owner
-          console.log('👥 Adding user to user_shops table as owner...');
-          await addUserToShop(auth_id, shopId, 'owner');
-          console.log('✅ User added to user_shops');
+          // Assign ownership according to plan
+          await assignOwner(supabase, auth_id, shopId);
           // Save Stripe subscription info if available
           await saveSubscriptionInfo(supabase, auth_id);
         } else {
@@ -625,6 +619,54 @@ async function createUserRecord(supabase, auth_id, email, first, last, zipcode, 
 }
 
 /**
+ * Assign ownership according to user plan:
+ * - If user's plan is 'local' or 'multi' => add a row to user_shops
+ * - Otherwise (single/unknown) => set shops.owner_id only
+ */
+async function assignOwner(supabase, userId, shopId) {
+  if (!supabase || !userId || !shopId) return false;
+  try {
+    const { data: userRec, error: userRecErr } = await supabase
+      .from('users')
+      .select('subscription_plan')
+      .eq('id', userId)
+      .single();
+    if (userRecErr) {
+      console.warn('Could not read user subscription_plan, defaulting to unknown:', userRecErr);
+    }
+    const plan = (userRec?.subscription_plan || 'unknown').toString().toLowerCase();
+    if (['local', 'multi'].includes(plan)) {
+      console.log('👥 User has local/multi plan, adding to user_shops as owner...');
+      const ok = await addUserToShop(userId, shopId, 'owner');
+      if (ok) console.log('✅ User added to user_shops');
+      return ok;
+    } else {
+      console.log('ℹ️ Single/unknown plan user — setting shop.owner_id only');
+      try {
+        const { data: updatedShop, error: updateErr } = await supabase
+          .from('shops')
+          .update({ owner_id: userId })
+          .eq('id', shopId)
+          .select()
+          .single();
+        if (updateErr) {
+          console.warn('⚠️ Failed to set shop owner_id:', updateErr);
+          return false;
+        }
+        console.log('✅ shop.owner_id updated:', updatedShop?.owner_id);
+        return true;
+      } catch (e) {
+        console.error('Exception updating shop owner_id:', e);
+        return false;
+      }
+    }
+  } catch (e) {
+    console.error('assignOwner exception:', e);
+    return false;
+  }
+}
+
+/**
  * Helper function to fetch and save Stripe subscription info
  */
 async function saveSubscriptionInfo(supabase, auth_id) {
@@ -671,16 +713,28 @@ async function saveSubscriptionInfo(supabase, auth_id) {
     }
     
     console.log('✅ [SUBSCRIPTION] Subscription data received:', data);
-    
+    // Normalize plan name to the short keys used by the app: 'single', 'local', 'multi', or 'unknown'
+    let normalizedPlan = 'unknown';
+    try {
+      const rawPlan = (data.plan || '').toString().toLowerCase();
+      if (rawPlan.includes('single')) normalizedPlan = 'single';
+      else if (rawPlan.includes('local')) normalizedPlan = 'local';
+      else if (rawPlan.includes('multi')) normalizedPlan = 'multi';
+      else if (rawPlan === 'unknown') normalizedPlan = 'unknown';
+      else normalizedPlan = rawPlan.replace(/\s+/g, '_');
+    } catch (e) {
+      console.warn('Could not normalize plan name:', e);
+    }
+
     // Update user with subscription info
-    console.log('💳 [SUBSCRIPTION] Updating user in Supabase...');
+    console.log('💳 [SUBSCRIPTION] Updating user in Supabase (plan:', normalizedPlan, ')...');
     const { error: updateErr } = await supabase
       .from('users')
       .update({
         stripe_customer_id: data.customer_id,
         stripe_subscription_id: data.subscription_id,
         subscription_status: data.status,
-        subscription_plan: data.plan,
+        subscription_plan: normalizedPlan,
         trial_end: data.trial_end,
         subscription_end: data.current_period_end
       })

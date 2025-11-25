@@ -292,14 +292,27 @@ app.post('/get-session-subscription', async (req, res) => {
     const priceId = subscription.items.data[0].price.id;
     let planName = 'Unknown';
     
-    // Map price IDs to plan names (these are your actual price IDs)
+    // Map price IDs to normalized plan keys used by the app
     const PRICE_TO_PLAN = {
-      'price_1SX97Z4K55W1qqBCSwzYlDd6': 'Single Shop',
-      'price_1SX97b4K55W1qqBC7o7fJYUi': 'Local Shop',
-      'price_1SX97d4K55W1qqBCcNM0eP00': 'Multi Shop',
-      // Add any additional live price IDs here as needed
+      // production price IDs -> normalized keys
+      'price_1SX97Z4K55W1qqBCSwzYlDd6': 'single',
+      'price_1SX97b4K55W1qqBC7o7fJYUi': 'local',
+      'price_1SX97d4K55W1qqBCcNM0eP00': 'multi',
+      // add additional mappings as needed
     };
-    planName = PRICE_TO_PLAN[priceId] || subscription.items.data[0].price.nickname || 'Unknown';
+    // Prefer explicit mapping; fall back to nickname and try to normalize it
+    planName = PRICE_TO_PLAN[priceId] || (subscription.items.data[0].price.nickname || 'unknown');
+    if (typeof planName === 'string') {
+      const pn = planName.toString().toLowerCase();
+      if (pn.includes('single')) planName = 'single';
+      else if (pn.includes('local')) planName = 'local';
+      else if (pn.includes('multi')) planName = 'multi';
+      else if (pn === 'unknown') planName = 'unknown';
+      else planName = pn.replace(/\s+/g, '_');
+    }
+    if (!PRICE_TO_PLAN[priceId]) {
+      console.warn('⚠️ Unknown Stripe price ID:', priceId, 'nickname:', subscription.items.data[0].price.nickname);
+    }
 
     res.json({
       customer_id: typeof customer === 'string' ? customer : customer.id,
