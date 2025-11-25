@@ -30,9 +30,38 @@ function getSupabaseClient() {
     }
   }
 
-  // Vendor library not available yet
-  console.warn('⚠️ Supabase vendor library not loaded yet');
+  // Vendor library not available yet. Only warn once to avoid noisy logs.
+  if (!getSupabaseClient._warned) {
+    console.warn('⚠️ Supabase vendor library not loaded yet');
+    getSupabaseClient._warned = true;
+  }
   return null;
+}
+
+/**
+ * Wait for the UMD vendor library to load and initialize the client.
+ * Returns a Promise that resolves to the supabase client or null if timeout.
+ */
+async function waitForSupabaseClient(timeout = 5000, interval = 150) {
+  const start = Date.now();
+  // Fast-path if already available
+  const sync = getSupabaseClient();
+  if (sync) return sync;
+
+  return new Promise((resolve) => {
+    const iv = setInterval(() => {
+      const client = getSupabaseClient();
+      if (client) {
+        clearInterval(iv);
+        resolve(client);
+        return;
+      }
+      if (Date.now() - start > timeout) {
+        clearInterval(iv);
+        resolve(null);
+      }
+    }, interval);
+  });
 }
 
 // Create a proxy that initializes on first access
@@ -45,4 +74,4 @@ const supabase = new Proxy({}, {
 });
 
 // Also expose the getter function
-export { supabase, getSupabaseClient };
+export { supabase, getSupabaseClient, waitForSupabaseClient };
