@@ -9,8 +9,10 @@ import dotenv from 'dotenv';
 async function loadCatalogAPI(){
   return await import('./helpers/catalog-api.js');
 }
-// Import messaging API
-import messagingAPI from './helpers/messaging-api.js';
+// Defer importing messaging API for the same reason
+async function loadMessagingAPI(){
+  return await import('./helpers/messaging-api.js');
+}
 import { createClient } from '@supabase/supabase-js';
 import serverless from 'serverless-http';
 
@@ -342,25 +344,46 @@ app.post('/api/catalog/add-labor', async (req, res) => {
 console.log('📱 Registering messaging API routes...');
 
 // Provision a new Twilio number for a shop
-app.post('/api/messaging/provision', messagingAPI.provisionNumber);
+app.post('/api/messaging/provision', async (req, res) => {
+  const messagingAPI = await loadMessagingAPI();
+  return messagingAPI.provisionNumber(req, res);
+});
 
 // Send an outbound message
-app.post('/api/messaging/send', messagingAPI.sendMessage);
+app.post('/api/messaging/send', async (req, res) => {
+  const messagingAPI = await loadMessagingAPI();
+  return messagingAPI.sendMessage(req, res);
+});
 
 // Receive incoming messages from Twilio (webhook)
-app.post('/api/messaging/webhook', express.urlencoded({ extended: false }), messagingAPI.receiveWebhook);
+app.post('/api/messaging/webhook', express.urlencoded({ extended: false }), async (req, res) => {
+  const messagingAPI = await loadMessagingAPI();
+  return messagingAPI.receiveWebhook(req, res);
+});
 
 // Receive status callbacks from Twilio (delivery receipts)
-app.post('/api/messaging/status', express.urlencoded({ extended: false }), messagingAPI.receiveStatusCallback);
+app.post('/api/messaging/status', express.urlencoded({ extended: false }), async (req, res) => {
+  const messagingAPI = await loadMessagingAPI();
+  return messagingAPI.receiveStatusCallback(req, res);
+});
 
 // Get all threads for a shop
-app.get('/api/messaging/threads/:shopId', messagingAPI.getThreads);
+app.get('/api/messaging/threads/:shopId', async (req, res) => {
+  const messagingAPI = await loadMessagingAPI();
+  return messagingAPI.getThreads(req, res);
+});
 
 // Get all messages for a thread
-app.get('/api/messaging/messages/:threadId', messagingAPI.getMessages);
+app.get('/api/messaging/messages/:threadId', async (req, res) => {
+  const messagingAPI = await loadMessagingAPI();
+  return messagingAPI.getMessages(req, res);
+});
 
 // Release/deprovision a Twilio number
-app.delete('/api/messaging/numbers/:numberId', messagingAPI.releaseNumber);
+app.delete('/api/messaging/numbers/:numberId', async (req, res) => {
+  const messagingAPI = await loadMessagingAPI();
+  return messagingAPI.releaseNumber(req, res);
+});
 
 // Get parts for a job
 app.get('/api/catalog/job-parts/:jobId', async (req, res) => {
