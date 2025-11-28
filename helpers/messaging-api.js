@@ -6,15 +6,37 @@
 import twilio from 'twilio';
 import { createClient } from '@supabase/supabase-js';
 
-// Initialize Twilio client
-const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
-const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-const twilioClient = twilio(twilioAccountSid, twilioAuthToken);
+// Lazy-load Twilio client to avoid module load failures in serverless
+let _twilioClient = null;
+function getTwilioClient() {
+  if (_twilioClient) return _twilioClient;
+  
+  const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+  const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
+  
+  if (!twilioAccountSid || !twilioAuthToken) {
+    throw new Error('Missing Twilio credentials: TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN required');
+  }
+  
+  _twilioClient = twilio(twilioAccountSid, twilioAuthToken);
+  return _twilioClient;
+}
 
-// Initialize Supabase client (service role for server operations)
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+// Lazy-load Supabase client
+let _supabase = null;
+function getSupabase() {
+  if (_supabase) return _supabase;
+  
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
+  
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Missing Supabase credentials: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY required');
+  }
+  
+  _supabase = createClient(supabaseUrl, supabaseServiceKey);
+  return _supabase;
+}
 
 const APP_BASE_URL = process.env.APP_BASE_URL || 'https://xposemanagement.com';
 
@@ -182,7 +204,7 @@ export async function provisionNumber(req, res) {
     const selectedNumber = availableNumbers[0];
     
     // Purchase the number
-    const purchasedNumber = await twilioClient.incomingPhoneNumbers.create({
+    const purchasedNumber = await getTwilioClient().incomingPhoneNumbers.create({
       phoneNumber: selectedNumber.phoneNumber,
       smsUrl: `${APP_BASE_URL}/api/messaging/webhook`,
       smsMethod: 'POST',
@@ -214,7 +236,7 @@ export async function provisionNumber(req, res) {
       console.error('Error saving number to DB:', saveError);
       // Attempt to release the number from Twilio
       try {
-        await twilioClient.incomingPhoneNumbers(purchasedNumber.sid).remove();
+        await getTwilioClient().incomingPhoneNumbers(purchasedNumber.sid).remove();
       } catch (releaseError) {
         console.error('Error releasing number after DB save failure:', releaseError);
       }
@@ -289,7 +311,7 @@ export async function sendMessage(req, res) {
       messageParams.mediaUrl = mediaUrls;
     }
     
-    const twilioMessage = await twilioClient.messages.create(messageParams);
+    const twilioMessage = await getTwilioClient().messages.create(messageParams);
     
     // Save to database
     const { data: savedMessage, error: saveError } = await supabase
@@ -450,7 +472,7 @@ export async function receiveStatusCallback(req, res) {
       updateData.error_message = ErrorMessage;
     }
     
-    const { error: updateError } = await supabase
+    const { error: updateError } = await getSupabase()
       .from('messages')
       .update(updateData)
       .eq('twilio_message_sid', MessageSid);
@@ -557,14 +579,14 @@ export async function releaseNumber(req, res) {
     
     // Release from Twilio
     try {
-      await twilioClient.incomingPhoneNumbers(number.twilio_sid).remove();
+      await getTwilioClient().incomingPhoneNumbers(number.twilio_sid).remove();
     } catch (twilioError) {
       console.error('Error releasing number from Twilio:', twilioError);
       // Continue to mark as released in DB even if Twilio fails
     }
     
     // Update status in database
-    const { error: updateError } = await supabase
+    const { error: updateError } = await getSupabase()
       .from('shop_twilio_numbers')
       .update({ 
         provisioning_status: 'released',
