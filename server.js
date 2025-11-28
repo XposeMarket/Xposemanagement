@@ -9,6 +9,8 @@ import dotenv from 'dotenv';
 async function loadCatalogAPI(){
   return await import('./helpers/catalog-api.js');
 }
+// Import messaging API
+import messagingAPI from './helpers/messaging-api.js';
 import { createClient } from '@supabase/supabase-js';
 import serverless from 'serverless-http';
 
@@ -335,6 +337,30 @@ app.post('/api/catalog/add-labor', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// ===== MESSAGING / TWILIO API ROUTES =====
+console.log('📱 Registering messaging API routes...');
+
+// Provision a new Twilio number for a shop
+app.post('/api/messaging/provision', messagingAPI.provisionNumber);
+
+// Send an outbound message
+app.post('/api/messaging/send', messagingAPI.sendMessage);
+
+// Receive incoming messages from Twilio (webhook)
+app.post('/api/messaging/webhook', express.urlencoded({ extended: false }), messagingAPI.receiveWebhook);
+
+// Receive status callbacks from Twilio (delivery receipts)
+app.post('/api/messaging/status', express.urlencoded({ extended: false }), messagingAPI.receiveStatusCallback);
+
+// Get all threads for a shop
+app.get('/api/messaging/threads/:shopId', messagingAPI.getThreads);
+
+// Get all messages for a thread
+app.get('/api/messaging/messages/:threadId', messagingAPI.getMessages);
+
+// Release/deprovision a Twilio number
+app.delete('/api/messaging/numbers/:numberId', messagingAPI.releaseNumber);
 
 // Get parts for a job
 app.get('/api/catalog/job-parts/:jobId', async (req, res) => {
