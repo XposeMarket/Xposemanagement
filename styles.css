@@ -270,7 +270,8 @@ footer.container{
   padding-left: 40px;
   padding-right: 40px;
 }
-header.top{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);z-index:10}
+/* Header sits above interactive panels on mobile; keep below global modals */
+header.top{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);z-index:10010}
 .top .row{display:flex;align-items:center;justify-content:space-between;padding:12px 0}
 .brand{display:flex;align-items:center;gap:10px}.brand img{height:52px}
 nav a{padding:8px 10px;border-radius:8px} nav a.active, nav a:hover{background:var(--line)}
@@ -1668,4 +1669,26 @@ button,
   display: flex !important;
   align-items: center;
   justify-content: center;
+}
+
+/* Messages page mobile header/menu tweaks
+   - Hide header theme/logout buttons on mobile (use mobile nav links instead)
+   - Ensure the mobile dropdown/nav appears above fixed message panels
+*/
+@media (max-width: 900px) {
+  #themeToggle, #logoutBtn { display: none !important; }
+  /* When mobile menu is active, make it a fixed dropdown above panels */
+  #mainNav.active {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    z-index: 9999; /* above message panels (z-index:80) but below modal backdrop (99999) */
+    background: var(--card);
+    padding: 12px 18px;
+    box-shadow: 0 12px 30px rgba(2,6,23,0.14);
+    border-bottom: 1px solid var(--line);
+  }
+  /* Ensure the nav links stack nicely inside the dropdown */
+  #mainNav.active a { display: block; padding: 10px 12px; border-radius:8px; margin-bottom:6px; }
 }
