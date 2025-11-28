@@ -191,7 +191,7 @@ export async function provisionNumber(req, res) {
       searchParams.areaCode = areaCode;
     }
     
-    const availableNumbers = await twilioClient
+    const availableNumbers = await getTwilioClient()
       .availablePhoneNumbers(country)
       .local
       .list(searchParams);
@@ -213,7 +213,7 @@ export async function provisionNumber(req, res) {
     });
     
     // Save to database
-    const { data: savedNumber, error: saveError } = await supabase
+    const { data: savedNumber, error: saveError } = await getSupabase()
       .from('shop_twilio_numbers')
       .insert([{
         shop_id: shopId,
@@ -619,3 +619,4 @@ export default {
   releaseNumber,
   normalizePhone
 };
+
