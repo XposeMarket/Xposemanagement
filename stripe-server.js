@@ -587,28 +587,37 @@ async function handlePaymentFailed(invoice) {
 // Twilio Messaging Routes
 // ===========================
 
-const messagingAPI = require('./helpers/messaging-api-cjs.js');
+try {
+  const messagingAPI = require('./helpers/messaging-api-cjs.js');
+  
+  console.log('✅ Messaging API loaded successfully');
 
-// Provision a new Twilio number for a shop
-app.post('/api/messaging/provision', messagingAPI.provisionNumber);
+  // Provision a new Twilio number for a shop
+  app.post('/api/messaging/provision', messagingAPI.provisionNumber);
 
-// Send an outbound message
-app.post('/api/messaging/send', messagingAPI.sendMessage);
+  // Send an outbound message
+  app.post('/api/messaging/send', messagingAPI.sendMessage);
 
-// Webhook for incoming messages
-app.post('/api/messaging/webhook', messagingAPI.receiveWebhook);
+  // Webhook for incoming messages
+  app.post('/api/messaging/webhook', messagingAPI.receiveWebhook);
 
-// Status callbacks from Twilio
-app.post('/api/messaging/status', messagingAPI.receiveStatusCallback);
+  // Status callbacks from Twilio
+  app.post('/api/messaging/status', messagingAPI.receiveStatusCallback);
 
-// Get threads for a shop
-app.get('/api/messaging/threads/:shopId', messagingAPI.getThreads);
+  // Get threads for a shop
+  app.get('/api/messaging/threads/:shopId', messagingAPI.getThreads);
 
-// Get messages for a thread
-app.get('/api/messaging/messages/:threadId', messagingAPI.getMessages);
+  // Get messages for a thread
+  app.get('/api/messaging/messages/:threadId', messagingAPI.getMessages);
 
-// Release/delete a Twilio number
-app.delete('/api/messaging/numbers/:numberId', messagingAPI.releaseNumber);
+  // Release/delete a Twilio number
+  app.delete('/api/messaging/numbers/:numberId', messagingAPI.releaseNumber);
+  
+  console.log('✅ All messaging routes registered');
+} catch (error) {
+  console.error('❌ Failed to load messaging API:', error);
+  console.error('Messaging routes will not be available');
+}
 
 const PORT = process.env.PORT || process.env.STRIPE_PORT || 3001;
 
