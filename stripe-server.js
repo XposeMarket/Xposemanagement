@@ -583,6 +583,33 @@ async function handlePaymentFailed(invoice) {
   }
 }
 
+// ===========================
+// Twilio Messaging Routes
+// ===========================
+
+const messagingAPI = require('./helpers/messaging-api-cjs.js');
+
+// Provision a new Twilio number for a shop
+app.post('/api/messaging/provision', messagingAPI.provisionNumber);
+
+// Send an outbound message
+app.post('/api/messaging/send', messagingAPI.sendMessage);
+
+// Webhook for incoming messages
+app.post('/api/messaging/webhook', messagingAPI.receiveWebhook);
+
+// Status callbacks from Twilio
+app.post('/api/messaging/status', messagingAPI.receiveStatusCallback);
+
+// Get threads for a shop
+app.get('/api/messaging/threads/:shopId', messagingAPI.getThreads);
+
+// Get messages for a thread
+app.get('/api/messaging/messages/:threadId', messagingAPI.getMessages);
+
+// Release/delete a Twilio number
+app.delete('/api/messaging/numbers/:numberId', messagingAPI.releaseNumber);
+
 const PORT = process.env.PORT || process.env.STRIPE_PORT || 3001;
 
 // Only start server if not in Vercel (Vercel uses serverless functions)

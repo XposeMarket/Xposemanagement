@@ -37,7 +37,10 @@ class PartsCatalogModal {
       <div class="modal" id="partsCatalogModal">
         <div class="modal-content" style="max-width: 900px;">
           <div class="modal-header">
-            <h3>Find Parts</h3>
+            <h3 style="display: inline-block; margin-right: 1rem;">Find Parts</h3>
+            <span style="font-size: 0.95rem; color: var(--muted); vertical-align: middle;">
+              <strong>Disclaimer:</strong> This is a general parts catalog and does not represent accurate fitment or availability. Please call your supplier for accurate information.
+            </span>
             <button class="modal-close" id="closeCatalogModal">&times;</button>
           </div>
           
