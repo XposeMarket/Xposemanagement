@@ -16,7 +16,7 @@ import { setupDashboard } from './pages/dashboard.js';
 import { setupAppointments } from './pages/appointments.js';
 import { setupJobs } from './pages/jobs.js';
 import { setupInvoices } from './pages/invoices.js';
-import { setupMessages } from './pages/messages.js';
+import { setupMessages } from './pages/messages-backend.js';
 import { setupSettings } from './pages/settings.js';
 import { setupProfile } from './pages/profile.js';
 import { checkSubscriptionAccess } from './helpers/subscription-check-clean.js';
