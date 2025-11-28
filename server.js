@@ -331,7 +331,6 @@ app.post('/api/cron/auto-schedule', async (req, res) => {
 app.post('/api/catalog/add-labor', async (req, res) => {
   const { jobId, description, hours, rate, notes } = req.body;
   try {
-    const catalogAPI = await loadCatalogAPI();
     const result = await catalogAPI.addLaborToJob({ jobId, description, hours, rate, notes });
     res.json(result);
   } catch (error) {
@@ -366,7 +365,6 @@ app.delete('/api/messaging/numbers/:numberId', messagingAPI.releaseNumber);
 // Get parts for a job
 app.get('/api/catalog/job-parts/:jobId', async (req, res) => {
   try {
-    const catalogAPI = await loadCatalogAPI();
     const parts = await catalogAPI.getJobParts(req.params.jobId);
     res.json({ parts });
   } catch (err) {
@@ -377,7 +375,6 @@ app.get('/api/catalog/job-parts/:jobId', async (req, res) => {
 // Get labor for a job
 app.get('/api/catalog/job-labor/:jobId', async (req, res) => {
   try {
-    const catalogAPI = await loadCatalogAPI();
     const labor = await catalogAPI.getJobLabor(req.params.jobId);
     console.log('[API] job-labor', req.params.jobId, 'rows:', Array.isArray(labor) ? labor.length : 'none', labor);
     res.json({ labor });
@@ -390,7 +387,6 @@ app.get('/api/catalog/job-labor/:jobId', async (req, res) => {
 // Remove part from job
 app.delete('/api/catalog/job-parts/:id', async (req, res) => {
   try {
-    const catalogAPI = await loadCatalogAPI();
     await catalogAPI.removeJobPart(req.params.id);
     res.json({ success: true });
   } catch (err) {
