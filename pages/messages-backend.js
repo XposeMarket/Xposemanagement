@@ -33,6 +33,8 @@ function setupMessages() {
   let activeThreadId = null;
   let activeThread = null;
   let messages = [];
+  let shopTwilioNumber = null;
+  const API_BASE_URL = 'https://xpose-stripe-server.vercel.app';
   
   // search filter for threads/customers
   const threadSearchInput = document.getElementById('threadSearch');
@@ -275,13 +277,166 @@ function setupMessages() {
     chatBox.appendChild(div);
   }
 
-  // Scroll chat to bottom
-  function scrollChatToBottom() { 
-    chatBox.scrollTop = chatBox.scrollHeight; 
+  // Load shop's Twilio number
+  async function loadShopTwilioNumber() {
+    try {
+      const shopId = await getCurrentShopId();
+      if (!shopId) return;
+
+      const { data, error } = await supabase
+        .from('shop_twilio_numbers')
+        .select('*')
+        .eq('shop_id', shopId)
+        .eq('provisioning_status', 'active')
+        .limit(1);
+
+      if (error) throw error;
+
+      shopTwilioNumber = data && data.length > 0 ? data[0] : null;
+      console.log('📱 Shop Twilio number:', shopTwilioNumber);
+      updatePhoneNumberDisplay();
+      updateMessagingUI();
+    } catch (error) {
+      console.error('Error loading shop Twilio number:', error);
+    }
   }
 
-  // Send message
-  sendForm.addEventListener('submit', async (ev) => {
+  // Update phone number display in header
+  function updatePhoneNumberDisplay() {
+    if (threadPanelHeader) {
+      let headerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;width:100%;">';
+      headerHTML += '<span style="font-weight:600;font-size:16px;">Messages</span>';
+      
+      if (shopTwilioNumber) {
+        headerHTML += `<span style="font-size:12px;background:#e0f2fe;color:#0369a1;padding:4px 10px;border-radius:4px;font-family:monospace;">📱 ${shopTwilioNumber.phone_number}</span>`;
+      }
+      
+      headerHTML += '</div>';
+      threadPanelHeader.innerHTML = headerHTML;
+    }
+  }
+
+  // Update messaging UI (show request panel or chat)
+  function updateMessagingUI() {
+    if (!shopTwilioNumber) {
+      showRequestNumberPanel();
+      if (newThreadBtn) newThreadBtn.style.display = 'none';
+      if (editThreadsBtn) editThreadsBtn.style.display = 'none';
+    } else {
+      hideRequestNumberPanel();
+      if (newThreadBtn) newThreadBtn.style.display = 'block';
+      if (editThreadsBtn) editThreadsBtn.style.display = 'block';
+    }
+  }
+
+  // Show "Request Number" panel
+  function showRequestNumberPanel() {
+    const existing = document.getElementById('requestNumberPanel');
+    if (existing) existing.remove();
+
+    const panel = document.createElement('div');
+    panel.id = 'requestNumberPanel';
+    panel.style.cssText = `
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 60px 20px;
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+      border-radius: 12px;
+      text-align: center;
+      z-index: 10;
+    `;
+    panel.innerHTML = `
+      <div style="font-size: 48px;">📞</div>
+      <h2 style="margin: 0; color: #0c4a6e; font-size: 20px;">Get Your Shop's Phone Number</h2>
+      <p style="margin: 0; color: #475569; max-width: 300px; font-size: 14px;">
+        Request a dedicated phone number to start messaging your customers about appointments, invoices, and updates.
+      </p>
+      <button id="requestNumberBtn" class="btn primary" style="margin-top: 10px;">
+        Request Number
+      </button>
+      <p style="margin: 0; font-size: 12px; color: #94a3b8;">No charge - available now</p>
+    `;
+
+    const messagesWrap = document.querySelector('.messages-wrap');
+    if (messagesWrap) {
+      messagesWrap.style.position = 'relative';
+      messagesWrap.appendChild(panel);
+    } else {
+      chatPanel.innerHTML = '';
+      chatPanel.style.position = 'relative';
+      chatPanel.appendChild(panel);
+    }
+
+    const requestBtn = document.getElementById('requestNumberBtn');
+    if (requestBtn) {
+      requestBtn.addEventListener('click', requestPhoneNumber);
+    }
+  }
+
+  // Hide request panel
+  function hideRequestNumberPanel() {
+    const existing = document.getElementById('requestNumberPanel');
+    if (existing) existing.remove();
+  }
+
+  // Request phone number from backend
+  async function requestPhoneNumber() {
+    try {
+      const shopId = await getCurrentShopId();
+      if (!shopId) {
+        alert('Shop not found');
+        return;
+      }
+
+      const requestBtn = document.getElementById('requestNumberBtn');
+      if (requestBtn) {
+        requestBtn.disabled = true;
+        requestBtn.textContent = 'Requesting...';
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/messaging/provision`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shop_id: shopId })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to provision number');
+      }
+
+      const result = await response.json();
+      console.log('✅ Number provisioned:', result);
+
+      shopTwilioNumber = result.number;
+      updatePhoneNumberDisplay();
+      updateMessagingUI();
+      alert(`✅ Success! Your number is: ${result.number.phone_number}`);
+
+    } catch (error) {
+      console.error('Error requesting phone number:', error);
+      alert(`Error: ${error.message}`);
+      
+      const requestBtn = document.getElementById('requestNumberBtn');
+      if (requestBtn) {
+        requestBtn.disabled = false;
+        requestBtn.textContent = 'Request Number';
+      }
+    }
+  }
+
+  // Update send message to use correct API base URL
+  const originalSendForm = sendForm.cloneNode(true);
+  sendForm.parentNode.replaceChild(originalSendForm, sendForm);
+  originalSendForm.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const text = msgInput.value && msgInput.value.trim();
     if (!text || !activeThreadId) return;
@@ -291,12 +446,12 @@ function setupMessages() {
       if (!shopId) return;
 
       // Send via server API
-      const response = await fetch('/api/messaging/send', {
+      const response = await fetch(`${API_BASE_URL}/api/messaging/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          shopId,
-          threadId: activeThreadId,
+          shop_id: shopId,
+          customer_id: activeThread?.customer_id,
           to: activeThread.external_recipient,
           body: text
         })
@@ -334,7 +489,7 @@ function setupMessages() {
         if (!shopId) return;
 
         // Send initial message to create thread
-        const response = await fetch('/api/messaging/send', {
+        const response = await fetch(`${API_BASE_URL}/api/messaging/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -541,6 +696,7 @@ function setupMessages() {
 
   // Initialize
   async function init() {
+    await loadShopTwilioNumber();
     await loadThreads();
     updatePanelHeights();
     await subscribeToMessages();
