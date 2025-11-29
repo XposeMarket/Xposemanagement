@@ -74,6 +74,24 @@
         </div>
       </div>
     </div>
+
+    <!-- New Thread Modal -->
+    <div id="newThreadModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="newThreadTitle">
+      <div class="modal-card" style="max-width:420px">
+        <div class="modal-head">
+          <h3 id="newThreadTitle" style="margin:0">Start a Conversation</h3>
+          <button class="btn" id="newThreadClose">Close</button>
+        </div>
+        <div class="modal-body">
+          <label>Customer Phone Number</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input id="newThreadPhone" placeholder="+1 (555) 555-0123" style="flex:1;padding:10px 12px;border-radius:8px;border:1px solid var(--line);outline:none;" />
+            <button id="newThreadSave" class="btn primary" style="flex:0 0 auto;border-radius:8px;padding:10px 14px;">+</button>
+          </div>
+          <p style="font-size:12px;color:var(--muted);margin-top:8px;">Enter a customer's phone number to start messaging them.</p>
+        </div>
+      </div>
+    </div>
   </div>
 </header>
 <main class="container" style="padding:16px 0">

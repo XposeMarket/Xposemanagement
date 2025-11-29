@@ -22,8 +22,6 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 
-<<<<<<< HEAD
-=======
 // Normalize frontend origin from env (ensure scheme and no trailing slash)
 function normalizeOrigin(val) {
   if (!val) return val;
@@ -36,11 +34,12 @@ function normalizeOrigin(val) {
   return v;
 }
 
->>>>>>> backup-main
 const allowedOrigins = (() => {
   const list = [
     'http://localhost:5500',
-    'http://127.0.0.1:5500'
+    'http://127.0.0.1:5500',
+    'https://www.xpose.management',
+    'https://xpose.management'
   ];
 
   const envFrontend = normalizeOrigin(process.env.FRONTEND_URL);

@@ -17,10 +17,8 @@ function setupMessages() {
   const threadSubtitle = document.getElementById('threadSubtitle');
   const threadAvatar = document.getElementById('threadAvatar');
   const threadCenteredTitle = document.getElementById('threadCenteredTitle');
-  const msgInput = document.getElementById('msgInput');
-  const sendForm = document.getElementById('sendForm');
-  const newThreadBtn = document.getElementById('newThreadBtn');
-  const editThreadsBtn = document.getElementById('editThreadsBtn');
+  let msgInput = document.getElementById('msgInput');
+  let sendForm = document.getElementById('sendForm');
   const threadBackBtn = document.getElementById('threadBackBtn');
   const chatPanel = document.querySelector('.chat-panel');
   const threadsPanel = document.querySelector('.threads-panel');
@@ -35,14 +33,108 @@ function setupMessages() {
   let shopTwilioNumber = null;
   const API_BASE_URL = 'https://xpose-stripe-server.vercel.app';
   
-  // search filter for threads/customers
-  const threadSearchInput = document.getElementById('threadSearch');
+  // Helper function to re-query buttons after header updates
+  function getHeaderButtons() {
+    return {
+      newThreadBtn: document.getElementById('newThreadBtn'),
+      editThreadsBtn: document.getElementById('editThreadsBtn'),
+      threadSearch: document.getElementById('threadSearch')
+    };
+  }
+
+  // Helper function to attach event listeners to header buttons
+  function attachHeaderEventListeners() {
+    const { newThreadBtn, editThreadsBtn, threadSearch } = getHeaderButtons();
+
+    // Search filter
+    if (threadSearch) {
+      threadSearch.addEventListener('input', (ev) => {
+        threadFilter = (ev.target.value || '').toLowerCase();
+        renderThreadList();
+      });
+    }
+
+    // New thread button - open modal
+    if (newThreadBtn) {
+      newThreadBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const newThreadModal = document.getElementById('newThreadModal');
+        if (newThreadModal) newThreadModal.classList.remove('hidden');
+        const input = document.getElementById('newThreadPhone');
+        if (input) input.focus();
+      });
+    }
+
+    // Edit mode toggle
+    if (editThreadsBtn) {
+      editThreadsBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        editMode = !editMode;
+        editThreadsBtn.textContent = editMode ? 'Done' : 'Edit';
+        renderThreadList();
+      });
+    }
+  }
+
   let threadFilter = '';
-  if (threadSearchInput) {
-    threadSearchInput.addEventListener('input', (ev) => {
-      threadFilter = (ev.target.value || '').toLowerCase();
-      renderThreadList();
-    });
+
+  // Helper: format time display
+  function formatTime(timestamp) {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'now';
+    if (diffMins < 60) return `${diffMins}m`;
+    if (diffMins < 1440) return `${Math.floor(diffMins/60)}h`;
+    if (diffMins < 10080) return `${Math.floor(diffMins/1440)}d`;
+    
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
+  // Helper: escape HTML
+  function escapeHtml(s) { 
+    return (s||'').toString()
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;'); 
+  }
+
+  // Helper: scroll to bottom
+  function scrollChatToBottom() {
+    setTimeout(() => {
+      if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
+    }, 0);
+  }
+
+  // Helper: normalize phone number to E.164 format
+  function normalizePhone(phone) {
+    if (!phone) return '';
+    let digits = phone.replace(/\D/g, '');
+    
+    // Handle 11 digits starting with 1 (US)
+    if (digits.length === 11 && digits[0] === '1') {
+      return '+' + digits;
+    }
+    
+    // Handle 10 digits (US/Canada)
+    if (digits.length === 10) {
+      return '+1' + digits;
+    }
+    
+    // Handle 7 digits (assume US area code)
+    if (digits.length === 7) {
+      return '+1555' + digits; // Placeholder area code
+    }
+    
+    // Handle other lengths - just add +
+    if (digits.length > 0) {
+      return '+' + digits;
+    }
+    
+    return phone; // Return as-is if can't parse
   }
 
   // Helper: format time display
@@ -341,6 +433,9 @@ function setupMessages() {
       headerHTML += '<input id="threadSearch" placeholder="Search customers or threads" style="margin-top:8px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);width:100%" />';
       
       threadPanelHeader.innerHTML = headerHTML;
+
+      // Re-attach event listeners after DOM update
+      attachHeaderEventListeners();
     }
   }
 
@@ -461,97 +556,52 @@ function setupMessages() {
     }
   }
 
-  // Update send message to use correct API base URL
-  const originalSendForm = sendForm.cloneNode(true);
-  sendForm.parentNode.replaceChild(originalSendForm, sendForm);
-  originalSendForm.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    const text = msgInput.value && msgInput.value.trim();
-    if (!text || !activeThreadId) return;
-
-    try {
-      const shopId = await getCurrentShopId();
-      if (!shopId) return;
-
-      // Send via server API
-      const response = await fetch(`${API_BASE_URL}/api/messaging/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          shop_id: shopId,
-          customer_id: activeThread?.customer_id,
-          to: activeThread.external_recipient,
-          body: text
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to send message');
-      }
-
-      const result = await response.json();
-      console.log('✅ Message sent:', result);
-
-      // Clear input
-      msgInput.value = '';
-
-      // Reload messages (will be updated via Realtime soon)
-      await loadMessages(activeThreadId);
-      await loadThreads(); // Refresh thread list to update last_message
-
-    } catch (error) {
-      console.error('Error sending message:', error);
-      alert('Failed to send message. Please try again.');
-    }
-  });
-
-  // New thread button (placeholder - requires phone input UI)
-  if (newThreadBtn) {
-    newThreadBtn.addEventListener('click', async (e) => {
-      e.preventDefault();
-      const phoneNumber = prompt('Enter customer phone number:');
-      if (!phoneNumber) return;
+  // Update send message form submission
+  function attachSendFormListener() {
+    msgInput = document.getElementById('msgInput');
+    sendForm = document.getElementById('sendForm');
+    
+    if (!sendForm) return;
+    
+    sendForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const text = msgInput.value && msgInput.value.trim();
+      if (!text || !activeThreadId) return;
 
       try {
         const shopId = await getCurrentShopId();
         if (!shopId) return;
 
-        // Get shop name from Supabase
-        const { data: shop } = await supabase.from('shops').select('name').eq('id', shopId).single();
-        const shopName = shop?.name || 'your shop';
-
-        // Send initial message to create thread
+        // Send via server API
         const response = await fetch(`${API_BASE_URL}/api/messaging/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            shopId,
-            to: phoneNumber,
-            body: 'Hi, this is ' + shopName
+            shop_id: shopId,
+            customer_id: activeThread?.customer_id,
+            to: activeThread.external_recipient,
+            body: text
           })
         });
 
         if (!response.ok) {
-          throw new Error('Failed to create thread');
+          throw new Error('Failed to send message');
         }
 
-        // Reload threads
-        await loadThreads();
+        const result = await response.json();
+        console.log('✅ Message sent:', result);
+
+        // Clear input
+        msgInput.value = '';
+
+        // Reload messages (will be updated via Realtime soon)
+        await loadMessages(activeThreadId);
+        await loadThreads(); // Refresh thread list to update last_message
 
       } catch (error) {
-        console.error('Error creating thread:', error);
-        alert('Failed to create thread. Please try again.');
+        console.error('Error sending message:', error);
+        alert('Failed to send message. Please try again.');
       }
-    });
-  }
-
-  // Edit mode toggle
-  if (editThreadsBtn) {
-    editThreadsBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      editMode = !editMode;
-      editThreadsBtn.textContent = editMode ? 'Done' : 'Edit';
-      renderThreadList();
     });
   }
 
@@ -725,11 +775,113 @@ function setupMessages() {
       )
       .subscribe();
   }
+  // New Thread Modal handlers
+  function setupNewThreadModal() {
+    const newThreadModal = document.getElementById('newThreadModal');
+    const newThreadClose = document.getElementById('newThreadClose');
+    const newThreadPhone = document.getElementById('newThreadPhone');
+    const newThreadSave = document.getElementById('newThreadSave');
+
+    if (newThreadClose) {
+      newThreadClose.addEventListener('click', () => {
+        if (newThreadModal) newThreadModal.classList.add('hidden');
+        if (newThreadPhone) newThreadPhone.value = '';
+      });
+    }
+
+    if (newThreadSave) {
+      newThreadSave.addEventListener('click', async (e) => {
+        e.preventDefault();
+        let phoneNumber = newThreadPhone?.value?.trim();
+        
+        if (!phoneNumber) {
+          alert('Please enter a phone number');
+          return;
+        }
+
+        // Normalize the phone number
+        phoneNumber = normalizePhone(phoneNumber);
+        console.log('Normalized phone:', phoneNumber);
+
+        try {
+          newThreadSave.disabled = true;
+          newThreadSave.textContent = '...';
+
+          const shopId = await getCurrentShopId();
+          if (!shopId) throw new Error('Shop not found');
+
+          // Get shop name from Supabase
+          const { data: shop } = await supabase
+            .from('shops')
+            .select('name')
+            .eq('id', shopId)
+            .single();
+          
+          const shopName = shop?.name || 'your shop';
+
+          const payload = {
+            shop_id: shopId,
+            to: phoneNumber,
+            body: 'Hi, this is ' + shopName
+          };
+
+          console.log('Sending to API:', API_BASE_URL + '/api/messaging/send');
+          console.log('Payload:', payload);
+
+          // Send initial message to create thread
+          const response = await fetch(`${API_BASE_URL}/api/messaging/send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API error response:', response.status, errorText);
+            let error;
+            try {
+              error = JSON.parse(errorText);
+            } catch {
+              error = { error: errorText };
+            }
+            throw new Error(error.error || `API returned ${response.status}`);
+          }
+
+          const result = await response.json();
+          console.log('✅ Thread created:', result);
+
+          // Close modal and reload threads
+          if (newThreadModal) newThreadModal.classList.add('hidden');
+          if (newThreadPhone) newThreadPhone.value = '';
+          await loadThreads();
+          alert(`✅ Thread started with ${phoneNumber}`);
+
+        } catch (error) {
+          console.error('Error creating thread:', error);
+          alert(`Error: ${error.message}`);
+        } finally {
+          newThreadSave.disabled = false;
+          newThreadSave.textContent = '+';
+        }
+      });
+    }
+
+    // Allow Enter key to send
+    if (newThreadPhone) {
+      newThreadPhone.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          newThreadSave?.click();
+        }
+      });
+    }
+  }
 
   // Initialize
   async function init() {
     await loadShopTwilioNumber();
     await loadThreads();
+    attachSendFormListener();
+    setupNewThreadModal();
     updatePanelHeights();
     await subscribeToMessages();
   }
