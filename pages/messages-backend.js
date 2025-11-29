@@ -287,7 +287,7 @@ function setupMessages() {
         .from('shop_twilio_numbers')
         .select('*')
         .eq('shop_id', shopId)
-        .eq('provisioning_status', 'active')
+        .not('twilio_sid', 'is', null)
         .limit(1);
 
       if (error) throw error;
