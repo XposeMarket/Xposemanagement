@@ -600,7 +600,17 @@ try {
   console.log('✅ All messaging routes registered');
 } catch (error) {
   console.error('❌ Failed to load messaging API:', error);
+  console.error('Error stack:', error.stack);
   console.error('Messaging routes will not be available');
+  
+  // Add fallback error routes so we can see what's happening
+  app.post('/api/messaging/send', (req, res) => {
+    res.status(500).json({ 
+      error: 'Messaging API failed to load', 
+      message: error.message,
+      stack: error.stack 
+    });
+  });
 }
 
 const PORT = process.env.PORT || process.env.STRIPE_PORT || 3001;
