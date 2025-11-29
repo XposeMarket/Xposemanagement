@@ -7,7 +7,6 @@
  */
 
 import { supabase } from '../helpers/supabase.js';
-import { currentShop } from '../helpers/user.js';
 
 function setupMessages() {
   console.log('📄 setupMessages (backend) initializing');
@@ -70,10 +69,33 @@ function setupMessages() {
       .replace(/>/g,'&gt;'); 
   }
 
-  // Get current shop ID
+  // Get current shop ID directly from Supabase
   async function getCurrentShopId() {
-    const shop = await currentShop();
-    return shop?.id;
+    try {
+      // Get authenticated user
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        console.error('No authenticated user:', authError);
+        return null;
+      }
+
+      // Get shop owned by this user
+      const { data: shops, error: shopError } = await supabase
+        .from('shops')
+        .select('id')
+        .eq('owner_id', user.id)
+        .limit(1);
+
+      if (shopError) {
+        console.error('Error fetching shop:', shopError);
+        return null;
+      }
+
+      return shops && shops.length > 0 ? shops[0].id : null;
+    } catch (error) {
+      console.error('Error in getCurrentShopId:', error);
+      return null;
+    }
   }
 
   // Load threads from Supabase
@@ -488,6 +510,10 @@ function setupMessages() {
         const shopId = await getCurrentShopId();
         if (!shopId) return;
 
+        // Get shop name from Supabase
+        const { data: shop } = await supabase.from('shops').select('name').eq('id', shopId).single();
+        const shopName = shop?.name || 'your shop';
+
         // Send initial message to create thread
         const response = await fetch(`${API_BASE_URL}/api/messaging/send`, {
           method: 'POST',
@@ -495,7 +521,7 @@ function setupMessages() {
           body: JSON.stringify({
             shopId,
             to: phoneNumber,
-            body: 'Hi, this is ' + (await currentShop())?.name || 'your shop'
+            body: 'Hi, this is ' + shopName
           })
         });
 
