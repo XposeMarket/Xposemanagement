@@ -76,6 +76,7 @@ app.use(cors({
 
       // Direct exact-match first
       if (allowedOrigins.indexOf(incoming) !== -1) {
+        console.log('CORS allowed: exact match');
         return callback(null, true);
       }
 
@@ -90,6 +91,7 @@ app.use(cors({
           try {
             const ah = stripWww(new URL(a).hostname);
             if (ah === incomingHost) {
+              console.log('CORS allowed: hostname match');
               return callback(null, true);
             }
           } catch (e) {
@@ -104,13 +106,16 @@ app.use(cors({
         return callback(new Error('CORS not allowed'), false);
       }
 
+      console.log('CORS allowed: default allow');
       return callback(null, true);
     } catch (err) {
       console.error('CORS check failed:', err);
       return callback(new Error('CORS check failed'), false);
     }
   },
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(express.json());
