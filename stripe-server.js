@@ -557,6 +557,15 @@ async function handlePaymentFailed(invoice) {
 // Twilio Messaging Routes
 // ===========================
 
+// Debug endpoint to check if server is responding
+app.get('/api/messaging/test', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    message: 'Messaging API endpoint is reachable',
+    timestamp: new Date().toISOString()
+  });
+});
+
 try {
   const messagingAPI = require('./helpers/messaging-api-cjs.js');
   
