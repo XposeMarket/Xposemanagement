@@ -1,7 +1,6 @@
 {
     "name": "xpose-crm",
     "version": "1.0.0",
-    "type": "module",
     "description": "Xpose Management CRM - Stripe Payment Server",
     "main": "stripe-server.js",
     "scripts": {
