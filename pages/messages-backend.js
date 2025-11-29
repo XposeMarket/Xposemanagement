@@ -326,14 +326,20 @@ function setupMessages() {
   // Update phone number display in header
   function updatePhoneNumberDisplay() {
     if (threadPanelHeader) {
-      let headerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;width:100%;">';
-      headerHTML += '<span style="font-weight:600;font-size:16px;">Messages</span>';
+      let headerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%">';
+      headerHTML += '<strong>Messages</strong>';
+      headerHTML += '<div style="display:flex;gap:8px;align-items:center">';
+      headerHTML += '<button id="newThreadBtn" class="btn small">New</button>';
+      headerHTML += '<button id="editThreadsBtn" class="btn small">Edit</button>';
+      headerHTML += '</div>';
+      headerHTML += '</div>';
       
       if (shopTwilioNumber) {
-        headerHTML += `<span style="font-size:12px;background:#e0f2fe;color:#0369a1;padding:4px 10px;border-radius:4px;font-family:monospace;">📱 ${shopTwilioNumber.phone_number}</span>`;
+        headerHTML += `<div style="margin-top:8px;font-size:12px;background:#e0f2fe;color:#0369a1;padding:6px 10px;border-radius:6px;font-family:monospace;text-align:center;">📱 ${shopTwilioNumber.phone_number}</div>`;
       }
       
-      headerHTML += '</div>';
+      headerHTML += '<input id="threadSearch" placeholder="Search customers or threads" style="margin-top:8px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);width:100%" />';
+      
       threadPanelHeader.innerHTML = headerHTML;
     }
   }
