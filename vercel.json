@@ -2,7 +2,13 @@
   "version": 2,
   "builds": [
     { "src": "server.js", "use": "@vercel/node" },
-    { "src": "stripe-server.js", "use": "@vercel/node" }
+    { 
+      "src": "stripe-server.js", 
+      "use": "@vercel/node",
+      "config": { 
+        "includeFiles": ["helpers/**"]
+      }
+    }
   ],
   "routes": [
     { "src": "/api/messaging/(.*)", "dest": "/stripe-server.js" },
