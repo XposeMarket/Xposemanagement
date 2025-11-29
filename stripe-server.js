@@ -76,7 +76,6 @@ app.use(cors({
 
       // Direct exact-match first
       if (allowedOrigins.indexOf(incoming) !== -1) {
-        console.log('CORS allowed: exact match');
         return callback(null, true);
       }
 
@@ -91,7 +90,6 @@ app.use(cors({
           try {
             const ah = stripWww(new URL(a).hostname);
             if (ah === incomingHost) {
-              console.log('CORS allowed: hostname match');
               return callback(null, true);
             }
           } catch (e) {
@@ -106,16 +104,13 @@ app.use(cors({
         return callback(new Error('CORS not allowed'), false);
       }
 
-      console.log('CORS allowed: default allow');
       return callback(null, true);
     } catch (err) {
       console.error('CORS check failed:', err);
       return callback(new Error('CORS check failed'), false);
     }
   },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  credentials: true
 }));
 
 app.use(express.json());
@@ -558,15 +553,6 @@ async function handlePaymentFailed(invoice) {
 // Twilio Messaging Routes
 // ===========================
 
-// Debug endpoint to check if server is responding
-app.get('/api/messaging/test', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    message: 'Messaging API endpoint is reachable',
-    timestamp: new Date().toISOString()
-  });
-});
-
 try {
   const messagingAPI = require('./helpers/messaging-api-cjs.js');
   
@@ -596,17 +582,7 @@ try {
   console.log('✅ All messaging routes registered');
 } catch (error) {
   console.error('❌ Failed to load messaging API:', error);
-  console.error('Error stack:', error.stack);
   console.error('Messaging routes will not be available');
-  
-  // Add fallback error routes so we can see what's happening
-  app.post('/api/messaging/send', (req, res) => {
-    res.status(500).json({ 
-      error: 'Messaging API failed to load', 
-      message: error.message,
-      stack: error.stack 
-    });
-  });
 }
 
 const PORT = process.env.PORT || process.env.STRIPE_PORT || 3001;
