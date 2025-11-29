@@ -5,6 +5,7 @@
     { "src": "stripe-server.js", "use": "@vercel/node" }
   ],
   "routes": [
+    { "src": "/api/messaging/(.*)", "dest": "/stripe-server.js" },
     { "src": "/api/catalog/add-part", "dest": "/server.js" },
     { "src": "/api/(.*)", "dest": "/server.js" },
     { "src": "/stripe/(.*)", "dest": "/stripe-server.js" },
