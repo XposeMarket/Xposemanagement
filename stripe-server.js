@@ -147,14 +147,10 @@ app.post('/create-checkout-session', async (req, res) => {
       return res.status(400).json({ error: 'Price ID is required' });
     }
 
-<<<<<<< HEAD
-    console.log('🔄 Creating Stripe checkout session...');
-=======
     // Determine origin: prefer request Origin header, then normalized FRONTEND_URL env, then a sensible default
     const envFrontend = normalizeOrigin(process.env.FRONTEND_URL);
     const origin = req.headers.origin || envFrontend || 'https://xpose-stripe-server.vercel.app';
     console.log('🔄 Creating Stripe checkout session... using origin:', origin, ' (raw req.headers.origin=', req.headers.origin, ', envFrontend=', envFrontend, ')');
->>>>>>> backup-main
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
@@ -180,13 +176,8 @@ app.post('/create-checkout-session', async (req, res) => {
       // Allow customers to enter promo codes
       allow_promotion_codes: true,
       // Redirect to create-shop page after successful payment (not dashboard)
-<<<<<<< HEAD
-      success_url: `${req.headers.origin}/create-shop.html?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${req.headers.origin}/paywall.html`,
-=======
       success_url: `${origin}/create-shop.html?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/paywall.html`,
->>>>>>> backup-main
     });
 
     res.json({ url: session.url });
@@ -405,15 +396,9 @@ async function handleSubscriptionUpdate(subscription) {
   
   // Update Supabase
   const supabaseUrl = process.env.SUPABASE_URL;
-<<<<<<< HEAD
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
-=======
-<<<<<<< HEAD
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
-=======
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
->>>>>>> f1b5945 (Deploy all Stripe/Supabase integration and fixes for production (CORS, env, webhook, keys, frontend))
->>>>>>> backup-main
   
   if (!supabaseUrl || !supabaseKey) {
     console.warn('⚠️ Supabase credentials not configured - skipping database update');
@@ -473,15 +458,9 @@ async function handleSubscriptionCanceled(subscription) {
   
   // Update Supabase
   const supabaseUrl = process.env.SUPABASE_URL;
-<<<<<<< HEAD
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
-=======
-<<<<<<< HEAD
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
-=======
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
->>>>>>> f1b5945 (Deploy all Stripe/Supabase integration and fixes for production (CORS, env, webhook, keys, frontend))
->>>>>>> backup-main
   
   if (!supabaseUrl || !supabaseKey) {
     console.warn('⚠️ Supabase credentials not configured - skipping database update');
@@ -544,15 +523,7 @@ async function handlePaymentFailed(invoice) {
   
   // Update Supabase to mark subscription as past_due
   const supabaseUrl = process.env.SUPABASE_URL;
-<<<<<<< HEAD
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
-=======
-<<<<<<< HEAD
-  const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
-=======
-  const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
->>>>>>> f1b5945 (Deploy all Stripe/Supabase integration and fixes for production (CORS, env, webhook, keys, frontend))
->>>>>>> backup-main
   
   if (!supabaseUrl || !supabaseKey) return;
   
