@@ -131,8 +131,9 @@ function setupMessages() {
   if (threadInfoBtn) {
     threadInfoBtn.addEventListener('click', (ev) => {
       ev.preventDefault();
-      const thread = threads.find(t => t.id === activeThreadId) || {};
-      // prefill fields: if thread.name looks like a phone number, populate phone; if it looks like an email, populate email; otherwise split into first/last
+      const thread = threads.find(t => t.id === activeThreadId);
+      if (!thread) return;
+      // Prefill customer info for all threads
       const source = (thread.name || thread.recipient || '').toString().trim();
       const isEmail = /@/.test(source);
       const isPhone = /^[\d\+\-\s\(\)]+$/.test(source);
@@ -371,7 +372,14 @@ function setupMessages() {
       if (threadBackBtn) threadBackBtn.classList.remove('hidden');
       if (threadCenteredTitle) {
         threadCenteredTitle.classList.remove('hidden');
-        threadCenteredTitle.textContent = thread.name || thread.recipient || 'Chat';
+        // Show request number and Coming Soon label for mobile
+        let reqNum = thread.id ? `Request #${thread.id}` : '';
+        let title = thread.name || thread.recipient || 'Chat';
+        threadCenteredTitle.innerHTML = `
+          <div style="font-weight:600;">${title}</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:2px;">${reqNum}</div>
+          <div style="font-size:13px;color:#f59e42;margin-top:4px;font-weight:500;">Coming Soon</div>
+        `;
       }
     }
   }
