@@ -10,15 +10,22 @@ const express = require('express');
 const cors = require('cors');
 // Debug: Check if API key is loaded
 // Do not log secret values. Only indicate presence.
-console.log('🔑 Stripe Secret Key present=', !!process.env.STRIPE_SECRET_KEY);
+const HAS_STRIPE_KEY = !!process.env.STRIPE_SECRET_KEY;
+console.log('🔑 Stripe Secret Key present=', HAS_STRIPE_KEY);
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  console.error('❌ ERROR: STRIPE_SECRET_KEY not found in .env file!');
-  console.error('Make sure .env file exists and contains STRIPE_SECRET_KEY');
-  process.exit(1);
+// Initialize Stripe client safely. In serverless environments we should not
+// call process.exit() because that crashes the function during module load.
+let stripe = null;
+if (HAS_STRIPE_KEY) {
+  try {
+    stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+  } catch (err) {
+    console.error('❌ Failed to initialize Stripe client:', err && err.message);
+    stripe = null;
+  }
+} else {
+  console.warn('⚠️ STRIPE_SECRET_KEY is not set. Stripe endpoints will return errors until configured.');
 }
-
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 
@@ -120,10 +127,10 @@ app.use(express.static('.'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
-    stripe: 'connected' 
+    stripe: stripe ? 'connected' : 'missing'
   });
 });
 
@@ -133,11 +140,16 @@ app.get('/', (req, res) => {
     message: 'Xpose Management Stripe Server',
     version: '1.0.0',
     endpoints: ['/create-checkout-session', '/get-session-subscription', '/health']
+  });
 });
 
 // Create checkout session
 app.post('/create-checkout-session', async (req, res) => {
   try {
+    if (!stripe) {
+      console.error('Attempted checkout but Stripe client is not configured');
+      return res.status(500).json({ error: 'Stripe not configured' });
+    }
     const { priceId, customerEmail } = req.body;
 
     console.log('📝 Checkout request received:', { priceId, hasCustomerEmail: !!customerEmail });
@@ -197,6 +209,10 @@ app.post('/create-checkout-session', async (req, res) => {
 // Get customer subscription status
 app.post('/get-subscription-status', async (req, res) => {
   try {
+    if (!stripe) {
+      console.error('Attempted to fetch subscription status but Stripe client is not configured');
+      return res.status(500).json({ error: 'Stripe not configured' });
+    }
     const { customerEmail } = req.body;
 
     if (!customerEmail) {
@@ -243,6 +259,10 @@ app.post('/get-subscription-status', async (req, res) => {
 // Get subscription details from checkout session
 app.post('/get-session-subscription', async (req, res) => {
   try {
+    if (!stripe) {
+      console.error('Attempted to fetch session but Stripe client is not configured');
+      return res.status(500).json({ error: 'Stripe not configured' });
+    }
     const { sessionId } = req.body;
 
     if (!sessionId) {
@@ -329,6 +349,11 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
   if (!webhookSecret) {
     console.warn('⚠️ STRIPE_WEBHOOK_SECRET not set - webhooks will not be verified!');
     return res.status(500).json({ error: 'Webhook secret not configured' });
+  }
+
+  if (!stripe) {
+    console.error('Webhook requested but Stripe client is not configured');
+    return res.status(500).json({ error: 'Stripe not configured' });
   }
 
   let event;
@@ -597,4 +622,6 @@ if (process.env.VERCEL !== '1') {
 }
 
 // Export for Vercel serverless
+
 module.exports = app;
+

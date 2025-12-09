@@ -1,0 +1,18 @@
+# Exclude files that should NOT be deployed to Vercel
+server.js
+stripe-server-clean.js
+messaging-api.js
+render.yaml
+
+# Exclude local environment files
+.env.local
+.env.sample
+.env.example
+
+# Exclude unnecessary directories
+api/
+.vscode/
+node_modules/
+.git/
+
+# Keep only stripe-server.js and helpers/
