@@ -401,7 +401,7 @@ function openJobActionsModal(job) {
   }
   const btns = modal.querySelector('#jobActionsBtns');
   btns.innerHTML = '';
-  // Add action buttons (Parts, Remove)
+  // Add action buttons (Parts, Assign, Remove)
   const partsBtn = document.createElement('button');
   partsBtn.className = 'btn';
   partsBtn.textContent = 'Parts';
@@ -409,6 +409,17 @@ function openJobActionsModal(job) {
   const appt = allAppointments.find(a => a.id === job.appointment_id);
   partsBtn.onclick = () => { modal.classList.add('hidden'); openPartsModal(job, appt); };
   btns.appendChild(partsBtn);
+
+  // Assign button (mobile)
+  const assignBtn = document.createElement('button');
+  assignBtn.className = 'btn info';
+  assignBtn.textContent = 'Assign';
+  assignBtn.onclick = () => {
+    modal.classList.add('hidden');
+    openAssignModal(job);
+  };
+  btns.appendChild(assignBtn);
+
   const manualPartsBtn = document.createElement('button');
   manualPartsBtn.className = 'btn';
   manualPartsBtn.textContent = 'Add Parts Manually';
@@ -423,6 +434,7 @@ function openJobActionsModal(job) {
     }
   };
   btns.appendChild(manualPartsBtn);
+
   const removeBtn = document.createElement('button');
   removeBtn.className = 'btn danger';
   removeBtn.textContent = 'Remove';
@@ -831,22 +843,22 @@ function openAssignModal(job) {
     modal.id = 'assignModal';
     modal.className = 'modal-overlay hidden';
     modal.innerHTML = `
-      <div class="modal-content" onclick="event.stopPropagation()" style="max-width:400px;">
+      <div class="modal-content" onclick="event.stopPropagation()" style="max-width:98vw;width:100%;min-width:0;padding:0 8px;box-sizing:border-box;">
         <div class="modal-head">
-          <h3>Assign Job</h3>
+          <h3 style="font-size:1.25rem;">Assign Job</h3>
           <button onclick="document.getElementById('assignModal')?.classList.add('hidden')" class="btn-close">&times;</button>
         </div>
         <div class="modal-body" style="padding-bottom: 6px;">
           <div style="margin-bottom:12px;">
-            <label for="assignUserSelect" style="display:block;font-weight:600;margin-bottom:6px">Select staff member</label>
-            <select id="assignUserSelect" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);">
+            <label for="assignUserSelect" style="display:block;font-weight:600;margin-bottom:6px;font-size:1.08rem;">Select staff member</label>
+            <select id="assignUserSelect" style="width:100%;padding:14px 10px;font-size:1.12rem;border-radius:10px;border:1.5px solid var(--line);background:#f9f9ff;max-width:100vw;">
               <option value="">-- Select staff --</option>
             </select>
           </div>
-          <div id="assignModalError" style="color:#ef4444;font-weight:500;margin-top:4px;display:none;font-size:0.95rem"></div>
-          <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
-            <button id="assignConfirmBtn" class="btn info" style="width:100%">Assign</button>
-            <button id="assignCancelBtn" class="btn" style="width:100%">Cancel</button>
+          <div id="assignModalError" style="color:#ef4444;font-weight:500;margin-top:4px;display:none;font-size:1.05rem"></div>
+          <div style="display:flex;flex-direction:column;gap:14px;margin-top:16px;">
+            <button id="assignConfirmBtn" class="btn info" style="width:100%;font-size:1.08rem;padding:14px 0;">Assign</button>
+            <button id="assignCancelBtn" class="btn" style="width:100%;font-size:1.08rem;padding:14px 0;">Cancel</button>
           </div>
         </div>
       </div>
