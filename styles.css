@@ -148,6 +148,27 @@
 
 /* Mobile-only nav links (visible inside the mobile dropdown) */
 .mobile-nav-btn { display: none; }
+
+/* Dashboard Day Details Table: mobile readability improvements */
+@media (max-width: 768px) {
+  #dayTable th, #dayTable td {
+    font-size: 12px !important;
+    padding: 6px 4px !important;
+    white-space: normal !important;
+    word-break: break-word;
+  }
+  #dayTable th, #dayTable td {
+    min-width: 60px;
+    max-width: 120px;
+  }
+  #dayTable {
+    font-size: 12px !important;
+    border-spacing: 0 2px;
+  }
+  #dayTable th {
+    font-weight: 600;
+  }
+}
 @media (max-width: 768px) {
   .mobile-nav-btn { display: block; padding: 8px 10px; }
 }

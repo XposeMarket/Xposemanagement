@@ -686,9 +686,44 @@ function setupMessages() {
   if (threadInfoBtn) {
     threadInfoBtn.addEventListener('click', () => {
       if (!activeThread) return;
-      // Open customer modal with thread customer data
-      // TODO: Implement full customer modal logic
-      alert('Customer info modal - to be implemented');
+      // Prefill fields: if thread.name looks like a phone number, populate phone; if it looks like an email, populate email; otherwise split into first/last
+      const source = (activeThread.name || activeThread.recipient || '').toString().trim();
+      const isEmail = /@/.test(source);
+      const isPhone = /^[\d\+\-\s\(\)]+$/.test(source);
+      const newCustFirst = document.getElementById('newCustFirst');
+      const newCustLast = document.getElementById('newCustLast');
+      const newCustPhone = document.getElementById('newCustPhone');
+      const newCustEmail = document.getElementById('newCustEmail');
+      const newCustNotes = document.getElementById('newCustNotes');
+      const custVehicleSection = document.getElementById('custVehicleSection');
+
+      if (isEmail) {
+        if (newCustEmail) newCustEmail.value = source;
+        if (newCustFirst) newCustFirst.value = '';
+        if (newCustLast) newCustLast.value = '';
+        if (newCustPhone) newCustPhone.value = '';
+      } else if (isPhone) {
+        if (newCustPhone) newCustPhone.value = source;
+        if (newCustFirst) newCustFirst.value = '';
+        if (newCustLast) newCustLast.value = '';
+        if (newCustEmail) newCustEmail.value = '';
+      } else if (source) {
+        const parts = source.split(/\s+/);
+        if (newCustFirst) newCustFirst.value = parts[0] || '';
+        if (newCustLast) newCustLast.value = parts.slice(1).join(' ') || '';
+        if (newCustPhone) newCustPhone.value = '';
+        if (newCustEmail) newCustEmail.value = '';
+      } else {
+        if (newCustFirst) newCustFirst.value = '';
+        if (newCustLast) newCustLast.value = '';
+        if (newCustPhone) newCustPhone.value = '';
+        if (newCustEmail) newCustEmail.value = '';
+      }
+
+      if (newCustNotes) newCustNotes.value = '';
+      if (custVehicleSection) custVehicleSection.classList.add('hidden');
+      if (custModal) custModal.classList.remove('hidden');
+      if (newCustFirst) newCustFirst.focus();
     });
   }
 
