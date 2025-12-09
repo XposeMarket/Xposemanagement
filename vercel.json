@@ -11,6 +11,9 @@
     }
   ],
   "routes": [
+    { "src": "/create-checkout-session", "dest": "/stripe-server.js" },
+    { "src": "/get-session-subscription", "dest": "/stripe-server.js" },
+    { "src": "/health", "dest": "/stripe-server.js" },
     { "src": "/api/messaging/(.*)", "dest": "/stripe-server.js" },
     { "src": "/api/catalog/add-part", "dest": "/server.js" },
     { "src": "/api/(.*)", "dest": "/server.js" },
