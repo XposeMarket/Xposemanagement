@@ -10,9 +10,11 @@ yarn-error.log
 
 # VS Code
 .vscode/
->>>>>>> backup-main
 .env
 node_modules/
 .DS_Store
 dist/
 .vercel
+
+# Problematic files with merge conflicts
+stripe-server-clean.js

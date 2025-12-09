@@ -3,9 +3,10 @@
     "version": "1.0.0",
     "description": "Xpose Management CRM - Stripe Payment Server",
     "main": "stripe-server.js",
+    "type": "commonjs",
     "scripts": {
-        "start": "node server.js",
-        "dev": "node server.js",
+        "start": "node stripe-server.js",
+        "dev": "node stripe-server.js",
         "stripe": "node stripe-server.js"
     },
     "engines": {

@@ -1,23 +1,19 @@
 {
   "version": 2,
   "builds": [
-    { "src": "server.js", "use": "@vercel/node" },
     { 
       "src": "stripe-server.js", 
-      "use": "@vercel/node",
-      "config": { 
-        "includeFiles": ["helpers/**"]
-      }
+      "use": "@vercel/node"
     }
   ],
   "routes": [
     { "src": "/create-checkout-session", "dest": "/stripe-server.js" },
     { "src": "/get-session-subscription", "dest": "/stripe-server.js" },
+    { "src": "/get-subscription-status", "dest": "/stripe-server.js" },
     { "src": "/health", "dest": "/stripe-server.js" },
+    { "src": "/webhook", "dest": "/stripe-server.js" },
     { "src": "/api/messaging/(.*)", "dest": "/stripe-server.js" },
-    { "src": "/api/catalog/add-part", "dest": "/server.js" },
-    { "src": "/api/(.*)", "dest": "/server.js" },
     { "src": "/stripe/(.*)", "dest": "/stripe-server.js" },
-    { "src": "/(.*)", "dest": "index.html" }
+    { "src": "/(.*)", "dest": "/$1" }
   ]
 }
