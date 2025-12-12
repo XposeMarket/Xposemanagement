@@ -410,14 +410,27 @@ async function handleSubscriptionUpdate(subscription) {
   const status = subscription.status;
   const priceId = subscription.items.data[0].price.id;
   
-  // Map price ID to plan name
+  // Map price ID to plan name - use EXACT same format as frontend expects
   const PRICE_TO_PLAN = {
     'price_1SX97Z4K55W1qqBCSwzYlDd6': 'Single Shop',
     'price_1SX97b4K55W1qqBC7o7fJYUi': 'Local Shop',
     'price_1SX97d4K55W1qqBCcNM0eP00': 'Multi Shop',
     // Add any additional live price IDs here as needed
   };
-  const planName = PRICE_TO_PLAN[priceId] || subscription.items.data[0].price.nickname || 'Unknown';
+  
+  let planName = PRICE_TO_PLAN[priceId];
+  
+  // If no mapping found, try to normalize nickname
+  if (!planName) {
+    const nickname = subscription.items.data[0].price.nickname || '';
+    const lower = nickname.toLowerCase();
+    if (lower.includes('single')) planName = 'Single Shop';
+    else if (lower.includes('local')) planName = 'Local Shop';
+    else if (lower.includes('multi')) planName = 'Multi Shop';
+    else planName = nickname || 'Single Shop'; // default to Single Shop
+    
+    console.warn('⚠️ Unknown Stripe price ID:', priceId, 'nickname:', nickname, 'mapped to:', planName);
+  }
   
   // Update Supabase
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -451,6 +464,11 @@ async function handleSubscriptionUpdate(subscription) {
     
     const user = users[0];
     
+    // Calculate next billing date (current_period_end)
+    const nextBillingDate = subscription.current_period_end 
+      ? new Date(subscription.current_period_end * 1000).toISOString() 
+      : null;
+    
     // Update user subscription info
     const { error: updateError } = await supabase
       .from('users')
@@ -459,7 +477,7 @@ async function handleSubscriptionUpdate(subscription) {
         subscription_status: status,
         subscription_plan: planName,
         trial_end: subscription.trial_end ? new Date(subscription.trial_end * 1000).toISOString() : null,
-        subscription_end: subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null,
+        subscription_end: nextBillingDate,
         updated_at: new Date().toISOString()
       })
       .eq('id', user.id);
@@ -467,7 +485,7 @@ async function handleSubscriptionUpdate(subscription) {
     if (updateError) {
       console.error('❌ Error updating user:', updateError);
     } else {
-      console.log('✅ User subscription updated:', user.email, '|', status, '|', planName);
+      console.log('✅ User subscription updated:', user.email, '|', status, '|', planName, '| Next billing:', nextBillingDate);
     }
   } catch (error) {
     console.error('❌ Error in handleSubscriptionUpdate:', error);
@@ -534,7 +552,46 @@ async function handleTrialEnding(subscription) {
 
 async function handlePaymentSucceeded(invoice) {
   console.log('✅ Payment succeeded for invoice:', invoice.id);
-  // Payment went through - subscription should already be active from subscription.updated event
+  
+  // When first payment succeeds after trial, update status to 'active'
+  const subscriptionId = invoice.subscription;
+  
+  if (!subscriptionId) return;
+  
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
+  
+  if (!supabaseUrl || !supabaseKey) return;
+  
+  try {
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    // Find user by subscription ID
+    const { data: users } = await supabase
+      .from('users')
+      .select('*')
+      .eq('stripe_subscription_id', subscriptionId)
+      .limit(1);
+    
+    if (users && users.length > 0) {
+      // Fetch full subscription from Stripe to get next billing date
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      
+      await supabase
+        .from('users')
+        .update({
+          subscription_status: 'active',
+          subscription_end: subscription.current_period_end ? new Date(subscription.current_period_end * 1000).toISOString() : null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', users[0].id);
+      
+      console.log('✅ User marked as active after payment:', users[0].email);
+    }
+  } catch (error) {
+    console.error('❌ Error in handlePaymentSucceeded:', error);
+  }
 }
 
 async function handlePaymentFailed(invoice) {
@@ -624,4 +681,3 @@ if (process.env.VERCEL !== '1') {
 // Export for Vercel serverless
 
 module.exports = app;
-
