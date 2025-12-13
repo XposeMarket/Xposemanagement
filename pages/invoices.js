@@ -1146,6 +1146,7 @@ function setupInvoices() {
       inv.items = job.items ? JSON.parse(JSON.stringify(job.items)) : [];
     } else {
       // Preserve any existing cost_price values by matching DOM rows to prior invoice items
+
       const priorItems = Array.isArray(inv.items) ? JSON.parse(JSON.stringify(inv.items)) : [];
       const domRows = Array.from(document.querySelectorAll('#items .grid'));
       inv.items = domRows.map(row => {
@@ -1162,30 +1163,33 @@ function setupInvoices() {
           rawName = rawNameEl ? rawNameEl.value : '';
         }
         const name = (rawName || '').replace(/\s*-\s*\$\d+(?:\.\d+)?\/hr\s*$/i, '').trim();
-        const qty = parseFloat(row.querySelector('.itm-qty').value) || 1;
+        const qtyRaw = row.querySelector('.itm-qty').value;
+        const qty = qtyRaw === '' || qtyRaw == null ? undefined : parseFloat(qtyRaw) || 1;
         const priceRaw = row.querySelector('.itm-price').value;
-        const price = priceRaw === '' ? 0 : parseFloat(priceRaw) || 0;
+        const price = priceRaw === '' || priceRaw == null ? undefined : parseFloat(priceRaw) || 0;
         const typeEl = row.querySelector('.itm-type');
         const type = typeEl ? (typeEl.value || 'part') : 'part';
 
-        // Try to find a matching prior item to preserve cost_price
+        // Try to find a matching prior item to preserve missing values
         let matched = null;
         if (priorItems && priorItems.length) {
           matched = priorItems.find(pi => {
-            // Exact match by name + qty + price
-            if ((pi.name || '').toString().trim() === name && Number(pi.qty || 0) === Number(qty) && Number(pi.price || 0) === Number(price)) return true;
-            // Match by name + price
-            if ((pi.name || '').toString().trim() === name && Number(pi.price || 0) === Number(price)) return true;
+            // Exact match by name + type
+            if ((pi.name || '').toString().trim() === name && (pi.type || 'part') === type) return true;
             // Match by name only (best effort)
             if ((pi.name || '').toString().trim() === name) return true;
             return false;
           });
         }
 
-        const item = { name, qty, price, type };
+        const item = { name, qty: qty !== undefined ? qty : (matched ? matched.qty : 1), price: price !== undefined ? price : (matched ? matched.price : 0), type };
         if (matched) {
           if (typeof matched.cost_price !== 'undefined') item.cost_price = Number(matched.cost_price);
           else if (typeof matched.cost !== 'undefined') item.cost_price = Number(matched.cost);
+          // Preserve any other custom fields as needed
+          Object.keys(matched).forEach(k => {
+            if (!(k in item)) item[k] = matched[k];
+          });
         }
         return item;
       });
