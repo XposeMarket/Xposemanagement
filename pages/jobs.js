@@ -1123,14 +1123,13 @@ async function handleAddToInvoice() {
   }
   
   try {
-    // Add part to invoice
-    await addPartToInvoice(jobId, partName, partQty, partPrice);
+    // Add part to invoice and get its ID for linking
+    const partItemId = await addPartToInvoice(jobId, partName, partQty, partPrice, undefined, partName);
     // Part added to invoice
-      // Part added to invoice
     // Close add parts modal
     closeAddPartsModal();
-    // Open labor modal
-    openLaborModal(jobId);
+    // Open labor modal with part ID for linking
+    openLaborModal(jobId, partItemId, partName);
     // Opened labor modal (user action)
   } catch (error) {
     console.error('Error adding part to invoice:', error);
@@ -1140,8 +1139,11 @@ async function handleAddToInvoice() {
 
 /**
  * Open labor modal
+ * @param {string} jobId - The job ID
+ * @param {string} partItemId - Optional part item ID to link labor with
+ * @param {string} partName - Optional part name for display
  */
-async function openLaborModal(jobId) {
+async function openLaborModal(jobId, partItemId, partName) {
   console.log('[openLaborModal] called with jobId:', jobId);
   const modal = document.getElementById('laborModal');
   if (!modal) return;
@@ -1213,8 +1215,18 @@ async function openLaborModal(jobId) {
   }
   document.getElementById('labNote').textContent = '';
   
-  // Store current job
+  // Store current job and part linkage info
   modal.dataset.jobId = jobId;
+  modal.dataset.partItemId = partItemId || '';
+  modal.dataset.partName = partName || '';
+  
+  // Update modal title if linking to a part
+  const modalTitle = modal.querySelector('h3');
+  if (modalTitle && partName) {
+    modalTitle.textContent = `Add Labor for: ${partName}`;
+  } else if (modalTitle) {
+    modalTitle.textContent = 'Add Labor';
+  }
   
   modal.classList.remove('hidden');
 }
@@ -1226,6 +1238,9 @@ async function handleAddLabor() {
   const modal = document.getElementById('laborModal');
   const jobId = modal?.dataset.jobId;
   if (!jobId) return;
+  
+  const partItemId = modal?.dataset.partItemId || null;
+  const partName = modal?.dataset.partName || null;
   
   const labDesc = (document.getElementById('labDesc') || {}).value?.trim() || '';
   const labHours = parseFloat((document.getElementById('labHours') || {}).value) || 0;
@@ -1263,14 +1278,17 @@ async function handleAddLabor() {
   }
   
   try {
-    // Add labor to invoice
-    await addLaborToInvoice(jobId, finalDesc, labHours, labRate);
+    // Add labor to invoice, linking to part if applicable
+    await addLaborToInvoice(jobId, finalDesc, labHours, labRate, partItemId);
     // Labor added to invoice
-      // Labor added to invoice
     // Close labor modal
     modal.classList.add('hidden');
+    // Clear modal data attributes
+    delete modal.dataset.partItemId;
+    delete modal.dataset.partName;
     // Show success notification
-    showNotification('Part and labor added to invoice successfully!', 'success');
+    const message = partItemId ? `${partName} (Part & Labor) added to invoice successfully!` : 'Labor added to invoice successfully!';
+    showNotification(message, 'success');
   } catch (error) {
     console.error('Error adding labor to invoice:', error);
     document.getElementById('labNote').textContent = 'Error adding labor to invoice';
@@ -1290,8 +1308,15 @@ function handleSkipLabor() {
 
 /**
  * Add part to invoice
+ * @param {string} jobId - The job ID
+ * @param {string} partName - Name of the part
+ * @param {number} quantity - Quantity
+ * @param {number} price - Price per unit
+ * @param {number} cost - Cost price (optional)
+ * @param {string} groupName - Optional group name for P&R (Part & Replace) grouping
+ * @returns {Promise<string>} - Returns the part item ID for linking
  */
-async function addPartToInvoice(jobId, partName, quantity, price, cost) {
+async function addPartToInvoice(jobId, partName, quantity, price, cost, groupName) {
   // Find the job and related appointment
   const job = allJobs.find(j => j.id === jobId);
   if (!job) throw new Error('Job not found');
@@ -1305,13 +1330,18 @@ async function addPartToInvoice(jobId, partName, quantity, price, cost) {
     invoice = await createInvoiceForAppointment(appt);
   }
   
+  // Generate unique ID for this item
+  const itemId = `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   // Add part item to invoice
   const partItem = {
-    name: partName,
+    id: itemId,
+    name: `Part: ${partName}`,
     qty: quantity,
     price: price,
     cost_price: (typeof cost !== 'undefined') ? Number(cost) : undefined,
-    type: 'part'
+    type: 'part',
+    groupName: groupName || partName // Store group name for invoice display
   };
   
   invoice.items = invoice.items || [];
@@ -1343,12 +1373,20 @@ async function addPartToInvoice(jobId, partName, quantity, price, cost) {
   console.log('Part added to invoice:', partItem);
   // Show success notification to the user (ensure single-part adds always show feedback)
   try { showNotification('Part added to invoice', 'success'); } catch (e) {}
+  
+  // Return item ID for linking with labor
+  return itemId;
 }
 
 /**
  * Add labor to invoice
+ * @param {string} jobId - The job ID
+ * @param {string} description - Labor description
+ * @param {number} hours - Hours of labor
+ * @param {number} rate - Hourly rate
+ * @param {string} linkedItemId - Optional ID of the part item to link with
  */
-async function addLaborToInvoice(jobId, description, hours, rate) {
+async function addLaborToInvoice(jobId, description, hours, rate, linkedItemId) {
   // Find the job and related appointment
   const job = allJobs.find(j => j.id === jobId);
   if (!job) throw new Error('Job not found');
@@ -1362,10 +1400,12 @@ async function addLaborToInvoice(jobId, description, hours, rate) {
   
   // Add labor item to invoice
   const laborItem = {
-    name: description,
+    id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    name: `Labor - ${description}`,
     qty: hours,
     price: rate,
-    type: 'labor'
+    type: 'labor',
+    linkedItemId: linkedItemId || undefined // Link to part if provided
   };
   
   invoice.items = invoice.items || [];

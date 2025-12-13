@@ -208,9 +208,13 @@ function setupInvoices() {
       } else if (inv.customer_id && window.customers) {
         const cust = window.customers.find(c => c.id === inv.customer_id);
         if (cust) customer = `${cust.customer_first || cust.first_name || ''} ${cust.customer_last || cust.last_name || ''}`.trim();
-      } else {
-        customer = inv.customer || inv.customer_id || '';
       }
+      // Only use inv.customer if it's NOT a UUID
+      if (!customer && inv.customer && !/^[0-9a-f-]{36}$/i.test(inv.customer)) {
+        customer = inv.customer;
+      }
+      // If still no customer name, show placeholder
+      if (!customer) customer = 'Unknown Customer';
       console.log(`[Invoices] Rendering invoice ${inv.id}: customer=${customer}`);
       const tr = document.createElement('tr');
       tr.innerHTML = `
@@ -263,7 +267,12 @@ function setupInvoices() {
         const cust = window.customers.find(c => c.id === inv.customer_id);
         if (cust) customer = `${cust.customer_first || cust.first_name || ''} ${cust.customer_last || cust.last_name || ''}`.trim();
       }
-      if (!customer) customer = inv.customer || '';
+      // Only use inv.customer if it's NOT a UUID
+      if (!customer && inv.customer && !/^[0-9a-f-]{36}$/i.test(inv.customer)) {
+        customer = inv.customer;
+      }
+      // If still no customer name, show placeholder
+      if (!customer) customer = 'Unknown Customer';
       console.log(`[Invoices] Rendering PAID invoice ${inv.id}: customer=${customer}`);
       const tr = document.createElement('tr');
       tr.innerHTML = `
@@ -404,9 +413,10 @@ function setupInvoices() {
     if (!last) last = inv.last_name || '';
     document.getElementById('invCustomerFirst').value = first;
     document.getElementById('invCustomerLast').value = last;
-    // Always use customer_id for linking
-    inv.customer_id = inv.customer_id || inv.customer;
-    inv.customer = inv.customer_id;
+    // Set customer_id if not already set (but don't overwrite customer with the UUID)
+    if (!inv.customer_id && inv.customer && /^[0-9a-f-]{36}$/i.test(inv.customer)) {
+      inv.customer_id = inv.customer;
+    }
     document.getElementById('invAppt').value = inv.appointment_id || '';
     document.getElementById('invTax').value = inv.tax_rate || settings.default_tax_rate || 6;
     document.getElementById('invDisc').value = inv.discount || settings.default_discount || 0;
