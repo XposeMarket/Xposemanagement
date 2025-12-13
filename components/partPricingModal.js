@@ -26,6 +26,12 @@ class PartPricingModal {
             <button class="modal-close" id="closePricingModal" style="background: none; border: none; font-size: 24px; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
           </div>
           <div class="modal-body">
+            <!-- P+R Group Title -->
+            <div class="form-field">
+              <label for="prGroupTitle">P+R Group Title</label>
+              <input type="text" id="prGroupTitle" class="form-control" placeholder="Group Title (e.g. Front Brakes P+R)">
+              <small style="color: #666;">This will be the section title for this Part+Rate group on the invoice. Default is part name + 'P+R'.</small>
+            </div>
             <!-- Part Info -->
             <div class="form-section" style="background: #f5f5f5; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
               <h4 id="pricingPartName" style="margin: 0 0 0.5rem 0;"></h4>
@@ -93,8 +99,14 @@ class PartPricingModal {
     // Populate part info
     const nameEl = document.getElementById('pricingPartName');
     const numberEl = document.getElementById('pricingPartNumber');
-    if (nameEl) nameEl.textContent = part.name || part.part_name; // Support both field names
+    if (nameEl) nameEl.textContent = part.name || part.part_name;
     if (numberEl) numberEl.textContent = part.part_number || 'N/A';
+    // Set default P+R group title
+    const prGroupTitleEl = document.getElementById('prGroupTitle');
+    if (prGroupTitleEl) {
+      const defaultTitle = (part.name || part.part_name || '').trim() ? `${part.name || part.part_name} P+R` : 'P+R';
+      prGroupTitleEl.value = part.groupName || defaultTitle;
+    }
     // Reset form
     const qtyEl = document.getElementById('pricingQuantity');
     const costEl = document.getElementById('pricingCost');
@@ -201,6 +213,7 @@ class PartPricingModal {
     const costPrice = parseFloat(document.getElementById('pricingCost').value) || 0;
     const sellPrice = parseFloat(document.getElementById('pricingSell').value) || 0;
     const notes = document.getElementById('pricingNotes').value.trim();
+    const groupName = document.getElementById('prGroupTitle')?.value?.trim() || '';
     const shopId = this.getCurrentShopId();
 
     if (!shopId) {

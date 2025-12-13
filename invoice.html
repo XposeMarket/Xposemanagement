@@ -33,7 +33,19 @@
 </div>
 <script src="vendor/jspdf.umd.min.js"></script>
 <h1>Invoice <span id="invNo"></span></h1>
-<div><b>Customer:</b> <span id="invCustomer">-</span></div><div><b>Vehicle:</b> <span id="invVehicle">-</span></div><p class="notice" id="invMeta" style="margin-top:6px"></p><div style="margin-top:16px; padding:12px; border:1px solid #ddd; border-radius:4px; background:#f9f9f9;"><b>From:</b><br><span id="invShopName"></span><br><span id="invShopPhone"></span><br><span id="invShopEmail"></span></div></div></div><table class="table" id="invItems"><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody></tbody></table><div style="text-align:right;margin-top:10px"><div><b>Subtotal:</b> <span id="iSub">0.00</span></div><div><b>Tax:</b> <span id="iTax">0.00</span></div><div><b>Discount:</b> <span id="iDisc">0.00</span></div><div style="font-size:18px;margin-top:6px"><b>Grand Total:</b> <span id="iGrand">0.00</span></div></div></div>
+<div><b>Customer:</b> <span id="invCustomer">-</span></div><div><b>Vehicle:</b> <span id="invVehicle">-</span></div><p class="notice" id="invMeta" style="margin-top:6px"></p>
+<div style="margin-top:16px; padding:12px; border:1px solid #ddd; border-radius:4px; background:#f9f9f9;">
+  <b>From:</b><br><span id="invShopName"></span><br><span id="invShopPhone"></span><br><span id="invShopEmail"></span>
+</div>
+<div style="margin-top:16px; padding:12px; border:1px solid #ddd; border-radius:4px; background:#f9f9f9;">
+  <table class="table" id="invItems"><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody></tbody></table>
+  <div style="text-align:right;margin-top:10px">
+    <div><b>Subtotal:</b> <span id="iSub">0.00</span></div>
+    <div><b>Tax:</b> <span id="iTax">0.00</span></div>
+    <div><b>Discount:</b> <span id="iDisc">0.00</span></div>
+    <div style="font-size:18px;margin-top:6px"><b>Grand Total:</b> <span id="iGrand">0.00</span></div>
+  </div>
+</div>
 <img src="assets/logo.svg" alt="Xpose Management" id="printFooterLogo" class="no-screen">
 </main><footer class="container">© <span id="footerShopName"></span></footer><script src="vendor/supabase.umd.js"></script><script type="module" src="app.js"></script><script src="multi-tenant.js"></script>
 <!-- Fallback global print handler (will be overridden by module) -->
@@ -257,7 +269,10 @@ import { getShopData } from './helpers/storage.js';
       const grandEl = document.getElementById('iGrand');
 
       invNoEl.textContent = invObj.number || invObj.id || '';
-      invCustomerEl.textContent = invObj.customer || (invObj.customer_first ? (invObj.customer_first + ' ' + (invObj.customer_last || '')) : '');
+      // FIX: Always prefer customer_first/customer_last over customer (which is a UUID)
+      invCustomerEl.textContent = (invObj.customer_first || invObj.customer_last) ? 
+        ((invObj.customer_first || '') + ' ' + (invObj.customer_last || '')).trim() : 
+        (invObj.customer || '');
       // Vehicle: always prefer invoice.vehicle, fallback to job/appointment if missing
       let vehicle = invObj.vehicle || '';
       if (!vehicle && invObj.job_id && allData && Array.isArray(allData.jobs)) {
@@ -358,18 +373,219 @@ import { getShopData } from './helpers/storage.js';
       metaEl.textContent = parts.join(' · ');
 
       // Items
+
       itemsTbody.innerHTML = '';
       const items = invObj.items || [];
       let subtotal = 0;
-      items.forEach(itm => {
-        const qty = Number(itm.qty) || 0;
-        const price = Number(itm.price) || 0;
-        const total = qty * price;
-        subtotal += total;
+
+      // Group items by type
+      const partItems = [];
+      const laborItems = [];
+      const serviceItems = [];
+      const partLaborGroups = [];
+      let usedIndexes = new Set();
+
+      // 1. Load service names from settings for strict matching
+      let serviceNames = [];
+      try {
+        const d = JSON.parse(localStorage.getItem('xm_data') || '{}');
+        serviceNames = ((d.settings && d.settings.services) || []).map(s => (s.name || '').toLowerCase().trim());
+      } catch (e) { serviceNames = []; }
+
+      // 2. First pass: Detect Part+Labor pairs
+      // Look for items with linkedItemId to identify explicit pairs
+      for (let i = 0; i < items.length; i++) {
+        if (usedIndexes.has(i)) continue;
+        const itm = items[i];
+        
+        // Check if this item has a linkedItemId (indicates it's part of a pair)
+        if (itm.linkedItemId) {
+          // Find the linked item
+          const linkedIdx = items.findIndex((item, idx) => 
+            item.id === itm.linkedItemId && !usedIndexes.has(idx)
+          );
+          
+          if (linkedIdx !== -1) {
+            const linkedItem = items[linkedIdx];
+            // Determine which is part and which is labor
+            const isPart = (itm.name || '').toLowerCase().startsWith('part:') || 
+                          itm.part_number || 
+                          typeof itm.cost_price !== 'undefined';
+            
+            if (isPart) {
+              partLaborGroups.push([itm, linkedItem]);
+            } else {
+              partLaborGroups.push([linkedItem, itm]);
+            }
+            usedIndexes.add(i);
+            usedIndexes.add(linkedIdx);
+            continue;
+          }
+        }
+        
+        // Fallback: Check for sequential Part+Labor by naming convention
+        const name = (itm.name || '').toLowerCase().trim();
+        if (name.startsWith('part:')) {
+          // Look ahead for matching labor item
+          for (let j = i + 1; j < items.length && j <= i + 2; j++) {
+            if (usedIndexes.has(j)) continue;
+            const nextItem = items[j];
+            const nextName = (nextItem.name || '').toLowerCase().trim();
+            
+            // Check if next item is labor for this part
+            if (nextName.startsWith('labor -') || nextName.startsWith('labor:') || 
+                nextName.includes('labor for') || nextName.includes('installation')) {
+              partLaborGroups.push([itm, nextItem]);
+              usedIndexes.add(i);
+              usedIndexes.add(j);
+              break;
+            }
+          }
+        }
+      }
+
+      // 3. Second pass: Classify remaining items
+      for (let i = 0; i < items.length; i++) {
+        if (usedIndexes.has(i)) continue;
+        const itm = items[i];
+        const name = (itm.name || '').toLowerCase().trim();
+
+        // Priority 1: Service (strict - must match settings)
+        if (serviceNames.length && serviceNames.includes(name)) {
+          serviceItems.push(itm);
+          continue;
+        }
+
+        // Priority 2: Labor (by naming patterns and known labor types)
+        const isLabor = 
+          name.startsWith('labor') || 
+          name.startsWith('labor:') || 
+          name.startsWith('labor -') ||
+          name.includes(' labor') ||
+          name === 'standard' || 
+          name === 'diagnostic' || 
+          name === 'inspection' || 
+          name === 'friends & family' ||
+          name.includes('hourly rate') ||
+          name.includes('/hr') ||
+          name.includes('hours');
+
+        if (isLabor) {
+          laborItems.push(itm);
+          continue;
+        }
+
+        // Priority 3: Part (by naming, properties, or default)
+        const isPart = 
+          name.startsWith('part:') || 
+          name.startsWith('part -') ||
+          name.includes('part #') ||
+          itm.part_number || 
+          typeof itm.cost_price !== 'undefined' || 
+          typeof itm.cost !== 'undefined';
+
+        if (isPart) {
+          partItems.push(itm);
+          continue;
+        }
+
+        // Default: Categorize by price/qty heuristics
+        // If it looks like a labor charge (hours-based), classify as labor
+        if ((itm.qty > 0 && itm.qty <= 24) && itm.price >= 50 && itm.price <= 500) {
+          laborItems.push(itm);
+        } else {
+          // Default to part
+          partItems.push(itm);
+        }
+      }
+
+      // Render Part+Labor groups
+      if (partLaborGroups.length) {
+        for (const [part, labor] of partLaborGroups) {
+          // Use groupName for the group title if present, else default to part name + ' P+R'
+          let groupTitle = part.groupName && part.groupName.trim() ? part.groupName : (part.name.replace(/^part:/i, '').trim() + ' P+R');
+          // Group header
+          const trHeader = document.createElement('tr');
+          trHeader.innerHTML = `<td colspan="4" style="font-weight:bold;background:#f3f4f6;padding:8px;">${groupTitle}</td>`;
+          itemsTbody.appendChild(trHeader);
+          // Part row (always show part name)
+          let partQty = Number(part.qty) || 0;
+          let partPrice = Number(part.price) || 0;
+          let partTotal = partQty * partPrice;
+          subtotal += partTotal;
+          let displayPartName = part.name.replace(/^part:/i, '').trim() || 'Part';
+          const trPart = document.createElement('tr');
+          trPart.innerHTML = `<td style="padding-left:20px;">${displayPartName}</td><td style="text-align:center">${partQty}</td><td style="text-align:right">${partPrice.toFixed(2)}</td><td style="text-align:right">${partTotal.toFixed(2)}</td>`;
+          itemsTbody.appendChild(trPart);
+          
+          // Labor row
+          let laborQty = Number(labor.qty) || 0;
+          let laborPrice = Number(labor.price) || 0;
+          let laborTotal = laborQty * laborPrice;
+          subtotal += laborTotal;
+          // Extract actual labor description
+          let displayLaborName = labor.name.replace(/^labor:/i, '').trim() || `Labor (${laborQty} hr${laborQty !== 1 ? 's' : ''})`;
+          const trLabor = document.createElement('tr');
+          trLabor.innerHTML = `<td style="padding-left:20px;">${displayLaborName}</td><td style="text-align:center">${laborQty}</td><td style="text-align:right">${laborPrice.toFixed(2)}</td><td style="text-align:right">${laborTotal.toFixed(2)}</td>`;
+          itemsTbody.appendChild(trLabor);
+          
+          // Subtotal row for this group
+          const groupSubtotal = partTotal + laborTotal;
+          const trSubtotal = document.createElement('tr');
+          trSubtotal.innerHTML = `<td colspan="3" style="text-align:right;padding-right:10px;font-weight:500;font-style:italic;">Subtotal</td><td style="text-align:right;font-weight:500;">${groupSubtotal.toFixed(2)}</td>`;
+          itemsTbody.appendChild(trSubtotal);
+          
+          // Spacer row
+          const trSpacer = document.createElement('tr');
+          trSpacer.innerHTML = `<td colspan="4" style="height:8px;"></td>`;
+          itemsTbody.appendChild(trSpacer);
+        }
+      }
+      // Render Parts
+      if (partItems.length) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${itm.name || ''}</td><td style="text-align:center">${qty}</td><td style="text-align:right">$${price.toFixed(2)}</td><td style="text-align:right">$${total.toFixed(2)}</td>`;
+        tr.innerHTML = `<td colspan="4" style="font-weight:bold;background:#f3f4f6;">Parts</td>`;
         itemsTbody.appendChild(tr);
-      });
+        for (const itm of partItems) {
+          const qty = Number(itm.qty) || 0;
+          const price = Number(itm.price) || 0;
+          const total = qty * price;
+          subtotal += total;
+          const trPart = document.createElement('tr');
+          trPart.innerHTML = `<td>${itm.name}</td><td style="text-align:center">${qty}</td><td style="text-align:right">$${price.toFixed(2)}</td><td style="text-align:right">$${total.toFixed(2)}</td>`;
+          itemsTbody.appendChild(trPart);
+        }
+      }
+      // Render Labor
+      if (laborItems.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="4" style="font-weight:bold;background:#f3f4f6;">Labor</td>`;
+        itemsTbody.appendChild(tr);
+        for (const itm of laborItems) {
+          const qty = Number(itm.qty) || 0;
+          const price = Number(itm.price) || 0;
+          const total = qty * price;
+          subtotal += total;
+          const trLabor = document.createElement('tr');
+          trLabor.innerHTML = `<td>${itm.name}</td><td style="text-align:center">${qty}</td><td style="text-align:right">$${price.toFixed(2)}</td><td style="text-align:right">$${total.toFixed(2)}</td>`;
+          itemsTbody.appendChild(trLabor);
+        }
+      }
+      // Render Services
+      if (serviceItems.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="4" style="font-weight:bold;background:#f3f4f6;">Services</td>`;
+        itemsTbody.appendChild(tr);
+        for (const itm of serviceItems) {
+          const qty = Number(itm.qty) || 0;
+          const price = Number(itm.price) || 0;
+          const total = qty * price;
+          subtotal += total;
+          const trSvc = document.createElement('tr');
+          trSvc.innerHTML = `<td>${itm.name}</td><td style="text-align:center">${qty}</td><td style="text-align:right">$${price.toFixed(2)}</td><td style="text-align:right">$${total.toFixed(2)}</td>`;
+          itemsTbody.appendChild(trSvc);
+        }
+      }
 
       const taxRate = Number(invObj.tax_rate) || 0;
       const discountRate = Number(invObj.discount) || 0;
