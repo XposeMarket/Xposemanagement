@@ -126,7 +126,18 @@ async function renderInventory() {
   // apply search filter if present
   const searchVal = (inventorySearchValue || '').trim().toLowerCase();
   const itemsToRender = searchVal ? inventory.filter(it => (it.name||"").toLowerCase().includes(searchVal)) : inventory;
-  if (!itemsToRender.length) {
+
+  // Flatten folder items for combined counts & activity. This lets panels show folder items
+  // even when there are no top-level inventory rows.
+  const folderItemsFlat = [];
+  (inventoryFolders || []).forEach(folder => {
+    (folder.items || []).forEach(fi => {
+      folderItemsFlat.push(Object.assign({}, fi, { folderName: folder.name }));
+    });
+  });
+
+  // If there are no items at all (top-level + folder items), show empty state and return
+  if (!itemsToRender.length && !folderItemsFlat.length) {
     if (inventoryEmpty) inventoryEmpty.style.display = '';
     if (totalItems) totalItems.textContent = '0';
     if (lowStock) lowStock.textContent = '0';
@@ -240,27 +251,7 @@ async function renderInventory() {
     inventoryGrid.appendChild(card);
   });
 
-  // Include folder items in totals and low-stock counts
-  const folderItemsFlat = [];
-  (inventoryFolders || []).forEach(folder => {
-    (folder.items || []).forEach(fi => {
-      folderItemsFlat.push(Object.assign({}, fi, { folderName: folder.name }));
-    });
-  });
-
-  // Count low-stock for folder items as well
-  (folderItemsFlat || []).forEach(fi => {
-    if ((parseInt(fi.qty, 10) || 0) <= LOW_THRESHOLD) low++;
-  });
-
-  if (totalItems) totalItems.textContent = String(inventory.length + (folderItemsFlat.length || 0));
-
-  // show lowest-stock item name instead of number
-  const lowEl = document.getElementById('lowStockItem');
-  if (lowEl) {
-    // Show number of low-stock items (regular inventory items + folder items)
-    lowEl.textContent = String(low || 0);
-  }
+  
 
   // Render right-hand activity lists in left panel
     try {
