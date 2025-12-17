@@ -516,11 +516,19 @@ export async function upsertFolderToSupabase(folder, shopId) {
 export async function deleteInventoryItemRemote(itemId) {
   try {
     const supabase = getSupabaseClient();
-    if (!supabase || !itemId) return null;
-    const { data, error } = await supabase.from('inventory_items').delete().eq('id', itemId).select().single();
-    if (error) throw error;
-    return data;
-  } catch (e) { console.warn('deleteInventoryItemRemote', e); return null; }
+    if (!supabase || !itemId) return false;
+    const { data, error } = await supabase.from('inventory_items').delete().eq('id', itemId).select();
+    // If no rows were returned, PostgREST may return an error code PGRST116 when using .single();
+    // here treat "no rows" as a non-fatal condition (item already absent).
+    if (error) {
+      // treat PGRST116 (no rows) as success (nothing to delete)
+      if (error.code === 'PGRST116') return true;
+      console.warn('deleteInventoryItemRemote error', error);
+      return false;
+    }
+    // If data is an array, deletion succeeded; return true.
+    return Array.isArray(data) ? true : !!data;
+  } catch (e) { console.warn('deleteInventoryItemRemote', e); return false; }
 }
 
 /**
@@ -529,9 +537,13 @@ export async function deleteInventoryItemRemote(itemId) {
 export async function deleteFolderItemRemote(folderItemId) {
   try {
     const supabase = getSupabaseClient();
-    if (!supabase || !folderItemId) return null;
-    const { data, error } = await supabase.from('inventory_folder_items').delete().eq('id', folderItemId).select().single();
-    if (error) throw error;
-    return data;
-  } catch (e) { console.warn('deleteFolderItemRemote', e); return null; }
+    if (!supabase || !folderItemId) return false;
+    const { data, error } = await supabase.from('inventory_folder_items').delete().eq('id', folderItemId).select();
+    if (error) {
+      if (error.code === 'PGRST116') return true;
+      console.warn('deleteFolderItemRemote error', error);
+      return false;
+    }
+    return Array.isArray(data) ? true : !!data;
+  } catch (e) { console.warn('deleteFolderItemRemote', e); return false; }
 }

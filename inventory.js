@@ -154,11 +154,11 @@ function renderInventory() {
           const { deleteInventoryItemRemote } = await import('./helpers/inventory-api.js');
           const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(item.id));
           if (isUUID) {
-            const res = await deleteInventoryItemRemote(item.id);
-            if (!res) {
-              try { showNotification && showNotification('Failed to delete item from remote', 'error'); } catch (e) {}
-              return;
-            }
+              const res = await deleteInventoryItemRemote(item.id);
+              if (res !== true) {
+                // treat failure as non-fatal but inform user
+                try { showNotification && showNotification('Warning: remote delete failed — item will be removed locally', 'warning'); } catch (e) {}
+              }
           }
         }
       } catch (e) {
@@ -692,9 +692,8 @@ function openFolderModal(folderIdx) {
               const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(it.id));
               if (isUUID) {
                 const res = await deleteFolderItemRemote(it.id);
-                if (!res) {
-                  try { showNotification && showNotification('Failed to delete folder type from remote', 'error'); } catch (e) {}
-                  return;
+                if (res !== true) {
+                  try { showNotification && showNotification('Warning: remote delete failed for folder type — it will be removed locally', 'warning'); } catch (e) {}
                 }
               }
             }
