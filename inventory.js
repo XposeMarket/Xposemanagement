@@ -78,12 +78,12 @@ function renderInventory() {
   const searchVal = (inventorySearchValue || '').trim().toLowerCase();
   const itemsToRender = searchVal ? inventory.filter(it => (it.name||"").toLowerCase().includes(searchVal)) : inventory;
   if (!itemsToRender.length) {
-    inventoryEmpty.style.display = '';
-    totalItems.textContent = '0';
-    lowStock.textContent = '0';
+    if (inventoryEmpty) inventoryEmpty.style.display = '';
+    if (totalItems) totalItems.textContent = '0';
+    if (lowStock) lowStock.textContent = '0';
     return;
   }
-  inventoryEmpty.style.display = 'none';
+  if (inventoryEmpty) inventoryEmpty.style.display = 'none';
   let low = 0;
   // Centralized low-stock threshold
   const LOW_THRESHOLD = typeof INVENTORY_LOW_THRESHOLD === 'number' ? INVENTORY_LOW_THRESHOLD : 3;
