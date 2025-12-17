@@ -781,7 +781,7 @@ footer::after{ bottom: -6px; }
   align-items: flex-start;
   padding-top: 88px;
   justify-content: center;
-  z-index: 9999;
+  z-index: 10020;
   animation: fadeIn 0.2s ease;
 }
 
