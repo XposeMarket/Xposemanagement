@@ -118,18 +118,30 @@ async function enforcePageAccess(userRow = null) {
   // Enforce page access. If a userRow (from Supabase) is provided, use it; otherwise fall back to localStorage.
   const supabase = getSupabaseClient();
   let u = userRow || currentUser();
+  
+  console.log('🔐 enforcePageAccess called');
+  console.log('  userRow:', userRow);
+  console.log('  currentUser():', currentUser());
 
   // If we don't have a local user and Supabase is available, try fetching the users row
   if (!u && supabase) {
     try {
+      console.log('  Fetching Supabase user...');
       const { data: { user: authUser } } = await supabase.auth.getUser();
+      console.log('  Supabase authUser:', authUser?.email);
+      
       if (authUser) {
         // Prefer shop_staff mapping if present
+        console.log('  Checking shop_staff table...');
         const staffLike = await getStaffAsAppUser(supabase, authUser);
+        console.log('  shop_staff result:', staffLike);
+        
         if (staffLike) {
           u = staffLike;
         } else {
+          console.log('  Checking users table...');
           const { data: byId } = await supabase.from('users').select('*').eq('id', authUser.id).limit(1);
+          console.log('  users table result:', byId);
           u = (byId && byId[0]) ? byId[0] : null;
         }
       }
@@ -138,16 +150,34 @@ async function enforcePageAccess(userRow = null) {
     }
   }
 
-  if (!u) return;
+  console.log('  Final user object:', u);
+  
+  if (!u) {
+    console.log('  ⚠️ No user found, skipping page access enforcement');
+    return;
+  }
+  
   const allowed = ROLE_PAGES[u.role] || [];
   const pn = pageName();
   const open = ["index", "signup", "create-shop", "admin"];
+  
+  console.log('  User role:', u.role);
+  console.log('  Allowed pages:', allowed);
+  console.log('  Current page:', pn);
+  console.log('  Is page allowed?', allowed.includes(pn));
+  console.log('  Is page open?', open.includes(pn));
+  
   if (!allowed.includes(pn) && !open.includes(pn)) {
+    console.log('  ❌ Access denied! Redirecting...');
     if (allowed.includes("dashboard")) {
+      console.log('  → Redirecting to dashboard.html');
       window.location.href = "dashboard.html";
     } else {
+      console.log('  → Redirecting to index.html');
       window.location.href = "index.html";
     }
+  } else {
+    console.log('  ✅ Access granted');
   }
 }
 

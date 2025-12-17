@@ -1,4 +1,3 @@
-
 // Notification functions are defined at the end of this file to avoid
 // referencing `PartPricingModal` before the class is initialized.
 /**
@@ -19,8 +18,8 @@ class PartPricingModal {
    */
   createModal() {
     const modalHTML = `
-      <div id="partPricingOverlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.35); z-index:100;">
-        <div id="partPricingModal" class="card" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: 500px; width: 95vw; z-index: 101; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+      <div id="partPricingOverlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.35); z-index:10050;">
+        <div id="partPricingModal" class="card" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: 500px; width: 95vw; z-index:10051; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
           <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <h3 style="margin: 0;">Add Part to Job</h3>
             <button class="modal-close" id="closePricingModal" style="background: none; border: none; font-size: 24px; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
@@ -112,12 +111,19 @@ class PartPricingModal {
     const costEl = document.getElementById('pricingCost');
     const sellEl = document.getElementById('pricingSell');
     if (qtyEl) qtyEl.value = '1';
-    if (costEl) costEl.value = '';
-    if (sellEl) sellEl.value = '';
+    if (costEl) {
+      costEl.value = (typeof part.cost_price !== 'undefined' && part.cost_price !== null) ? part.cost_price : '';
+    }
+    if (sellEl) {
+      sellEl.value = (typeof part.sell_price !== 'undefined' && part.sell_price !== null) ? part.sell_price : '';
+    }
     const markupEl = document.getElementById('pricingMarkup');
     const profitEl = document.getElementById('pricingProfit');
     if (markupEl) markupEl.textContent = '0%';
     if (profitEl) profitEl.textContent = '$0.00';
+    // Recalculate markup based on provided part pricing
+    try { this.calculateMarkup(); } catch (e) {}
+
     // Show overlay and modal
     if (this.overlay) this.overlay.style.display = 'block';
     if (this.modal) this.modal.style.display = 'block';
@@ -247,13 +253,17 @@ class PartPricingModal {
     try {
       // Use Supabase client directly to insert part into job_parts
       const { supabase } = await import('../helpers/supabase.js');
-      const partId = this.currentPart.id;
+      const partId = this.currentPart && this.currentPart.id;
+      
+      // Check if partId is a UUID (Supabase inventory item)
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(partId));
+      
       const { data, error } = await supabase
         .from('job_parts')
         .insert({
           shop_id: shopId,
           job_id: this.currentJobId,
-          part_id: partId,
+          part_id: isUUID ? null : partId, // Only use if numeric catalog part
           part_name: this.currentPart.name || this.currentPart.part_name || '',
           part_number: this.currentPart.part_number || '',
           quantity: quantity || 1,
@@ -268,6 +278,73 @@ class PartPricingModal {
       if (error) {
         console.error('[PartPricingModal] Supabase error adding part:', error);
         throw new Error(`Failed to add part: ${error.message}`);
+      }
+
+      console.log('✅ Part added to job_parts:', data);
+
+      // Link to inventory and auto-deduct via Supabase
+      try {
+        const partIdRaw = this.currentPart && this.currentPart.id;
+        const qtyToRemove = parseInt(quantity, 10) || 0;
+        console.log('[PartPricingModal] Linking to inventory', { partIdRaw, qtyToRemove, jobPartId: data.id });
+        
+        if (partIdRaw && qtyToRemove > 0 && isUUID && data.id) {
+          // This is a Supabase inventory item - link it to the job_part
+          // The database trigger will automatically deduct inventory
+          try {
+            // Determine if it's a regular inventory item or folder item
+            // Try inventory_items first
+            const { data: invItem } = await supabase
+              .from('inventory_items')
+              .select('id')
+              .eq('id', partIdRaw)
+              .single();
+            
+            if (invItem) {
+              // It's a regular inventory item - update job_part with linkage
+              const { error: updateError } = await supabase
+                .from('job_parts')
+                .update({ 
+                  inventory_item_id: partIdRaw,
+                  inventory_deducted: false // Trigger will set this to true and deduct
+                })
+                .eq('id', data.id);
+              
+              if (updateError) throw updateError;
+              console.log('✅ Linked job_part to inventory_item - auto-deduction will occur');
+            } else {
+              // Try folder items
+              const { data: folderItem } = await supabase
+                .from('inventory_folder_items')
+                .select('id')
+                .eq('id', partIdRaw)
+                .single();
+              
+              if (folderItem) {
+                const { error: updateError } = await supabase
+                  .from('job_parts')
+                  .update({ 
+                    inventory_folder_item_id: partIdRaw,
+                    inventory_deducted: false // Trigger will set this to true and deduct
+                  })
+                  .eq('id', data.id);
+                
+                if (updateError) throw updateError;
+                console.log('✅ Linked job_part to folder inventory - auto-deduction will occur');
+              }
+            }
+            
+            // Refresh inventory UI if available
+            try { 
+              if (typeof window.renderInventory === 'function') window.renderInventory(); 
+            } catch(e){}
+            
+          } catch (e) {
+            console.warn('[PartPricingModal] Failed to link inventory:', e);
+          }
+        }
+      } catch (e) {
+        console.warn('[PartPricingModal] Inventory linking error:', e);
       }
 
       // Close modal
@@ -286,10 +363,10 @@ class PartPricingModal {
         const price = data.sell_price || sellPrice || 0;
         const cost = (typeof data.cost_price !== 'undefined') ? data.cost_price : costPrice;
         if (typeof window.addPartToInvoice === 'function') {
-          await window.addPartToInvoice(this.currentJobId, partName, qty, price, cost);
+          await window.addPartToInvoice(this.currentJobId, partName, qty, price, cost, groupName);
           console.log('[PartPricingModal] added part to invoice via addPartToInvoice', { jobId: this.currentJobId, partName, qty, price, cost });
         } else if (typeof addPartToInvoice === 'function') {
-          await addPartToInvoice(this.currentJobId, partName, qty, price, cost);
+          await addPartToInvoice(this.currentJobId, partName, qty, price, cost, groupName);
         } else {
           console.warn('[PartPricingModal] addPartToInvoice not available on window');
         }
@@ -314,18 +391,13 @@ class PartPricingModal {
   }
 
   /**
-   * Static fallback notification method
-   */
-  // Removed fallback notification logic to prevent duplicate banners
-
-  /**
    * Show confirmation modal after part pricing
    */
   showConfirmationModal() {
     if (!document.getElementById('partLaborConfirmModal')) {
       const confirmHTML = `
-        <div id="partLaborConfirmModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.35); z-index:110;">
-          <div class="card" style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); max-width:400px; width:95vw; z-index:111; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <div id="partLaborConfirmModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.35); z-index:10060;">
+          <div class="card" style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); max-width:400px; width:95vw; z-index:10061; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
             <div style="padding:1.5rem; text-align:center;">
               <h3>Add Part Confirmation</h3>
               <p>Would you like to add labor for this part?</p>
@@ -343,28 +415,25 @@ class PartPricingModal {
     const modal = document.getElementById('partLaborConfirmModal');
     modal.style.display = 'block';
     document.getElementById('confirmPartCancel').onclick = () => { modal.style.display = 'none'; };
-        document.getElementById('confirmPartAddLabor').onclick = async () => {
-          modal.style.display = 'none';
-          // Save the part first
-          try {
-            await this.savePart();
-          } catch (err) {
-            console.error('[PartPricingModal] savePart failed before opening labor modal', err);
-            return;
-          }
-          // Route to the same workflow as manual parts: open the jobs page labor modal
-          // Use the PartPricingModal's own labor workflow so this component is
-          // self-contained and does not depend on `pages/jobs.js` being loaded.
-          try {
-            // Ensure currentJobId is set (should be set by `show()` before)
-            this.showLaborModal();
-          } catch (err) {
-            console.error('[PartPricingModal] showLaborModal call failed', err);
-          }
-          if (this.overlay) this.overlay.style.display = 'none';
-          if (this.modal) this.modal.style.display = 'none';
-          return;
-        };
+    document.getElementById('confirmPartAddLabor').onclick = async () => {
+      modal.style.display = 'none';
+      // Save the part first
+      try {
+        await this.savePart();
+      } catch (err) {
+        console.error('[PartPricingModal] savePart failed before opening labor modal', err);
+        return;
+      }
+      // Route to the same workflow as manual parts: open the jobs page labor modal
+      try {
+        this.showLaborModal();
+      } catch (err) {
+        console.error('[PartPricingModal] showLaborModal call failed', err);
+      }
+      if (this.overlay) this.overlay.style.display = 'none';
+      if (this.modal) this.modal.style.display = 'none';
+      return;
+    };
     document.getElementById('confirmPartAddInvoice').onclick = () => {
       modal.style.display = 'none';
       this.savePart();
@@ -377,34 +446,33 @@ class PartPricingModal {
   async showLaborModal() {
     console.log('[LaborModal] showLaborModal called');
     let modal = document.getElementById('laborModal');
-      // Deprecated: always use jobs page labor modal
-      // No notification needed; modal is handled by jobs page.
     if (modal) {
       modal.classList.remove('hidden');
       modal.style.zIndex = '9999';
     }
-    // Clear description and default hours to 1 to match manual labor modal behavior
+    // Clear description and default hours to 1
     const labDescEl = document.getElementById('labDesc');
     const labHoursEl = document.getElementById('labHours');
     const labNoteEl = document.getElementById('labNote');
     if (labDescEl) labDescEl.value = '';
     if (labHoursEl) labHoursEl.value = '1';
     if (labNoteEl) labNoteEl.textContent = '';
-    // Populate labor rates into the select and chips to match manual modal
+    
+    // Populate labor rates
     let chipsDiv = document.getElementById('laborRateChips');
     const sel = document.getElementById('labRateSel');
     const customInp = document.getElementById('labRateCustom');
     if (chipsDiv) chipsDiv.innerHTML = '';
+    
     try {
       let settings = JSON.parse(localStorage.getItem('xm_data') || '{}').settings || {};
       let laborRates = settings.labor_rates || [];
-      console.log('[PartPricingModal] showLaborModal laborRates (from localStorage):', laborRates);
-      // If no local laborRates, try fetching from Supabase data table
+      
+      // Try fetching from Supabase if not in localStorage
       if ((!laborRates || laborRates.length === 0)) {
         try {
           const { getSupabaseClient } = await import('../helpers/supabase.js');
           const supabase = getSupabaseClient();
-          // try to derive shopId from session cache
           let shopId = null;
           try { shopId = JSON.parse(localStorage.getItem('xm_session')||'{}').shopId || null; } catch(e){}
           if (supabase && shopId) {
@@ -416,7 +484,6 @@ class PartPricingModal {
             if (!error && dataRecord && dataRecord.settings) {
               settings = dataRecord.settings || {};
               laborRates = settings.labor_rates || [];
-              console.log('[PartPricingModal] fetched laborRates from Supabase:', laborRates);
               try {
                 const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
                 localData.settings = Object.assign(localData.settings || {}, settings);
@@ -428,9 +495,9 @@ class PartPricingModal {
           console.warn('[PartPricingModal] Supabase fallback failed', e);
         }
       }
+      
       if (sel) {
         sel.innerHTML = '';
-        // Top 'Custom' option
         const optCustom = document.createElement('option');
         optCustom.value = '__custom__';
         optCustom.text = 'Custom';
@@ -442,11 +509,11 @@ class PartPricingModal {
           opt.text = `${r.name} - $${r.rate}/hr`;
           sel.appendChild(opt);
         });
-        // Show numeric rate input and default to Custom
         if (customInp) customInp.style.display = '';
         sel.value = '__custom__';
         if (customInp) { customInp.value = ''; try { customInp.focus(); } catch(e){} }
       }
+      
       // Add chips for quick selection
       laborRates.forEach(rate => {
         if (!chipsDiv) return;
@@ -462,59 +529,37 @@ class PartPricingModal {
         };
         chipsDiv.appendChild(chip);
       });
-      // Visible debug badge: show count and JSON of laborRates so local testing doesn't require console
-      try {
-        let debugEl = document.getElementById('labRatesDebug');
-        if (!debugEl) {
-          debugEl = document.createElement('div');
-          debugEl.id = 'labRatesDebug';
-          debugEl.style.fontSize = '0.85rem';
-          debugEl.style.color = '#374151';
-          debugEl.style.marginTop = '8px';
-          debugEl.style.padding = '6px 8px';
-          debugEl.style.background = '#f3f4f6';
-          debugEl.style.borderRadius = '6px';
-          if (chipsDiv && chipsDiv.parentNode) chipsDiv.parentNode.insertBefore(debugEl, chipsDiv);
-        }
-        debugEl.textContent = `Rates: ${laborRates.length} — ${JSON.stringify(laborRates)}`;
-      } catch (e) {
-        console.warn('[LaborModal] failed to render labRatesDebug', e);
-      }
     } catch (e) {
       console.warn('[LaborModal] failed to populate labor rates', e);
       if (sel) sel.innerHTML = '<option value="__custom__" selected>Custom</option>';
     }
-    // When a preset is chosen, populate the numeric rate input with the preset value
+    
+    // When preset is chosen, populate custom input
     if (sel) {
       sel.addEventListener('change', () => {
         const rateVal = sel.selectedOptions[0]?.dataset?.rate;
         if (rateVal && customInp) customInp.value = rateVal;
       });
     }
-    // Ensure the modal knows which job it's for
+    
+    // Ensure modal knows which job
     try {
       modal.dataset.jobId = this.currentJobId;
     } catch (e) {}
 
-    // Bind to possible close/cancel button IDs used in different pages
+    // Bind buttons
     const cancelBtn = document.getElementById('cancelLaborBtn') || document.getElementById('labClose');
     if (cancelBtn) {
       cancelBtn.onclick = () => { if (modal) modal.classList.add('hidden'); };
-    } else {
-      console.log('[LaborModal] cancel button not found (tried cancelLaborBtn, labClose)');
     }
 
-    // Bind to possible add/confirm button IDs used in different pages
     const addBtn = document.getElementById('addLaborInvoiceBtn') || document.getElementById('labConfirm');
     if (addBtn) {
       addBtn.onclick = () => {
         if (modal) modal.classList.add('hidden');
         this.saveLabor();
       };
-    } else {
-      console.log('[LaborModal] add labor button not found (tried addLaborInvoiceBtn, labConfirm)');
     }
-    console.log('[LaborModal] showLaborModal finished');
   }
 
   /**
@@ -523,18 +568,16 @@ class PartPricingModal {
   async saveLabor() {
     const desc = (document.getElementById('labDesc') || {}).value?.trim() || '';
     const hours = parseFloat((document.getElementById('labHours') || {}).value) || 0;
-    // get rate from preset select (if chosen) or custom numeric input
     let rate = 0;
     const sel = document.getElementById('labRateSel');
     const custom = document.getElementById('labRateCustom');
     if (sel && sel.value) {
       rate = parseFloat(sel.selectedOptions[0]?.dataset?.rate) || parseFloat((custom || {}).value) || 0;
     } else {
-      // backwards compat
       rate = parseFloat((document.getElementById('laborRate') || {}).value) || parseFloat((custom || {}).value) || 0;
     }
-    const notes = document.getElementById('laborNotes').value.trim();
-    // Require description only when using Custom rate (or when select is missing)
+    const notes = (document.getElementById('laborNotes') || {}).value?.trim() || '';
+    
     const usingPreset = sel && sel.value && sel.value !== '__custom__';
     if (hours <= 0 || rate <= 0) {
       showNotification('Please enter valid labor hours and rate', 'error');
@@ -544,7 +587,7 @@ class PartPricingModal {
       showNotification('Please enter a labor description for custom rates', 'error');
       return;
     }
-    // If using a preset and description is empty, use preset label as description
+    
     let finalDesc = desc;
     if (usingPreset && !finalDesc) finalDesc = sel.selectedOptions[0]?.text || sel.value || '';
 
@@ -563,14 +606,11 @@ class PartPricingModal {
         })
       });
       if (!response.ok) throw new Error('Failed to add labor');
-      // Add part as well
-      await this.savePart();
-      // Also add labor to invoice via client-side function if available
+      
+      // Add labor to invoice
       try {
-        // prefer the final description used for backend (falls back to input value)
         const descVal = finalDesc || document.getElementById('labDesc')?.value.trim() || '';
         const hoursVal = parseFloat(document.getElementById('labHours')?.value) || hours || 0;
-        // try select/custom first
         const selEl = document.getElementById('labRateSel');
         const customEl = document.getElementById('labRateCustom');
         let rateVal = rate || 0;
@@ -582,15 +622,13 @@ class PartPricingModal {
         }
         if (typeof window.addLaborToInvoice === 'function') {
           await window.addLaborToInvoice(this.currentJobId, descVal, hoursVal, rateVal);
-          console.log('[PartPricingModal] added labor to invoice via addLaborToInvoice', { jobId: this.currentJobId, descVal, hoursVal, rateVal });
         } else if (typeof addLaborToInvoice === 'function') {
           await addLaborToInvoice(this.currentJobId, descVal, hoursVal, rateVal);
-        } else {
-          console.warn('[PartPricingModal] addLaborToInvoice not available on window');
         }
       } catch (err) {
         console.error('[PartPricingModal] failed to add labor to invoice locally', err);
       }
+      
       showNotification('Part and labor successfully added!', 'success');
     } catch (error) {
       showNotification('Failed to add labor', 'error');
@@ -602,7 +640,6 @@ class PartPricingModal {
    */
   showConfirmation(message) {
     return new Promise((resolve) => {
-      // Remove any existing banner
       let banner = document.getElementById('partConfirmBanner');
       if (banner) banner.remove();
       banner = document.createElement('div');
@@ -643,25 +680,17 @@ class PartPricingModal {
   }
 }
 
-// Export as global instance (use a namespaced global to avoid id/name collisions with DOM)
+// Export as global instance
 window.xm_partPricingModal = new PartPricingModal();
 try {
-  // Try to also set the legacy name when possible
   window.partPricingModal = window.xm_partPricingModal;
 } catch (e) {
-  // Some environments make certain named globals non-writable; that's ok.
   console.warn('[PartPricingModal] could not set legacy global window.partPricingModal', e);
 }
 
-// No proxy installed here — parts modal will use the jobs page `openLaborModal`
-// function directly. Script order was adjusted in `jobs.html` to load
-// `pages/jobs.js` before component scripts so the handler will be available.
-
-// === Notification functions placed here to ensure PartPricingModal is defined ===
-// Only define a global `showNotification` if one does not already exist (avoid overwriting page helpers)
+// === Notification functions ===
 if (typeof window.showNotification !== 'function') {
   window.showNotification = function(message, type = 'success') {
-    // Prefer an existing in-page banner element if present
     const notifIds = ['notification', 'notifBanner', 'notificationBanner', 'errorBanner'];
     for (const id of notifIds) {
       const el = document.getElementById(id);
@@ -671,18 +700,15 @@ if (typeof window.showNotification !== 'function') {
           el.className = 'notification';
           if (type === 'error') el.style.background = '#ef4444'; else el.style.background = '#10b981';
           el.classList.remove('hidden');
-          // auto-hide after 3s
           setTimeout(() => { if (el) el.classList.add('hidden'); }, 3000);
           return;
         } catch (e) { break; }
       }
     }
-    // If no banner element, fall back to alert as a last resort
     alert((type === 'error' ? 'Error: ' : '') + message);
   };
 }
 
-// Provide a safe fallback notification on the PartPricingModal class only if not already set
 if (typeof PartPricingModal._fallbackNotification !== 'function') {
   PartPricingModal._fallbackNotification = function(msg, type) {
     if (typeof window.showNotification === 'function') {

@@ -15,13 +15,13 @@ export const LS = {
 };
 
 export const ROLE_PAGES = {
-  admin: ["dashboard", "invoice", "appointments", "jobs", "messages", "invoices", "customers", "settings", "profile", "admin", "revenue"],
+  admin: ["dashboard", "invoice", "appointments", "jobs", "messages", "invoices", "customers", "settings", "profile", "admin", "revenue", "inventory"],
   // 'owner' role may be used on some installations to represent the shop owner.
   // Map it to the same pages as admin so owners can access admin-only pages like revenue.
-  owner: ["dashboard", "invoice", "appointments", "jobs", "messages", "invoices", "customers", "settings", "profile", "admin", "revenue"],
-  service_writer: ["dashboard", "invoice", "customers", "appointments", "messages", "invoices", "profile"],
-  receptionist: ["dashboard", "messages", "customers", "appointments", "profile"],
-  staff: ["dashboard", "appointments", "jobs", "profile"]
+  owner: ["dashboard", "invoice", "appointments", "jobs", "messages", "invoices", "customers", "settings", "profile", "admin", "revenue", "inventory"],
+  service_writer: ["dashboard", "invoice", "customers", "appointments", "messages", "invoices", "profile", "inventory"],
+  receptionist: ["dashboard", "messages", "customers", "appointments", "profile", "inventory"],
+  staff: ["dashboard", "appointments", "jobs", "profile", "inventory"]
 };
 
 export const STATUS_COLORS = {
@@ -39,3 +39,11 @@ export const STATUS_MAP = {
   awaiting_parts: "parts",
   completed: "done"
 };
+
+// Inventory thresholds
+export const INVENTORY_LOW_THRESHOLD = 3; // qty <= 3 considered low
+
+// Expose to window for non-module consumers (e.g., legacy scripts)
+try {
+  if (typeof window !== 'undefined') window.INVENTORY_LOW_THRESHOLD = INVENTORY_LOW_THRESHOLD;
+} catch (e) {}

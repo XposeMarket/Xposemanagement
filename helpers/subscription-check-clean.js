@@ -56,12 +56,22 @@ function showSubscriptionModal() {
 }
 
 async function checkSubscriptionAccess() {
+  // TEMPORARILY DISABLED FOR TESTING
+  // Subscription check enabled — proceed with real checks
+  
   const supabase = getSupabaseClient();
   if (!supabase) return true;
 
   try {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) return true;
+    
+    // DEV MODE: Bypass subscription check for demo accounts
+    const devEmails = ['demo@demo.com', 'test@test.com'];
+    if (devEmails.includes(user.email)) {
+      console.log('🔓 Dev mode: Bypassing subscription check for', user.email);
+      return true;
+    }
 
     // Prefer shop_staff for staff users
     const { data: staff, error: staffErr } = await supabase

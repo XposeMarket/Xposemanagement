@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Inventory Test</title>
+</head>
+<body>
+  <h1>Inventory Test Page</h1>
+  <p>If you can see this, the page loaded successfully!</p>
+  <p>URL: <span id="url"></span></p>
+  <p>Page Name: <span id="page"></span></p>
+  
+  <script>
+    document.getElementById('url').textContent = window.location.href;
+    document.getElementById('page').textContent = window.location.pathname;
+    
+    console.log('✅ INVENTORY TEST PAGE LOADED');
+    console.log('URL:', window.location.href);
+    console.log('Pathname:', window.location.pathname);
+  </script>
+</body>
+</html>

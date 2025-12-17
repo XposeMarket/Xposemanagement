@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Debug User Role</title>
+</head>
+<body>
+  <h1>User Role Debug</h1>
+  <div id="output"></div>
+  
+  <script type="module">
+    import { currentUser } from './helpers/user.js';
+    import { getSupabaseClient } from './helpers/supabase.js';
+    import { ROLE_PAGES } from './helpers/constants.js';
+    
+    const output = document.getElementById('output');
+    
+    // Check localStorage user
+    const localUser = currentUser();
+    output.innerHTML += `<h2>LocalStorage User:</h2><pre>${JSON.stringify(localUser, null, 2)}</pre>`;
+    
+    // Check session
+    const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+    output.innerHTML += `<h2>Session:</h2><pre>${JSON.stringify(session, null, 2)}</pre>`;
+    
+    // Check Supabase user
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const { data } = await supabase.auth.getUser();
+      output.innerHTML += `<h2>Supabase Auth User:</h2><pre>${JSON.stringify(data?.user, null, 2)}</pre>`;
+      
+      if (data?.user) {
+        // Check users table
+        const { data: userRow } = await supabase.from('users').select('*').eq('id', data.user.id).limit(1);
+        output.innerHTML += `<h2>Supabase Users Table:</h2><pre>${JSON.stringify(userRow, null, 2)}</pre>`;
+        
+        // Check shop_staff table
+        const { data: staffRow } = await supabase.from('shop_staff').select('*').eq('auth_id', data.user.id).limit(1);
+        output.innerHTML += `<h2>Supabase Shop Staff Table:</h2><pre>${JSON.stringify(staffRow, null, 2)}</pre>`;
+      }
+    }
+    
+    // Show allowed pages for each role
+    output.innerHTML += `<h2>ROLE_PAGES:</h2><pre>${JSON.stringify(ROLE_PAGES, null, 2)}</pre>`;
+  </script>
+</body>
+</html>

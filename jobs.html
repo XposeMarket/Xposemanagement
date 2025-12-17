@@ -12,6 +12,7 @@
       <a href="invoices.html" class="">Invoices</a>
       <a href="customers.html" class="">Customers</a>
       <a href="revenue.html" class="">Revenue</a>
+      <a href="inventory.html" class="" id="inventoryNavLink" style="display:none">Inventory</a>
       <a href="settings.html" class="">Settings</a>
       <a href="profile.html" class="">Profile</a>
         <a href="#" id="mobileThemeToggle" class="mobile-nav-btn mobile-special">Theme</a>
@@ -194,8 +195,9 @@
   </div>
 
   <!-- Manual Entry Fallback -->
-  <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line);">
-    <button id="openAddPartsFromFinder" class="btn" style="width: 100%;">Or Add Parts Manually</button>
+  <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); display:flex; gap:8px;">
+    <button id="openAddPartsFromFinder" class="btn" style="flex:1; max-width:48%;">Or Add Parts Manually</button>
+    <button id="openInventoryPartsFromFinder" class="btn" style="flex:1; max-width:48%;">Add Part from Inventory</button>
   </div>
 </div>
 

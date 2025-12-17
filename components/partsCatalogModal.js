@@ -34,8 +34,8 @@ class PartsCatalogModal {
    */
   createModal() {
     const modalHTML = `
-      <div class="modal" id="partsCatalogModal">
-        <div class="modal-content" style="max-width: 900px;">
+      <div class="modal" id="partsCatalogModal" style="z-index:20000; position:fixed; top:0; left:0; width:100vw; height:100vh; display:flex; align-items:center; justify-content:center;">
+        <div class="modal-content" style="max-width: 900px; z-index:20001; position:relative;">
           <div class="modal-header">
             <h3 style="display: inline-block; margin-right: 1rem;">Find Parts</h3>
             <span style="font-size: 0.95rem; color: var(--muted); vertical-align: middle;">

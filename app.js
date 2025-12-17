@@ -20,6 +20,7 @@ import { setupMessages } from './pages/messages-backend.js';
 import { setupSettings } from './pages/settings.js';
 import { setupProfile } from './pages/profile.js';
 import { checkSubscriptionAccess } from './helpers/subscription-check-clean.js';
+import { setupInventory } from './inventory.js';
 
 /**
  * Add admin link to navigation for multi-shop capable users
@@ -122,6 +123,14 @@ async function __mainBase() {
     });
   }
 
+  // Always show Inventory link in header when present (display across all pages)
+  try {
+    const globalInventoryLink = document.getElementById('inventoryNavLink');
+    if (globalInventoryLink) {
+      globalInventoryLink.style.display = '';
+    }
+  } catch (e) {}
+
   // Add invoice CSS
   addInvoiceCSS();
 
@@ -164,6 +173,27 @@ async function __mainBase() {
     
     // Add admin link to nav for multi-shop capable users
     await addAdminLinkToNav();
+    // Show Inventory link for any authenticated user (local or Supabase)
+    const inventoryLink = document.getElementById('inventoryNavLink');
+    if (inventoryLink) {
+      let user = null;
+      try {
+        user = currentUser && currentUser();
+      } catch {}
+      if (user) {
+        inventoryLink.style.display = '';
+      } else {
+        // Try Supabase user (async)
+        import('./helpers/supabase.js').then(({ getSupabaseClient }) => {
+          const supabase = getSupabaseClient();
+          if (!supabase) return;
+          supabase.auth.getUser().then(({ data }) => {
+            const u = data?.user;
+            if (u) inventoryLink.style.display = '';
+          });
+        });
+      }
+    }
     
     // Check subscription access (only for non-admin pages)
     const hasAccess = await checkSubscriptionAccess();
@@ -180,6 +210,15 @@ async function __mainBase() {
     else if (p === "messages") setupMessages();
     else if (p === "settings") setupSettings();
     else if (p === "profile") setupProfile();
+    else if (p === "inventory") {
+      // Use the already imported setupInventory function
+      try { 
+        setupInventory(); 
+        console.log('✅ Inventory page loaded'); 
+      } catch (e) { 
+        console.error('❌ Inventory setup failed:', e); 
+      }
+    }
   }
 }
 

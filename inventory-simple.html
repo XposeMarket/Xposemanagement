@@ -1,0 +1,124 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Inventory - Simple</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main style="padding:16px 20px">
+  <h1>Inventory (No Auth)</h1>
+  <button id="btnNewItem" class="btn">+ Add Item</button>
+  
+  <table class="table" id="inventoryTable">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Quantity</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="inventoryBody"></tbody>
+  </table>
+  <p class="notice" id="inventoryEmpty">No inventory items yet.</p>
+
+  <!-- Modal -->
+  <div id="inventoryModal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <h2 id="inventoryModalTitle">Add Item</h2>
+      <form id="inventoryForm">
+        <input type="hidden" id="editItemId">
+        <div><label>Name</label><input id="itemName" type="text" required></div>
+        <div><label>Quantity</label><input id="itemQty" type="number" min="0" required></div>
+        <button type="submit" class="btn">Save</button>
+        <button type="button" id="inventoryModalClose" class="btn">Close</button>
+      </form>
+    </div>
+  </div>
+</main>
+
+<script>
+// Simple inventory without any auth or modules
+let inventory = JSON.parse(localStorage.getItem('inventory') || '[]');
+
+const inventoryBody = document.getElementById('inventoryBody');
+const inventoryEmpty = document.getElementById('inventoryEmpty');
+const btnNewItem = document.getElementById('btnNewItem');
+const inventoryModal = document.getElementById('inventoryModal');
+const inventoryModalClose = document.getElementById('inventoryModalClose');
+const inventoryForm = document.getElementById('inventoryForm');
+const editItemId = document.getElementById('editItemId');
+const itemName = document.getElementById('itemName');
+const itemQty = document.getElementById('itemQty');
+const inventoryModalTitle = document.getElementById('inventoryModalTitle');
+
+function renderInventory() {
+  inventoryBody.innerHTML = '';
+  if (!inventory.length) {
+    inventoryEmpty.style.display = '';
+    return;
+  }
+  inventoryEmpty.style.display = 'none';
+  inventory.forEach((item, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${item.name}</td>
+      <td>${item.qty}</td>
+      <td><button class="btn" onclick="editItem(${idx})">Edit</button></td>
+    `;
+    inventoryBody.appendChild(tr);
+  });
+}
+
+function openModal() {
+  inventoryModal.classList.remove('hidden');
+}
+
+function closeModal() {
+  inventoryModal.classList.add('hidden');
+  inventoryForm.reset();
+  editItemId.value = '';
+}
+
+window.editItem = function(idx) {
+  const item = inventory[idx];
+  inventoryModalTitle.textContent = 'Edit Item';
+  itemName.value = item.name;
+  itemQty.value = item.qty;
+  editItemId.value = idx;
+  openModal();
+};
+
+btnNewItem.onclick = () => {
+  inventoryModalTitle.textContent = 'Add Item';
+  inventoryForm.reset();
+  editItemId.value = '';
+  openModal();
+};
+
+inventoryModalClose.onclick = closeModal;
+
+inventoryForm.onsubmit = function(e) {
+  e.preventDefault();
+  const name = itemName.value.trim();
+  const qty = parseInt(itemQty.value, 10);
+  if (!name || isNaN(qty) || qty < 0) return;
+  
+  const idx = editItemId.value;
+  if (idx === '') {
+    inventory.push({ name, qty });
+  } else {
+    inventory[idx] = { name, qty };
+  }
+  
+  localStorage.setItem('inventory', JSON.stringify(inventory));
+  renderInventory();
+  closeModal();
+};
+
+renderInventory();
+console.log('✅ Simple inventory loaded');
+</script>
+</body>
+</html>

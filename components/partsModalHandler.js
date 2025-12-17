@@ -3,13 +3,162 @@
  * Handles the parts finder modal with catalog integration
  */
 
+// Try to read centralized threshold from globals; fall back to 3 for non-module usage
+const INVENTORY_LOW_THRESHOLD = (typeof window !== 'undefined' && window.INVENTORY_LOW_THRESHOLD) || 3;
+
 class PartsModalHandler {
   constructor() {
     this.currentJob = null;
     this.selectedYear = null;
     this.selectedMake = null;
     this.selectedModel = null;
+    this._inventoryResults = [];
     this.init();
+  }
+
+  /**
+   * Display inventory parts (from localStorage) in the catalog results area
+   */
+  async displayInventoryResults() {
+    const resultsDiv = document.getElementById('catalogResults');
+    if (!resultsDiv) return;
+    // Combine regular inventory and folder-type items so both appear
+    let inv = [];
+    try { inv = JSON.parse(localStorage.getItem('inventory') || '[]'); } catch (e) { inv = []; }
+    let folders = [];
+    try { folders = JSON.parse(localStorage.getItem('inventoryFolders') || '[]'); } catch (e) { folders = []; }
+    // Fallback: some pages set folders on window.inventoryFolders without flushing to localStorage
+    try { if ((!folders || folders.length === 0) && Array.isArray(window.inventoryFolders) && window.inventoryFolders.length > 0) { folders = window.inventoryFolders; console.debug('[PartsModalHandler] using window.inventoryFolders fallback'); } } catch(e) {}
+
+    // If still empty, attempt to fetch remote inventory for the current shop (best-effort)
+    try {
+      if ((!folders || folders.length === 0)) {
+        let shopId = null;
+        try { shopId = JSON.parse(localStorage.getItem('xm_session')||'{}').shopId || null; } catch(e){}
+        if (shopId) {
+          try {
+            const api = await import('../helpers/inventory-api.js');
+            if (api && typeof api.fetchInventoryForShop === 'function') {
+              const remote = await api.fetchInventoryForShop(shopId);
+              if (remote && Array.isArray(remote.folders) && remote.folders.length > 0) {
+                folders = remote.folders.map(f => ({ id: f.id, name: f.name, unit: f.unit, items: (f.items||[]).map(i=>({ id: i.id, name: i.name, qty: i.qty, cost_price: i.cost_price, sell_price: i.sell_price, markup_percent: i.markup_percent })) }));
+                try { localStorage.setItem('inventoryFolders', JSON.stringify(folders)); } catch(e){}
+                console.debug('[PartsModalHandler] fetched folders remotely as fallback');
+              }
+            }
+          } catch(e) { console.debug('[PartsModalHandler] remote fetch failed', e); }
+        }
+      }
+    } catch(e) {}
+
+    const combined = [];
+    // Debug: log parsed inventories to help diagnose missing folder items
+    try { console.debug('[PartsModalHandler] inventory count:', (inv||[]).length, 'folders count:', (folders||[]).length, 'inventory sample:', inv.slice(0,3), 'folders sample:', (folders||[]).slice(0,3)); } catch (e) {}
+    inv.forEach((it, i) => combined.push({
+      source: 'inv',
+      index: i,
+      name: it.name,
+      part_number: it.part_number || '',
+      qty: it.qty || 0,
+      description: it.description || '',
+      cost_price: (typeof it.cost_price !== 'undefined') ? it.cost_price : null,
+      sell_price: (typeof it.sell_price !== 'undefined') ? it.sell_price : null,
+      markup_percent: (typeof it.markup_percent !== 'undefined') ? it.markup_percent : null
+    ,
+      original_id: (typeof it.id !== 'undefined') ? it.id : null
+    }));
+    folders.forEach((f, fi) => {
+        (f.items || []).forEach((it, ti) => {
+        combined.push({
+          source: 'folder',
+          folderIndex: fi,
+          typeIndex: ti,
+          name: `${f.name} - ${it.name}`,
+          part_number: it.part_number || '',
+          qty: it.qty || 0,
+          description: it.description || '',
+          cost_price: (typeof it.cost_price !== 'undefined') ? it.cost_price : null,
+          sell_price: (typeof it.sell_price !== 'undefined') ? it.sell_price : null,
+          markup_percent: (typeof it.markup_percent !== 'undefined') ? it.markup_percent : null
+        ,
+          original_id: (typeof it.id !== 'undefined') ? it.id : null
+        });
+      });
+    });
+
+    if (!combined.length) {
+      resultsDiv.innerHTML = `<p class="notice" style="text-align:center; padding:2rem 1rem; color:var(--muted);">No inventory parts found.</p>`;
+      return;
+    }
+
+    this._inventoryResults = combined;
+
+    let html = '<div style="display: grid; gap: 12px;">';
+    combined.forEach((item, ridx) => {
+      const q = parseInt(item.qty, 10) || 0;
+      // Use centralized inventory low-stock threshold
+      const lowThreshold = typeof INVENTORY_LOW_THRESHOLD === 'number' ? INVENTORY_LOW_THRESHOLD : 3;
+      let badgeBg = '#10b981'; // green
+      if (q <= lowThreshold) badgeBg = '#ef4444';
+      else if (q === lowThreshold + 1) badgeBg = '#f59e0b';
+      html += `
+        <div class="part-result-card" style="background: var(--card-bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+            <div>
+              <strong>${this.escapeHtml(item.name)}</strong>
+              ${item.part_number ? `<br><small style="color: var(--muted);">Part #: ${this.escapeHtml(item.part_number)}</small>` : ''}
+            </div>
+            <span class="badge" style="background: ${badgeBg}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem;">
+              In Stock: ${q}
+            </span>
+          </div>
+          ${item.description ? `<p style="font-size: 0.9rem; color: var(--muted); margin: 8px 0;">${this.escapeHtml(item.description)}</p>` : ''}
+          ${ (item.sell_price || item.cost_price) ? `
+            <div style="font-size:0.9rem; color:var(--muted); margin-top:8px;">
+              ${ item.sell_price ? `<div><strong>Price:</strong> $${Number(item.sell_price).toFixed(2)}</div>` : '' }
+              ${ item.cost_price ? `<div><small>Cost:</small> $${Number(item.cost_price).toFixed(2)}</div>` : '' }
+            </div>
+          ` : ''}
+          <div style="display: flex; justify-content: flex-end; margin-top: 8px;">
+            <button class="btn info small add-inventory-part" data-ridx='${ridx}'>
+              Add to Job
+            </button>
+          </div>
+        </div>
+      `;
+    });
+    html += '</div>';
+    resultsDiv.innerHTML = html;
+
+    // Attach click handlers using the combined array
+    resultsDiv.querySelectorAll('.add-inventory-part').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const ridx = parseInt(e.currentTarget.dataset.ridx, 10);
+        const item = this._inventoryResults[ridx];
+        if (!item) return;
+        const resolvedId = (item.original_id) ? item.original_id : (item.source === 'inv' ? `inventory_${item.index}` : `folder_${item.folderIndex}_${item.typeIndex}`);
+        const part = {
+          id: resolvedId,
+          name: item.name,
+          part_number: item.part_number || '',
+          qty_available: item.qty || 0,
+          cost_price: item.cost_price,
+          sell_price: item.sell_price,
+          markup_percent: item.markup_percent,
+          _source: item.source,
+          _folderIndex: item.folderIndex,
+          _typeIndex: item.typeIndex
+        };
+        this.addPartToJob(part);
+      });
+    });
+  }
+
+  // small HTML escape helper
+  escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, function(c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
   }
 
   init() {
@@ -62,6 +211,16 @@ class PartsModalHandler {
           delete addModal.dataset.jobId;
         }
         addModal.classList.remove('hidden');
+      }
+    });
+
+    // Inventory add button - shows inventory parts list inside the catalog results area
+    document.getElementById('openInventoryPartsFromFinder')?.addEventListener('click', () => {
+      // Keep the parts modal open and render inventory into the results area
+      try {
+        this.displayInventoryResults();
+      } catch (e) {
+        console.error('[PartsModalHandler] failed to display inventory results', e);
       }
     });
   }

@@ -320,6 +320,10 @@ nav a{padding:8px 10px;border-radius:8px} nav a.active, nav a:hover{background:v
   min-height: 38px;
   padding: 0 18px;
 }
+/* Ensure floating parts/labor panels appear above the sticky header */
+#partsModal, #addPartsModal, #laborModal {
+  z-index: 10020 !important;
+}
 /* Invoice-specific: orange edit/info button */
 #invTable .btn.info,
 #prevTable .btn.info {
@@ -365,6 +369,67 @@ nav a{padding:8px 10px;border-radius:8px} nav a.active, nav a:hover{background:v
 .sortable.asc::after { content: "▲"; }
 .sortable.desc::after { content: "▼"; }
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:24px}
+
+/* Inventory grid: left-aligned cards in rows of 3, responsive */
+.inventory-grid{
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:16px;
+  justify-content:start; /* keep panels left aligned */
+  align-items:stretch; /* make cards stretch to equal height */
+  max-width:1000px; /* keep cards to the left side visually */
+  grid-auto-rows: minmax(120px, auto); /* ensure rows have a sensible minimum height */
+}
+.inventory-card{min-height:92px;display:flex;flex-direction:column;justify-content:space-between;height:100%;margin-bottom:0}
+
+/* Limit the main inventory grid to show at most 3 rows before scrolling internally */
+#inventoryGrid.inventory-grid {
+  /* Limit to 3 rows (each min 120px) plus gaps between rows; add extra space so rows aren't clipped */
+  max-height: calc((120px * 3) + (16px * 2) + 48px); /* ~440px to ensure full visibility */
+  overflow-y: auto;
+  padding-right: 8px;
+  box-sizing: border-box;
+}
+
+/* Themed scrollbar for the inventory grid */
+#inventoryGrid.inventory-grid::-webkit-scrollbar{ width:10px }
+#inventoryGrid.inventory-grid::-webkit-scrollbar-thumb{ background: linear-gradient(180deg, var(--line), rgba(0,0,0,0.12)); border-radius:8px; border:2px solid transparent; background-clip: padding-box; }
+.inventory-card .btn{padding:8px 10px;font-size:13px}
+
+/* Folder card specific styling */
+.folder-card{background:linear-gradient(180deg,#fffef5,#ffffff);border:1px dashed #f3e6c9}
+
+.folder-card .btn{background:#f59e0b;color:#fff;border:none}
+
+/* Delete/danger button style */
+.btn.danger{background:#ef4444;color:#fff;border:none}
+.btn.danger:hover{filter:brightness(.95)}
+
+/* Ensure trash icon in danger buttons is white and nudged right */
+.btn.danger svg { stroke: #fff !important; fill: none !important; display: block; margin-left: 6px; }
+.btn.danger svg * { stroke: #fff !important; }
+
+/* Left panel activity small items */
+#recentOrdered div, #staleOrdered div { padding:6px 0; border-bottom:1px dashed var(--line); }
+@media (max-width: 900px) {
+  #recentOrdered, #staleOrdered { font-size:13px; }
+}
+
+@media (max-width:1100px){
+  .inventory-grid{grid-template-columns:repeat(2, minmax(0, 1fr));}
+}
+@media (max-width:640px){
+  .inventory-grid{grid-template-columns:repeat(1, minmax(0, 1fr));}
+}
+
+/* Search input styling */
+#inventorySearch{border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--card);color:var(--text)}
+
+/* Last order text on card */
+.inventory-card .last-order{margin-top:10px;font-size:12px;color:var(--muted)}
+
+/* Slightly separate order button visually */
+.inventory-card .btn[aria-label="Order"]{background:#60a5fa;color:#fff;border:none}
 
 /* Make entire card appear clickable with same hover "lift" as .btn */
 .card.clickable{cursor:pointer;transition:transform .14s ease,box-shadow .14s ease,filter .12s ease,background .12s ease;position:relative;overflow:hidden}
@@ -437,7 +502,7 @@ label{font-size:13px;color:var(--muted)} input,select,textarea{width:100%;paddin
 @media (max-width:768px){ .kpis{grid-template-columns:repeat(2,1fr)} }
 @media (max-width:768px){ .kpis{grid-template-columns:1fr} }
 .badge{display:inline-flex;align-items:center;justify-content:center;padding:6px 12px;border-radius:999px;border:1px solid var(--line);font-size:12px;min-width:85px;text-align:center;white-space:nowrap;height:32px;font-weight:500}
-.notification { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 500; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.notification { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 500; z-index: 100100; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
 .hidden { display:none; }
 .badge.open{background:#fee2e2;color:#991b1b}.badge.scheduled{background:#e0ecff;color:#1e40af}.badge.progress{background:#fef3c7;color:#92400e}.badge.parts{background:#e0e7ff;color:#3730a3}.badge.done{background:#dcfce7;color:#065f46}
 /* Color-coded job status select to match badges */
@@ -686,10 +751,8 @@ footer::after{ bottom: -6px; }
   .appt-details-row td .btn { font-size:12px; padding:6px 8px; }
 
 }
-@media (max-width:768px){}
-
-  /* === EDIT #6: Calendar dot/legend readability & overlap fix === */
-  .dotRow{display:flex;flex-wrap:wrap;gap:3px;align-items:center;margin-top:2px}
+/* === EDIT #6: Calendar dot/legend readability & overlap fix === */
+.dotRow{display:flex;flex-wrap:wrap;gap:3px;align-items:center;margin-top:2px}
 .chip{display:inline-flex;align-items:center;gap:3px;border:0.5px solid var(--line);border-radius:999px;padding:1px 5px;font-size:10px;background:var(--card);transition:all 0.2s ease;white-space:nowrap}
 .chip.clickable{cursor:pointer;}
 .chip.clickable:hover{background:var(--line);transform:scale(1.05);}
@@ -714,7 +777,9 @@ footer::after{ bottom: -6px; }
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(4px);
   display: flex;
-  align-items: center;
+  /* lower modals so they don't collide with the sticky header */
+  align-items: flex-start;
+  padding-top: 88px;
   justify-content: center;
   z-index: 9999;
   animation: fadeIn 0.2s ease;
@@ -735,10 +800,55 @@ footer::after{ bottom: -6px; }
   background: var(--card, #fff);
   color: inherit;
   border-radius: 12px;
-  width: min(900px, 94vw);
+  /* Narrower default modal width so dialogs are less wide on desktop */
+  width: min(680px, 90vw);
   max-height: 80vh;
   display: flex;
   flex-direction: column;
+}
+
+/* Make the Folder modal taller and allow its body to scroll so folder items are visible */
+#folderModal .modal-content {
+  width: min(760px, 92vw);
+  max-height: 88vh;
+}
+#folderModal .modal-content .modal-body{
+  max-height: calc(88vh - 88px); /* account for header/footer */
+  overflow-y: auto;
+}
+
+/* Keep modals centered on small screens where top padding would be intrusive */
+@media (max-width: 768px) {
+  .modal-overlay { align-items: center; padding-top: 0; }
+}
+
+/* Center inventory modal specifically (override default top-offset) */
+#inventoryModal.modal-overlay {
+  align-items: center;
+  padding-top: 0;
+}
+
+/* Themed confirm modal to match Jobs green banner */
+.modal-overlay.confirm-theme .modal-content .modal-head{
+  background: #10b981;
+  color: #fff;
+  padding: 12px 18px;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+.modal-overlay.confirm-theme .modal-content .modal-head h2{
+  margin:0; font-size:16px;
+}
+.modal-overlay.confirm-theme .modal-content .modal-body{
+  padding: 18px;
+}
+.modal-overlay.confirm-theme .modal-content .btn.primary{
+  background: #10b981 !important;
+  color: #fff !important;
+  border: none !important;
+}
+.modal-overlay.confirm-theme .modal-content .btn.danger{
+  background: #ef4444 !important;
 }
 
 /* Newspaper-style layout for revenue modal */
@@ -1712,4 +1822,27 @@ button,
   }
   /* Ensure the nav links stack nicely inside the dropdown */
   #mainNav.active a { display: block; padding: 10px 12px; border-radius:8px; margin-bottom:6px; }
+}
+
+/* Force parts catalog modal above all headers */
+#partsCatalogModal {
+  z-index: 30000 !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+#partsCatalogModal .modal-content {
+  z-index: 30001 !important;
+  position: relative !important;
+}
+#partsCatalogModal .modal-close {
+  z-index: 30002 !important;
+  position: absolute !important;
+  top: 12px !important;
+  right: 12px !important;
 }
