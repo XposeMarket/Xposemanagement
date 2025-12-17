@@ -95,25 +95,29 @@ async function renderInventory() {
           try { localStorage.setItem('inventory', JSON.stringify(inventory)); } catch (e) {}
         }
         if (Array.isArray(remote.folders) && remote.folders.length > 0) {
-          inventoryFolders = remote.folders.map(f => ({
-            id: f.id,
-            name: f.name,
-            unit: f.unit,
-            meta: f.meta || null,
-            items: (f.items || []).map(i => ({
-              id: i.id,
-              name: i.name,
-              qty: i.qty,
-              lastOrder: i.last_order || null,
-              outOfStockDate: i.out_of_stock_date || null,
-              meta: i.meta || null,
-              vehicles: i.vehicles || null,
-              partNumber: i.part_number || null,
-              cost_price: i.cost_price || null,
-              sell_price: i.sell_price || null,
-              markup_percent: i.markup_percent || null
-            }))
-          }));
+          inventoryFolders = remote.folders.map(f => {
+            // preserve local meta (e.g., blueBorder) if remote doesn't include it
+            const localMatch = (inventoryFolders || []).find(x => String(x.id) === String(f.id) || (x.name || '').toLowerCase() === (f.name || '').toLowerCase());
+            return ({
+              id: f.id,
+              name: f.name,
+              unit: f.unit,
+              meta: (f.meta != null) ? f.meta : (localMatch ? localMatch.meta : null),
+              items: (f.items || []).map(i => ({
+                id: i.id,
+                name: i.name,
+                qty: i.qty,
+                lastOrder: i.last_order || null,
+                outOfStockDate: i.out_of_stock_date || null,
+                meta: i.meta || null,
+                vehicles: i.vehicles || null,
+                partNumber: i.part_number || null,
+                cost_price: i.cost_price || null,
+                sell_price: i.sell_price || null,
+                markup_percent: i.markup_percent || null
+              }))
+            });
+          });
           try { localStorage.setItem('inventoryFolders', JSON.stringify(inventoryFolders)); } catch (e) {}
         }
       }
@@ -442,8 +446,9 @@ function renderFolders() {
     // Folder removal is disabled: users may edit types but cannot remove preset folders
 
     inventoryGrid.appendChild(card);
-    // If blueBorder meta present, tint folder buttons to blue as well
+    // If blueBorder meta present, add `blue` helper class and tint folder buttons to blue as well
     if (folder.meta && folder.meta.blueBorder) {
+      try { card.classList.add('blue'); } catch (e) {}
       const btns = card.querySelectorAll('.btn');
       btns.forEach(b => {
         if (b.classList && b.classList.contains('danger')) return; // keep danger buttons red
@@ -975,25 +980,28 @@ export async function setupInventory() {
         
         // Update folders and their items
         if (Array.isArray(remote.folders) && remote.folders.length > 0) {
-          inventoryFolders = remote.folders.map(f => ({
-            id: f.id,
-            name: f.name,
-            unit: f.unit,
-            meta: f.meta || null,
-            items: (f.items || []).map(i => ({
-              id: i.id,
-              name: i.name,
-              qty: i.qty,
-              lastOrder: i.last_order || null,
-              outOfStockDate: i.out_of_stock_date || null,
-              meta: i.meta || null,
-              vehicles: i.vehicles || null,
-              partNumber: i.part_number || null,
-              cost_price: i.cost_price || null,
-              sell_price: i.sell_price || null,
-              markup_percent: i.markup_percent || null
-            }))
-          }));
+          inventoryFolders = remote.folders.map(f => {
+            const localMatch = (inventoryFolders || []).find(x => String(x.id) === String(f.id) || (x.name || '').toLowerCase() === (f.name || '').toLowerCase());
+            return ({
+              id: f.id,
+              name: f.name,
+              unit: f.unit,
+              meta: (f.meta != null) ? f.meta : (localMatch ? localMatch.meta : null),
+              items: (f.items || []).map(i => ({
+                id: i.id,
+                name: i.name,
+                qty: i.qty,
+                lastOrder: i.last_order || null,
+                outOfStockDate: i.out_of_stock_date || null,
+                meta: i.meta || null,
+                vehicles: i.vehicles || null,
+                partNumber: i.part_number || null,
+                cost_price: i.cost_price || null,
+                sell_price: i.sell_price || null,
+                markup_percent: i.markup_percent || null
+              }))
+            });
+          });
           localStorage.setItem('inventoryFolders', JSON.stringify(inventoryFolders));
           console.log('✅ Synced folders from Supabase:', inventoryFolders);
         }
@@ -1019,7 +1027,7 @@ export async function setupInventory() {
   const inventoryModalMarkup = document.getElementById('inventoryModalMarkup');
   const inventoryModalProfit = document.getElementById('inventoryModalProfit');
   totalItems = document.getElementById('totalItems');
-  lowStock = document.getElementById('lowStock');
+  lowStock = document.getElementById('lowStockItem');
 
   // Confirmation modal refs (used by confirmDialog)
   confirmModal = document.getElementById('confirmModal');
@@ -1102,8 +1110,8 @@ export async function setupInventory() {
       card.className = 'inventory-card card folder-card';
       // Add blue styling for coolant folder
       if (folder.meta && folder.meta.blueBorder) {
-        card.style.border = '2px solid #38bdf8'; // Tailwind sky-400
-        card.style.boxShadow = '0 2px 12px rgba(56,189,248,0.08)';
+        card.style.border = '2px solid #60a5fa';
+        card.style.boxShadow = '0 2px 12px rgba(96,165,250,0.08)';
         card.style.background = 'linear-gradient(180deg,#f0f9ff,#ffffff)';
       }
       const unitLabel = (folder.unit === 'bottles') ? 'Bottles' : ((folder.unit === 'jugs') ? 'Jugs' : (folder.unit || 'each'));
@@ -1134,7 +1142,7 @@ export async function setupInventory() {
         const btns = card.querySelectorAll('.btn');
         btns.forEach(b => {
           if (b.classList && b.classList.contains('danger')) return;
-          b.style.background = '#38bdf8';
+          b.style.background = '#60a5fa';
           b.style.color = '#fff';
           b.style.border = 'none';
         });

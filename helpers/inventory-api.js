@@ -351,7 +351,8 @@ export async function upsertFolderToSupabase(folder, shopId) {
     const folderPayload = {
       shop_id: shopId,
       name: folder.name,
-      unit: folder.unit || null
+      unit: folder.unit || null,
+      meta: folder.meta || null
     };
     
     let folderId = folder.id;

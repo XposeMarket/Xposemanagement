@@ -401,6 +401,10 @@ nav a{padding:8px 10px;border-radius:8px} nav a.active, nav a:hover{background:v
 
 .folder-card .btn{background:#f59e0b;color:#fff;border:none}
 
+/* Blue variant for special folders (e.g., Coolant) */
+.folder-card.blue{ background: linear-gradient(180deg,#f5fbff,#ffffff); border-color: #bfdbfe }
+.folder-card.blue .btn{ background: #60a5fa !important; color: #041014 !important; border: none !important }
+
 /* Delete/danger button style */
 .btn.danger{background:#ef4444;color:#fff;border:none}
 .btn.danger:hover{filter:brightness(.95)}
