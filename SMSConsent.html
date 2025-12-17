@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Xpose Management — SMS Consent</title>
+
+  <style>
+    body {
+      background: linear-gradient(120deg, #f6f8ff 0%, #eaf3ff 100%);
+      margin: 0;
+      font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+      color: #222;
+    }
+
+    /* HEADER */
+    .header {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding: 12px 32px;
+      background:#fff;
+      position: sticky;
+      top:0;
+      z-index:100;
+      box-shadow:0 2px 8px rgba(42,124,255,0.06);
+    }
+    .header img { height:50px; }
+
+    /* LAYOUT */
+    .wrap {
+      max-width: 1050px;
+      margin: 0 auto;
+      padding: 32px 16px;
+    }
+    .grid {
+      display:grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 24px;
+    }
+    @media (max-width: 900px){
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    /* CARDS */
+    .card {
+      background:#fff;
+      border-radius:14px;
+      box-shadow:0 2px 10px rgba(0,0,0,0.07);
+      padding:24px;
+    }
+    h1 {
+      font-size:2.2rem;
+      margin:0 0 8px 0;
+      font-weight:900;
+    }
+    .sub {
+      color:#4a5a6a;
+      font-size:1.08rem;
+      line-height:1.6;
+    }
+    .hr {
+      height:1px;
+      background:#eef2ff;
+      margin:18px 0;
+      border:0;
+    }
+
+    /* FORM */
+    .optin {
+      display:flex;
+      gap:14px;
+      align-items:flex-start;
+      padding:16px;
+      border:1.5px solid #e0e7ff;
+      border-radius:12px;
+      background:#f9fbff;
+      margin-top:14px;
+    }
+    .optin input {
+      width:18px;
+      height:18px;
+      margin-top:4px;
+      accent-color:#2a7cff;
+    }
+    .optin p {
+      margin:0;
+      font-size:1rem;
+      line-height:1.55;
+    }
+
+    .btn {
+      margin-top:16px;
+      background:#2a7cff;
+      color:#fff;
+      border:none;
+      border-radius:8px;
+      padding:14px 36px;
+      font-size:1.05rem;
+      font-weight:700;
+      cursor:pointer;
+    }
+    .btn:hover { background:#195bb5; }
+
+    .error {
+      display:none;
+      margin-top:12px;
+      padding:12px;
+      border-radius:10px;
+      background:#fff3f3;
+      border:1.5px solid #ffd0d0;
+      color:#7a1a1a;
+    }
+    .success {
+      display:none;
+      margin-top:12px;
+      padding:12px;
+      border-radius:10px;
+      background:#f2fff5;
+      border:1.5px solid #c6f0d1;
+      color:#155724;
+    }
+
+    /* RIGHT PANEL */
+    .sticky {
+      position: sticky;
+      top: 92px;
+    }
+    @media (max-width: 900px){
+      .sticky { position: static; }
+    }
+
+    .pill {
+      display:inline-block;
+      background:#eef2ff;
+      color:#2a7cff;
+      padding:4px 10px;
+      border-radius:10px;
+      font-weight:800;
+      font-size:0.9rem;
+    }
+
+    .faq {
+      max-height: 360px;
+      overflow-y: auto;
+      padding-right: 6px;
+    }
+    .faq h4 {
+      margin:14px 0 6px;
+      font-size:1rem;
+    }
+    .faq p {
+      margin:0 0 10px 0;
+      color:#4a5a6a;
+      font-size:0.97rem;
+      line-height:1.55;
+    }
+
+    code {
+      background:#eef2ff;
+      padding:3px 8px;
+      border-radius:8px;
+      font-weight:800;
+      color:#2a7cff;
+    }
+  </style>
+</head>
+
+<body>
+
+<header class="header">
+  <img src="assets/XposeManagementCRMlogo.png" alt="Xpose Management">
+</header>
+
+<main class="wrap">
+  <div class="grid">
+
+    <!-- LEFT: SIMPLE CONSENT -->
+    <div class="card">
+      <h1>SMS Messaging Consent</h1>
+      <p class="sub">
+        Provide consent to receive SMS messages from <strong>Xpose Management</strong>,
+        including messages sent on behalf of participating businesses using the platform
+        (such as your automotive service provider).
+      </p>
+
+      <div class="optin">
+        <input id="agree" type="checkbox">
+        <label for="agree">
+          <p>
+            <strong>I agree to receive SMS messages from Xpose Management</strong>,
+            including appointment reminders, service updates, and customer support
+            messages related to my interaction with a participating business.
+          </p>
+          <p class="sub" style="margin-top:6px;">
+            Message frequency varies. Message &amp; data rates may apply.
+          </p>
+        </label>
+      </div>
+
+      <button class="btn" onclick="submitConsent()">Submit Consent</button>
+
+      <div id="err" class="error">
+        You must check the consent box to continue.
+      </div>
+
+      <div id="ok" class="success">
+        <strong>Consent recorded.</strong><br>
+        You may now receive SMS messages related to your service.
+        Reply <strong>STOP</strong> at any time to opt out.
+      </div>
+    </div>
+
+    <!-- RIGHT: KEYWORDS + FAQ -->
+    <div class="card sticky">
+      <span class="pill">SMS Keywords</span>
+
+      <p style="margin-top:10px;">
+        Opt out anytime: <code>STOP</code><br>
+        Help &amp; support: <code>HELP</code>
+      </p>
+
+      <div class="hr"></div>
+
+      <span class="pill">Important Information</span>
+
+      <div class="faq">
+        <h4>Who sends the messages?</h4>
+        <p>
+          Messages are sent by <strong>Xpose Management</strong>, including messages
+          sent on behalf of participating businesses using the Xpose platform.
+        </p>
+
+        <h4>What messages will I receive?</h4>
+        <p>
+          Messages may include appointment reminders, confirmations, service updates,
+          invoice notifications, and two-way customer support communications.
+        </p>
+
+        <h4>Is consent required?</h4>
+        <p>
+          Yes. Consent is required to receive SMS messages. Consent is not a condition
+          of purchase and can be withdrawn at any time.
+        </p>
+
+        <h4>How do I stop messages?</h4>
+        <p>
+          Reply <code>STOP</code> at any time. You may receive a final confirmation
+          message acknowledging your opt-out.
+        </p>
+
+        <h4>Do message rates apply?</h4>
+        <p>
+          Message and data rates may apply depending on your mobile carrier plan.
+        </p>
+
+        <h4>What if I need help?</h4>
+        <p>
+          Reply <code>HELP</code> or contact support through the Xpose Management website.
+        </p>
+
+        <h4>Is my information stored?</h4>
+        <p>
+          Contact information and messaging preferences may be stored to manage
+          communication preferences and provide service-related messaging.
+        </p>
+
+        <h4>Delivery disclaimer</h4>
+        <p>
+          Message delivery is subject to carrier availability and is not guaranteed.
+        </p>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+  function submitConsent(){
+    const cb = document.getElementById('agree');
+    const err = document.getElementById('err');
+    const ok = document.getElementById('ok');
+
+    if(!cb.checked){
+      err.style.display = 'block';
+      ok.style.display = 'none';
+      return;
+    }
+
+    err.style.display = 'none';
+    ok.style.display = 'block';
+
+    // Optional: record locally or POST to backend later
+    const record = {
+      consent: true,
+      timestamp: new Date().toISOString(),
+      userAgent: navigator.userAgent
+    };
+    localStorage.setItem('xpose_sms_consent', JSON.stringify(record));
+  }
+</script>
+
+</body>
+</html>
