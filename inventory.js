@@ -69,8 +69,57 @@ function confirmDialog(message) {
   });
 }
 
-function renderInventory() {
+async function renderInventory() {
   if (!inventoryGrid) return;
+  // Try to fetch authoritative inventory/folders from Supabase first
+  try {
+    let shopId = null;
+    try { shopId = JSON.parse(localStorage.getItem('xm_session')||'{}').shopId || null; } catch (e) {}
+    if (shopId) {
+      const { fetchInventoryForShop } = await import('./helpers/inventory-api.js');
+      const remote = await fetchInventoryForShop(shopId);
+      if (remote) {
+        // Replace in-memory lists with remote values when present
+        if (Array.isArray(remote.items) && remote.items.length > 0) {
+          inventory = remote.items.map(it => ({
+            name: it.name,
+            qty: it.qty,
+            id: it.id,
+            lastOrder: it.last_order || null,
+            outOfStockDate: it.out_of_stock_date || null,
+            meta: it.meta || null,
+            cost_price: it.cost_price || null,
+            sell_price: it.sell_price || null,
+            markup_percent: it.markup_percent || null
+          }));
+          try { localStorage.setItem('inventory', JSON.stringify(inventory)); } catch (e) {}
+        }
+        if (Array.isArray(remote.folders) && remote.folders.length > 0) {
+          inventoryFolders = remote.folders.map(f => ({
+            id: f.id,
+            name: f.name,
+            unit: f.unit,
+            meta: f.meta || null,
+            items: (f.items || []).map(i => ({
+              id: i.id,
+              name: i.name,
+              qty: i.qty,
+              lastOrder: i.last_order || null,
+              outOfStockDate: i.out_of_stock_date || null,
+              meta: i.meta || null,
+              vehicles: i.vehicles || null,
+              partNumber: i.part_number || null,
+              cost_price: i.cost_price || null,
+              sell_price: i.sell_price || null,
+              markup_percent: i.markup_percent || null
+            }))
+          }));
+          try { localStorage.setItem('inventoryFolders', JSON.stringify(inventoryFolders)); } catch (e) {}
+        }
+      }
+    }
+  } catch (e) { console.warn('renderInventory: remote fetch failed', e); }
+
   inventoryGrid.innerHTML = '';
   // render folder panels first
   renderFolders();
