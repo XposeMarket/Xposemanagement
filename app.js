@@ -20,7 +20,7 @@ import { setupMessages } from './pages/messages-backend.js';
 import { setupSettings } from './pages/settings.js';
 import { setupProfile } from './pages/profile.js';
 import { checkSubscriptionAccess } from './helpers/subscription-check-clean.js';
-import { setupInventory } from './pages/inventory.js';
+import { setupInventory } from './inventory.js';
 /**
  * Add admin link to navigation for multi-shop capable users
  * Shows for users with Local or Multi plans
