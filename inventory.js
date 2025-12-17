@@ -1411,6 +1411,8 @@ export async function setupInventory() {
   };
 
   // Initial render
+  // Expose render hooks globally so other modules and the console can call them
+  try { window.renderInventory = renderInventory; window.renderOutOfStockPanel = renderOutOfStockPanel; window.setupInventory = setupInventory; window.inventory = inventory; window.inventoryFolders = inventoryFolders; } catch (e) {}
   renderInventory();
   
   // Note: setupInventoryPricing is called when the pricing modal opens, not here
