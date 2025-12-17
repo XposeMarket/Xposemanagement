@@ -143,17 +143,37 @@ function renderInventory() {
     });
 
     const delBtn = card.querySelector('[data-delete]');
-    if (delBtn) delBtn.addEventListener('click', () => {
-      confirmDialog(`Remove item "${item.name}" from inventory?`).then(ok => {
-        if (!ok) return;
-        inventory.splice(idx, 1);
-        try { localStorage.setItem('inventory', JSON.stringify(inventory)); } catch (e) { console.warn('Could not save inventory', e); }
-        renderInventory();
-        try {
-          if (typeof showNotification === 'function') showNotification(`Removed item "${item.name}" from inventory`, 'success');
-          else if (typeof window.showConfirmationBanner === 'function') window.showConfirmationBanner(`Removed item "${item.name}" from inventory`);
-        } catch (e) {}
-      });
+    if (delBtn) delBtn.addEventListener('click', async () => {
+      const ok = await confirmDialog(`Remove item "${item.name}" from inventory?`);
+      if (!ok) return;
+      // If item has remote UUID, delete remotely first
+      try {
+        let shopId = null;
+        try { shopId = JSON.parse(localStorage.getItem('xm_session')||'{}').shopId || null; } catch (e) {}
+        if (item.id) {
+          const { deleteInventoryItemRemote } = await import('./helpers/inventory-api.js');
+          const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(item.id));
+          if (isUUID) {
+            const res = await deleteInventoryItemRemote(item.id);
+            if (!res) {
+              try { showNotification && showNotification('Failed to delete item from remote', 'error'); } catch (e) {}
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Remote delete failed', e);
+        try { showNotification && showNotification('Failed to delete item from remote', 'error'); } catch (e) {}
+        return;
+      }
+      // Remove locally and persist
+      inventory.splice(idx, 1);
+      try { localStorage.setItem('inventory', JSON.stringify(inventory)); } catch (e) { console.warn('Could not save inventory', e); }
+      renderInventory();
+      try {
+        if (typeof showNotification === 'function') showNotification(`Removed item "${item.name}" from inventory`, 'success');
+        else if (typeof window.showConfirmationBanner === 'function') window.showConfirmationBanner(`Removed item "${item.name}" from inventory`);
+      } catch (e) {}
     });
 
     // show last order date
@@ -663,17 +683,34 @@ function openFolderModal(folderIdx) {
 
       const delTypeBtn = row.querySelector('[data-delete-type]');
       if (delTypeBtn) delTypeBtn.addEventListener('click', () => {
-        confirmDialog(`Remove type "${it.name}" from folder "${folder.name}"?`).then(ok => {
+        (async () => {
+          const ok = await confirmDialog(`Remove type "${it.name}" from folder "${folder.name}"?`);
           if (!ok) return;
-          folder.items.splice(idx, 1);
-          saveFolders();
-          renderFolderItems();
-          renderInventory();
           try {
-            if (typeof showNotification === 'function') showNotification(`Removed ${it.name} from ${folder.name}`, 'success');
-            else if (typeof window.showConfirmationBanner === 'function') window.showConfirmationBanner(`Removed ${it.name} from ${folder.name}`);
-          } catch (e) {}
-        });
+            if (it.id) {
+              const { deleteFolderItemRemote } = await import('./helpers/inventory-api.js');
+              const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(it.id));
+              if (isUUID) {
+                const res = await deleteFolderItemRemote(it.id);
+                if (!res) {
+                  try { showNotification && showNotification('Failed to delete folder type from remote', 'error'); } catch (e) {}
+                  return;
+                }
+              }
+            }
+            folder.items.splice(idx, 1);
+            await saveFolders();
+            renderFolderItems();
+            renderInventory();
+            try {
+              if (typeof showNotification === 'function') showNotification(`Removed ${it.name} from ${folder.name}`, 'success');
+              else if (typeof window.showConfirmationBanner === 'function') window.showConfirmationBanner(`Removed ${it.name} from ${folder.name}`);
+            } catch (e) {}
+          } catch (e) {
+            console.warn('Failed to remove folder type', e);
+            try { showNotification && showNotification('Failed to remove folder type', 'error'); } catch (e) {}
+          }
+        })();
       });
 
       folderList.appendChild(row);
@@ -1267,6 +1304,7 @@ export async function setupInventory() {
         cost_price: cost_price,
         sell_price: sell_price,
         markup_percent: markup_percent,
+        outOfStockDate: (qty === 0) ? new Date().toISOString() : null,
         id: isNew ? null : (inventory[idx] && inventory[idx].id) || null
       };
       // Save to Supabase

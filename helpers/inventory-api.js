@@ -509,3 +509,29 @@ export async function upsertFolderToSupabase(folder, shopId) {
     return null;
   }
 }
+
+/**
+ * Delete an inventory item by id
+ */
+export async function deleteInventoryItemRemote(itemId) {
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase || !itemId) return null;
+    const { data, error } = await supabase.from('inventory_items').delete().eq('id', itemId).select().single();
+    if (error) throw error;
+    return data;
+  } catch (e) { console.warn('deleteInventoryItemRemote', e); return null; }
+}
+
+/**
+ * Delete a folder item by id
+ */
+export async function deleteFolderItemRemote(folderItemId) {
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase || !folderItemId) return null;
+    const { data, error } = await supabase.from('inventory_folder_items').delete().eq('id', folderItemId).select().single();
+    if (error) throw error;
+    return data;
+  } catch (e) { console.warn('deleteFolderItemRemote', e); return null; }
+}
