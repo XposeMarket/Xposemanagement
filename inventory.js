@@ -191,16 +191,30 @@ function renderInventory() {
     inventoryGrid.appendChild(card);
   });
 
-  totalItems.textContent = inventory.length;
+  // Include folder items in totals and low-stock counts
+  const folderItemsFlat = [];
+  (inventoryFolders || []).forEach(folder => {
+    (folder.items || []).forEach(fi => {
+      folderItemsFlat.push(Object.assign({}, fi, { folderName: folder.name }));
+    });
+  });
+
+  // Count low-stock for folder items as well
+  (folderItemsFlat || []).forEach(fi => {
+    if ((parseInt(fi.qty, 10) || 0) <= LOW_THRESHOLD) low++;
+  });
+
+  if (totalItems) totalItems.textContent = String(inventory.length + (folderItemsFlat.length || 0));
+
   // show lowest-stock item name instead of number
   const lowEl = document.getElementById('lowStockItem');
   if (lowEl) {
-    // Show number of low-stock items (regular inventory items with qty < 3)
+    // Show number of low-stock items (regular inventory items + folder items)
     lowEl.textContent = String(low || 0);
   }
 
   // Render right-hand activity lists in left panel
-  try {
+    try {
     const recentEl = document.getElementById('recentOrdered');
     const staleEl = document.getElementById('staleOrdered');
     if (recentEl && staleEl) {
@@ -210,9 +224,14 @@ function renderInventory() {
       const recentThreshold = now - (recentDays * 24 * 60 * 60 * 1000);
       const staleThreshold = now - (staleDays * 24 * 60 * 60 * 1000);
 
-      const withOrder = inventory.filter(it => it.lastOrder).map(it => ({...it, last: new Date(it.lastOrder).getTime()})).sort((a,b) => b.last - a.last);
+      // Build combined list of items (top-level + folder items) for activity reporting
+      const combined = [];
+      (inventory || []).forEach(it => combined.push({ type: 'inventory', name: it.name, lastOrder: it.lastOrder || null }));
+      (folderItemsFlat || []).forEach(fi => combined.push({ type: 'folder', name: fi.name, lastOrder: fi.lastOrder || null, folderName: fi.folderName }));
+
+      const withOrder = combined.filter(it => it.lastOrder).map(it => ({...it, last: new Date(it.lastOrder).getTime()})).sort((a,b) => b.last - a.last);
       const recent = withOrder.filter(it => it.last >= recentThreshold).slice(0,5);
-      const stale = inventory.filter(it => !it.lastOrder || (new Date(it.lastOrder).getTime() < staleThreshold)).slice(0,5);
+      const stale = combined.filter(it => !it.lastOrder || (it.lastOrder && new Date(it.lastOrder).getTime() < staleThreshold)).slice(0,5);
 
       // Render recent as dashboard-style rows
       recentEl.innerHTML = '';
@@ -220,7 +239,7 @@ function renderInventory() {
       recent.forEach(it => {
         const row = document.createElement('div');
         row.style.cssText = 'padding:8px;border:1px solid var(--line);border-radius:8px;cursor:pointer;transition:all 0.2s ease;background:var(--card);margin-bottom:6px;font-size:13px';
-        row.innerHTML = `<div><b>${escapeHtml(it.name)}</b><br><span class="notice">${new Date(it.lastOrder).toLocaleDateString()}</span></div>`;
+        row.innerHTML = `<div><b>${escapeHtml(it.name)}${it.type==='folder' && it.folderName ? ` — ${escapeHtml(it.folderName)}` : ''}</b><br><span class="notice">${new Date(it.lastOrder).toLocaleDateString()}</span></div>`;
         row.addEventListener('mouseenter', () => { row.style.background = 'var(--line)'; row.style.transform = 'translateX(4px)'; });
         row.addEventListener('mouseleave', () => { row.style.background = 'var(--card)'; row.style.transform = 'translateX(0)'; });
         recentEl.appendChild(row);
@@ -232,7 +251,7 @@ function renderInventory() {
         const row = document.createElement('div');
         row.style.cssText = 'padding:8px;border:1px solid var(--line);border-radius:8px;cursor:pointer;transition:all 0.2s ease;background:var(--card);margin-bottom:6px;font-size:13px';
         const when = it.lastOrder ? new Date(it.lastOrder).toLocaleDateString() : 'never';
-        row.innerHTML = `<div><b>${escapeHtml(it.name)}</b><br><span class="notice">${when}</span></div>`;
+        row.innerHTML = `<div><b>${escapeHtml(it.name)}${it.type==='folder' && it.folderName ? ` — ${escapeHtml(it.folderName)}` : ''}</b><br><span class="notice">${when}</span></div>`;
         row.addEventListener('mouseenter', () => { row.style.background = 'var(--line)'; row.style.transform = 'translateX(4px)'; });
         row.addEventListener('mouseleave', () => { row.style.background = 'var(--card)'; row.style.transform = 'translateX(0)'; });
         staleEl.appendChild(row);
@@ -264,6 +283,7 @@ function updateOutOfStockFlag(obj) {
 
 function renderOutOfStockPanel() {
   const right = document.querySelector('.right-sidebar');
+  console.debug && console.debug('renderOutOfStockPanel: rightSidebarExists=', !!right);
   if (!right) return;
   right.innerHTML = '';
   const card = document.createElement('div');
@@ -288,12 +308,13 @@ function renderOutOfStockPanel() {
   });
 
   if (!outItems.length) {
+    console.debug && console.debug('renderOutOfStockPanel: outItems count=0');
     list.textContent = 'No out of stock items';
     card.appendChild(list);
     right.appendChild(card);
     return;
   }
-
+  console.debug && console.debug('renderOutOfStockPanel: outItems count=', outItems.length, outItems);
   outItems.forEach(it => {
     const row = document.createElement('div');
     row.style.cssText = 'padding:8px;border:1px solid var(--line);border-radius:8px;cursor:pointer;transition:all 0.2s ease;background:var(--card);display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:13px';
