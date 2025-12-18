@@ -618,16 +618,30 @@ class PartsModalHandler {
   /**
    * Add part to job (opens pricing modal)
    */
-  addPartToJob(part) {
+  async addPartToJob(part) {
     if (!this.currentJob) {
       alert('No job selected');
       return;
     }
 
+    // Get job vehicle for pricing modal
+    let jobVehicle = null;
+    try {
+      if (this.currentJob.year || this.currentJob.make || this.currentJob.model) {
+        jobVehicle = [this.currentJob.year, this.currentJob.make, this.currentJob.model].filter(Boolean).join(' ');
+      } else if (this.currentJob.vehicle) {
+        jobVehicle = this.currentJob.vehicle;
+      }
+      
+      console.log('🚗 Job vehicle for pricing modal (partsModalHandler):', jobVehicle);
+    } catch (e) {
+      console.warn('Could not get vehicle from job:', e);
+    }
+
     // Use the pricing modal component if available
     const ppm = window.xm_partPricingModal || window.partPricingModal;
     if (ppm) {
-      ppm.show(part, this.currentJob.id, () => {
+      ppm.show(part, this.currentJob.id, jobVehicle, () => {
         this.closeModal();
         if (window.showNotification) {
           window.showNotification('Part added to job!', 'success');

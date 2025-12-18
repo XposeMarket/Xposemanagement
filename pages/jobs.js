@@ -1386,8 +1386,9 @@ async function addPartToInvoice(jobId, partName, quantity, price, cost, groupNam
  * @param {number} hours - Hours of labor
  * @param {number} rate - Hourly rate
  * @param {string} linkedItemId - Optional ID of the part item to link with
+ * @param {string} groupName - Optional group name for P&R grouping
  */
-async function addLaborToInvoice(jobId, description, hours, rate, linkedItemId) {
+async function addLaborToInvoice(jobId, description, hours, rate, linkedItemId, groupName) {
   // Find the job and related appointment
   const job = allJobs.find(j => j.id === jobId);
   if (!job) throw new Error('Job not found');
@@ -1402,12 +1403,13 @@ async function addLaborToInvoice(jobId, description, hours, rate, linkedItemId) 
   // Add labor item to invoice
   const laborItem = {
     id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    // Store the description directly (no 'Labor - ' prefix) so display and matching are consistent
+    // Store the description WITHOUT 'Labor:' prefix so it matches saved labor rates in settings
     name: description,
     qty: hours,
     price: rate,
     type: 'labor',
-    linkedItemId: linkedItemId || undefined // Link to part if provided
+    linkedItemId: linkedItemId || undefined, // Link to part if provided
+    groupName: groupName || undefined // Store group name for P&R display
   };
   
   invoice.items = invoice.items || [];

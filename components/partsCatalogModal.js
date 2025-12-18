@@ -312,10 +312,13 @@ class PartsCatalogModal {
     let html = '<div class="parts-list">';
     
     parts.forEach(part => {
-      // Construct part name with current job vehicle
+      // Construct part name with current job vehicle FOR DISPLAY ONLY
       const partDisplayName = this.currentJobVehicle 
         ? `${part.name} - ${this.currentJobVehicle}`
         : part.name;
+      
+      // Store the ORIGINAL part in the button (without vehicle modifications)
+      // The pricing modal will handle adding the vehicle when it opens
       
       html += `
         <div class="part-card" data-part-id="${part.id}">
@@ -348,6 +351,8 @@ class PartsCatalogModal {
     resultsDiv.querySelectorAll('.add-part-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const partData = JSON.parse(e.target.dataset.part.replace(/&#39;/g, "'"));
+        // Pass the ORIGINAL part from the button, not the modified one
+        // The pricing modal will handle vehicle name properly
         this.showPricingModal(partData);
       });
     });
@@ -357,10 +362,14 @@ class PartsCatalogModal {
    * Show pricing modal to enter cost/sell prices
    */
   showPricingModal(part) {
+    // Part already has the correct vehicle name from displayResults()
+    // No need to modify it further
+    
     // This will be handled by the separate PartPricingModal component
       const ppm = window.xm_partPricingModal || window.partPricingModal;
       if (ppm) {
-        ppm.show(part, this.currentJobId, () => {
+        // Pass the current job vehicle to the pricing modal
+        ppm.show(part, this.currentJobId, this.currentJobVehicle, () => {
         // Callback after part is added
         // Keep the parts catalog open so the user can continue browsing
         showNotification('Part added to job!', 'success');

@@ -86,47 +86,199 @@ class PartPricingModal {
   /**
    * Show the pricing modal
    */
-  show(part, jobId, callback) {
-    console.log('🔵 Pricing modal show() called', { part, jobId });
+  show(part, jobId, jobVehicleOrCallback, callback) {
+    // Handle both old signature (part, jobId, callback) and new (part, jobId, jobVehicle, callback)
+    let jobVehicle = null;
+    let actualCallback = null;
+    
+    if (typeof jobVehicleOrCallback === 'function') {
+      // Old signature: show(part, jobId, callback)
+      actualCallback = jobVehicleOrCallback;
+    } else {
+      // New signature: show(part, jobId, jobVehicle, callback)
+      jobVehicle = jobVehicleOrCallback;
+      actualCallback = callback;
+    }
+    
+    console.log('🔵 Pricing modal show() called', { part, jobId, jobVehicle });
     this.currentPart = part;
     this.currentJobId = jobId;
-    this.callback = callback;
+    this.callback = actualCallback;
+    this.jobVehicle = jobVehicle; // Store for later use
+    
     if (!this.modal) {
       console.log('🔨 Creating modal for first time');
       this.createModal();
     }
-    // Populate part info
+    
+    // Detect part type
+    const partId = this.currentPart.id;
+    const isInventoryItem = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(partId));
+    const isCatalogPart = !isInventoryItem && jobVehicle; // Catalog parts come with jobVehicle
+    const isManualPart = !isInventoryItem && !isCatalogPart;
+    
+    console.log('🔍 Part type detection:', { partId, isInventoryItem, isCatalogPart, isManualPart });
+    
+    // Update part name based on type
+    let displayName = this.currentPart.name || this.currentPart.part_name || '';
+    
+    if (isCatalogPart && jobVehicle) {
+      // Catalog part: strip old vehicle and add job vehicle
+      let baseName = displayName;
+      const dashIndex = baseName.indexOf(' - ');
+      if (dashIndex > 0) {
+        baseName = baseName.substring(0, dashIndex).trim();
+      }
+      displayName = `${baseName} - ${jobVehicle}`;
+      this.currentPart.name = displayName;
+      this.currentPart.part_name = displayName;
+      
+      console.log('✅ Catalog part name updated:', {
+        original: baseName,
+        jobVehicle: jobVehicle,
+        newName: displayName
+      });
+    } else if (isManualPart && jobVehicle) {
+      // Manual part: add vehicle but no P+R in title
+      displayName = `${displayName} - ${jobVehicle}`;
+      this.currentPart.name = displayName;
+      this.currentPart.part_name = displayName;
+      
+      console.log('✅ Manual part name updated with vehicle:', displayName);
+    } else if (isInventoryItem) {
+      // Inventory item: strip any vehicle info and keep just the base name
+      let baseName = displayName;
+      const dashIndex = baseName.indexOf(' - ');
+      if (dashIndex > 0) {
+        // Check if what comes after the dash looks like a vehicle
+        const afterDash = baseName.substring(dashIndex + 3).trim();
+        // If it has multiple words or looks like year/make/model, strip it
+        if (afterDash.split(' ').length >= 2 || /\d{4}/.test(afterDash)) {
+          baseName = baseName.substring(0, dashIndex).trim();
+          displayName = baseName;
+          this.currentPart.name = displayName;
+          this.currentPart.part_name = displayName;
+        }
+      }
+      console.log('✅ Inventory item, keeping original name:', displayName);
+    }
+    
+    // Populate part info with corrected name
     const nameEl = document.getElementById('pricingPartName');
     const numberEl = document.getElementById('pricingPartNumber');
-    if (nameEl) nameEl.textContent = part.name || part.part_name;
-    if (numberEl) numberEl.textContent = part.part_number || 'N/A';
-    // Set default P+R group title
+    if (nameEl) nameEl.textContent = this.currentPart.name || this.currentPart.part_name;
+    if (numberEl) numberEl.textContent = this.currentPart.part_number || 'N/A';
+    
+    // Set default P+R group title based on part type
     const prGroupTitleEl = document.getElementById('prGroupTitle');
     if (prGroupTitleEl) {
-      const defaultTitle = (part.name || part.part_name || '').trim() ? `${part.name || part.part_name} P+R` : 'P+R';
-      prGroupTitleEl.value = part.groupName || defaultTitle;
+      const partName = (this.currentPart.name || this.currentPart.part_name || '').trim();
+      let defaultTitle;
+      
+      if (isCatalogPart) {
+        // Catalog part: add P+R suffix
+        defaultTitle = partName ? `${partName} P+R` : 'P+R';
+      } else if (isInventoryItem) {
+        // Inventory item: just the name, no vehicle, no P+R
+        defaultTitle = partName || 'Part';
+      } else {
+        // Manual part: name + vehicle, but no P+R
+        defaultTitle = partName || 'Part';
+      }
+      
+      prGroupTitleEl.value = this.currentPart.groupName || defaultTitle;
+      console.log('🏷️ Group title set to:', defaultTitle);
     }
+    
     // Reset form
     const qtyEl = document.getElementById('pricingQuantity');
     const costEl = document.getElementById('pricingCost');
     const sellEl = document.getElementById('pricingSell');
     if (qtyEl) qtyEl.value = '1';
     if (costEl) {
-      costEl.value = (typeof part.cost_price !== 'undefined' && part.cost_price !== null) ? part.cost_price : '';
+      costEl.value = (typeof this.currentPart.cost_price !== 'undefined' && this.currentPart.cost_price !== null) ? this.currentPart.cost_price : '';
     }
     if (sellEl) {
-      sellEl.value = (typeof part.sell_price !== 'undefined' && part.sell_price !== null) ? part.sell_price : '';
+      sellEl.value = (typeof this.currentPart.sell_price !== 'undefined' && this.currentPart.sell_price !== null) ? this.currentPart.sell_price : '';
     }
     const markupEl = document.getElementById('pricingMarkup');
     const profitEl = document.getElementById('pricingProfit');
     if (markupEl) markupEl.textContent = '0%';
     if (profitEl) profitEl.textContent = '$0.00';
+    
     // Recalculate markup based on provided part pricing
     try { this.calculateMarkup(); } catch (e) {}
 
     // Show overlay and modal
     if (this.overlay) this.overlay.style.display = 'block';
     if (this.modal) this.modal.style.display = 'block';
+  }
+
+  /**
+   * Load job vehicle and update current part name
+   */
+  async loadJobVehicleAndUpdatePart() {
+    try {
+      const { supabase } = await import('../helpers/supabase.js');
+      
+      // Get job vehicle
+      const { data: job, error: jobError } = await supabase
+        .from('jobs')
+        .select('vehicle, year, make, model, appointment_id')
+        .eq('id', this.currentJobId)
+        .single();
+      
+      let jobVehicle = null;
+      if (!jobError && job) {
+        if (job.year || job.make || job.model) {
+          jobVehicle = [job.year, job.make, job.model].filter(Boolean).join(' ');
+        } else if (job.vehicle) {
+          jobVehicle = job.vehicle;
+        }
+        
+        // If still no vehicle, try from appointment
+        if (!jobVehicle && job.appointment_id) {
+          const { data: appt } = await supabase
+            .from('appointments')
+            .select('vehicle, year, make, model')
+            .eq('id', job.appointment_id)
+            .single();
+          
+          if (appt) {
+            if (appt.year || appt.make || appt.model) {
+              jobVehicle = [appt.year, appt.make, appt.model].filter(Boolean).join(' ');
+            } else if (appt.vehicle) {
+              jobVehicle = appt.vehicle;
+            }
+          }
+        }
+      }
+      
+      console.log('🚗 Job vehicle for pricing modal:', jobVehicle);
+      console.log('📋 Job data:', job);
+      
+      // Update part name with job vehicle
+      if (jobVehicle) {
+        let baseName = this.currentPart.name || this.currentPart.part_name || '';
+        const dashIndex = baseName.indexOf(' - ');
+        if (dashIndex > 0) {
+          baseName = baseName.substring(0, dashIndex).trim();
+        }
+        
+        const newName = `${baseName} - ${jobVehicle}`;
+        this.currentPart.name = newName;
+        this.currentPart.part_name = newName;
+        
+        console.log('✅ Part name updated:', {
+          original: baseName,
+          newName: newName
+        });
+      } else {
+        console.warn('⚠️ No vehicle found for job, keeping original part name');
+      }
+    } catch (error) {
+      console.warn('Could not load job vehicle:', error);
+    }
   }
 
   /**
@@ -356,6 +508,16 @@ class PartPricingModal {
         try { this.callback(data); } catch (e) { console.warn('[PartPricingModal] callback threw', e); }
       }
 
+      // Store part data for linking with labor later
+      this.lastAddedPartData = {
+        id: data.id,
+        name: data.part_name || this.currentPart.name || this.currentPart.part_name || '',
+        qty: data.quantity || quantity,
+        price: data.sell_price || sellPrice || 0,
+        cost: (typeof data.cost_price !== 'undefined') ? data.cost_price : costPrice,
+        groupName: groupName
+      };
+
       // Also add to invoice via client-side invoice flow if available
       try {
         const partName = data.part_name || this.currentPart.name || this.currentPart.part_name || '';
@@ -363,10 +525,13 @@ class PartPricingModal {
         const price = data.sell_price || sellPrice || 0;
         const cost = (typeof data.cost_price !== 'undefined') ? data.cost_price : costPrice;
         if (typeof window.addPartToInvoice === 'function') {
-          await window.addPartToInvoice(this.currentJobId, partName, qty, price, cost, groupName);
-          console.log('[PartPricingModal] added part to invoice via addPartToInvoice', { jobId: this.currentJobId, partName, qty, price, cost });
+          const partItemId = await window.addPartToInvoice(this.currentJobId, partName, qty, price, cost, groupName);
+          console.log('[PartPricingModal] added part to invoice via addPartToInvoice', { jobId: this.currentJobId, partName, qty, price, cost, partItemId });
+          // Store the invoice item ID for linking
+          if (partItemId) this.lastAddedPartData.invoiceItemId = partItemId;
         } else if (typeof addPartToInvoice === 'function') {
-          await addPartToInvoice(this.currentJobId, partName, qty, price, cost, groupName);
+          const partItemId = await addPartToInvoice(this.currentJobId, partName, qty, price, cost, groupName);
+          if (partItemId) this.lastAddedPartData.invoiceItemId = partItemId;
         } else {
           console.warn('[PartPricingModal] addPartToInvoice not available on window');
         }
@@ -607,7 +772,7 @@ class PartPricingModal {
       });
       if (!response.ok) throw new Error('Failed to add labor');
       
-      // Add labor to invoice
+      // Add labor to invoice WITH LINKING to the last added part
       try {
         const descVal = finalDesc || document.getElementById('labDesc')?.value.trim() || '';
         const hoursVal = parseFloat(document.getElementById('labHours')?.value) || hours || 0;
@@ -620,11 +785,21 @@ class PartPricingModal {
         } else {
           rateVal = parseFloat(document.getElementById('laborRate')?.value) || rateVal;
         }
+        
+        // Get the linkedItemId and groupName from the last added part
+        const linkedItemId = this.lastAddedPartData?.invoiceItemId || null;
+        const groupName = this.lastAddedPartData?.groupName || null;
+        
+        console.log('[PartPricingModal] Adding labor with linkedItemId:', linkedItemId, 'groupName:', groupName);
+        
         if (typeof window.addLaborToInvoice === 'function') {
-          await window.addLaborToInvoice(this.currentJobId, descVal, hoursVal, rateVal);
+          await window.addLaborToInvoice(this.currentJobId, descVal, hoursVal, rateVal, linkedItemId, groupName);
         } else if (typeof addLaborToInvoice === 'function') {
-          await addLaborToInvoice(this.currentJobId, descVal, hoursVal, rateVal);
+          await addLaborToInvoice(this.currentJobId, descVal, hoursVal, rateVal, linkedItemId, groupName);
         }
+        
+        // Clear the last added part data after linking
+        this.lastAddedPartData = null;
       } catch (err) {
         console.error('[PartPricingModal] failed to add labor to invoice locally', err);
       }

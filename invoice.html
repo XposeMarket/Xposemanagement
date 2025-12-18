@@ -407,8 +407,9 @@ import { getShopData } from './helpers/storage.js';
           
           if (linkedIdx !== -1) {
             const linkedItem = items[linkedIdx];
-            // Determine which is part and which is labor
-            const isPart = (itm.name || '').toLowerCase().startsWith('part:') || 
+            // Determine which is part and which is labor by type property first, then name
+            const isPart = (itm.type === 'part') || 
+                          (itm.name || '').toLowerCase().startsWith('part:') || 
                           itm.part_number || 
                           typeof itm.cost_price !== 'undefined';
             
@@ -423,18 +424,23 @@ import { getShopData } from './helpers/storage.js';
           }
         }
         
-        // Fallback: Check for sequential Part+Labor by naming convention
-        const name = (itm.name || '').toLowerCase().trim();
-        if (name.startsWith('part:')) {
+        // Fallback: Check for sequential Part+Labor by type or naming convention
+        const isPartByType = (itm.type === 'part');
+        const isPartByName = (itm.name || '').toLowerCase().trim().startsWith('part:');
+        
+        if (isPartByType || isPartByName) {
           // Look ahead for matching labor item
           for (let j = i + 1; j < items.length && j <= i + 2; j++) {
             if (usedIndexes.has(j)) continue;
             const nextItem = items[j];
             const nextName = (nextItem.name || '').toLowerCase().trim();
             
-            // Check if next item is labor for this part
-            if (nextName.startsWith('labor -') || nextName.startsWith('labor:') || 
-                nextName.includes('labor for') || nextName.includes('installation')) {
+            // Check if next item is labor by type first, then by naming patterns
+            const isLaborByType = (nextItem.type === 'labor');
+            const isLaborByName = nextName.startsWith('labor') || nextName.startsWith('labor:') || 
+                nextName.includes('labor for') || nextName.includes('installation');
+            
+            if (isLaborByType || isLaborByName) {
               partLaborGroups.push([itm, nextItem]);
               usedIndexes.add(i);
               usedIndexes.add(j);
@@ -502,8 +508,8 @@ import { getShopData } from './helpers/storage.js';
       // Render Part+Labor groups
       if (partLaborGroups.length) {
         for (const [part, labor] of partLaborGroups) {
-          // Use groupName for the group title if present, else default to part name + ' P+R'
-          let groupTitle = part.groupName && part.groupName.trim() ? part.groupName : (part.name.replace(/^part:/i, '').trim() + ' P+R');
+          // Use groupName for the group title if present (check both part and labor), else default to part name + ' P+R'
+          let groupTitle = (part.groupName && part.groupName.trim()) || (labor.groupName && labor.groupName.trim()) || (part.name.replace(/^part:/i, '').trim() + ' P+R');
           // Group header
           const trHeader = document.createElement('tr');
           trHeader.innerHTML = `<td colspan="4" style="font-weight:bold;background:#f3f4f6;padding:8px;">${groupTitle}</td>`;
