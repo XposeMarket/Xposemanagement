@@ -1264,7 +1264,8 @@ async function handleAddLabor() {
   }
   let finalDesc = labDesc;
   if (usingPreset && !finalDesc) {
-    finalDesc = sel.selectedOptions[0]?.text || sel.value || '';
+    // Use the option value (preset name) rather than the display text (which includes price)
+    finalDesc = sel.value || sel.selectedOptions[0]?.value || '';
   }
   
   if (labHours <= 0) {
@@ -1401,7 +1402,8 @@ async function addLaborToInvoice(jobId, description, hours, rate, linkedItemId) 
   // Add labor item to invoice
   const laborItem = {
     id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    name: `Labor - ${description}`,
+    // Store the description directly (no 'Labor - ' prefix) so display and matching are consistent
+    name: description,
     qty: hours,
     price: rate,
     type: 'labor',

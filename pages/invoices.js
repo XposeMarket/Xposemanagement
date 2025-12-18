@@ -904,13 +904,38 @@ function setupInvoices() {
 
       // Show/hide addRateBtn when select changes
       if (laborSelect) {
+        // Normalize names by removing leading 'labor' prefixes and trailing price suffixes
+        const normalizeName = (n) => {
+          if (!n) return '';
+          let s = String(n).trim();
+          // remove leading 'labor', 'labor -', 'labor:'
+          s = s.replace(/^labor\s*[-:\s]*/i, '');
+          // remove trailing price like ' - $60/hr' or ' — $60/hr' or ' - $60'
+          s = s.replace(/[\s\u2013\u2014-]+\$?\d+(?:[.,]\d+)?(?:\/?hr|\/?h| per hour|\/hour)?\b.*$/i, '');
+          return s.trim();
+        };
+
         const updateAddBtn = () => {
           const sel = laborSelect.value;
-          // only show the add-rate controls when the user explicitly selects the 'Custom' option
+          const currentRate = parseFloat(priceInput.value);
+          const currentName = nameInput.value.trim();
+          const normalizedCurrent = normalizeName(currentName);
+
+          // Check if this labor rate matches an existing saved rate (compare normalized names)
+          const matchesExistingRate = laborRates.some(r => 
+            normalizeName(r.name) === normalizedCurrent && Number(r.rate) === currentRate
+          );
+          
+          // only show the add-rate controls when the user explicitly selects 'Custom' option
+          // OR when the rate doesn't match any saved rates (custom rate from jobs page)
           if (sel === '__custom__') {
             // hide the select and reveal the free-text input in the same spot
             laborSelect.style.display = 'none';
             nameInput.style.display = '';
+            addRateBtn.style.display = '';
+          } else if (!matchesExistingRate && currentName && sel !== '' && sel !== '__custom__') {
+            // Labor came from jobs page with custom rate that doesn't match saved rates
+            // Keep select visible but show save button
             addRateBtn.style.display = '';
           } else {
             // show the select (presets) and hide the free-text input
@@ -920,6 +945,9 @@ function setupInvoices() {
           }
         };
         laborSelect.addEventListener('change', updateAddBtn);
+        // Also check on price/name changes in case user modifies values
+        priceInput.addEventListener('input', updateAddBtn);
+        nameInput.addEventListener('input', updateAddBtn);
         // initial state
         updateAddBtn();
       }
@@ -988,11 +1016,9 @@ function setupInvoices() {
           opt.text = `${newName} - $${newPrice}/hr`;
           if (laborSelect) laborSelect.appendChild(opt);
           if (laborSelect) {
-            // ensure the select is visible again and select the new option
             laborSelect.style.display = '';
             laborSelect.value = newName;
           }
-          // hide add button and name input now that preset exists
           nameInput.style.display = 'none';
           addRateBtn.style.display = 'none';
           showNotification('Labor rate saved to Settings');
