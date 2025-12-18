@@ -7,6 +7,7 @@ class PartsCatalogModal {
   constructor() {
     this.modal = null;
     this.currentJobId = null;
+    this.currentJobVehicle = null;
     this.selectedCategory = null;
   }
 
@@ -16,8 +17,14 @@ class PartsCatalogModal {
   async show(jobId) {
     this.currentJobId = jobId;
     
+    // Get the current job's vehicle info
+    await this.loadJobVehicle(jobId);
+    
     if (!this.modal) {
       this.createModal();
+    } else {
+      // Update vehicle info banner if modal already exists
+      this.updateVehicleBanner();
     }
 
     // Reset selections
@@ -28,11 +35,82 @@ class PartsCatalogModal {
 
     this.modal.classList.add('active');
   }
+  
+  /**
+   * Update the vehicle info banner in existing modal
+   */
+  updateVehicleBanner() {
+    const existingBanner = this.modal.querySelector('.vehicle-banner');
+    if (existingBanner) {
+      existingBanner.remove();
+    }
+    
+    if (this.currentJobVehicle) {
+      const vehicleBanner = document.createElement('div');
+      vehicleBanner.className = 'vehicle-banner';
+      vehicleBanner.style.cssText = 'background: #f0fdf4; border-left: 4px solid #10b981; padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 4px;';
+      vehicleBanner.innerHTML = `<span style="color: #059669; font-weight: 600;"><i class="fas fa-car"></i> Shopping for: ${this.currentJobVehicle}</span>`;
+      
+      const modalBody = this.modal.querySelector('.modal-body');
+      modalBody.insertBefore(vehicleBanner, modalBody.firstChild);
+    }
+  }
+
+  /**
+   * Load current job's vehicle information
+   */
+  async loadJobVehicle(jobId) {
+    try {
+      // Try to get from jobs table first
+      const { data: job, error: jobError } = await window.supabase
+        .from('jobs')
+        .select('vehicle, year, make, model')
+        .eq('id', jobId)
+        .single();
+      
+      if (!jobError && job) {
+        // If we have year/make/model, construct vehicle string
+        if (job.year || job.make || job.model) {
+          this.currentJobVehicle = [job.year, job.make, job.model].filter(Boolean).join(' ');
+        } else if (job.vehicle) {
+          this.currentJobVehicle = job.vehicle;
+        }
+      }
+      
+      // If still no vehicle, try from appointment
+      if (!this.currentJobVehicle) {
+        const { data: appt } = await window.supabase
+          .from('appointments')
+          .select('vehicle, year, make, model')
+          .eq('id', job?.appointment_id)
+          .single();
+        
+        if (appt) {
+          if (appt.year || appt.make || appt.model) {
+            this.currentJobVehicle = [appt.year, appt.make, appt.model].filter(Boolean).join(' ');
+          } else if (appt.vehicle) {
+            this.currentJobVehicle = appt.vehicle;
+          }
+        }
+      }
+      
+      console.log('🚗 Job vehicle loaded:', this.currentJobVehicle);
+    } catch (error) {
+      console.warn('Could not load job vehicle:', error);
+      this.currentJobVehicle = null;
+    }
+  }
 
   /**
    * Create the modal HTML structure
    */
   createModal() {
+    const vehicleInfo = this.currentJobVehicle 
+      ? `<div class="vehicle-banner" style="background: #f0fdf4; border-left: 4px solid #10b981; padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 4px;">
+           <span style="color: #059669; font-weight: 600;"><i class="fas fa-car"></i> Shopping for: ${this.currentJobVehicle}</span>
+         </div>`
+      : '';
+    
     const modalHTML = `
       <div class="modal" id="partsCatalogModal" style="z-index:20000; position:fixed; top:0; left:0; width:100vw; height:100vh; display:flex; align-items:center; justify-content:center;">
         <div class="modal-content" style="max-width: 900px; z-index:20001; position:relative;">
@@ -45,6 +123,8 @@ class PartsCatalogModal {
           </div>
           
           <div class="modal-body">
+            ${vehicleInfo}
+            
             <!-- Important Notice -->
             <div class="alert alert-info" style="margin-bottom: 1.5rem; padding: 1rem; background: #e0f2fe; border-left: 4px solid #0284c7; border-radius: 4px;">
               <div style="display: flex; align-items: start; gap: 0.75rem;">
@@ -188,9 +268,18 @@ class PartsCatalogModal {
         );
       }
       
-      const { data, error } = await query.limit(50);
+      // ALWAYS return something - if no filters applied, show all parts (limited)
+      // This ensures parts show for ALL vehicles when searching with no query
+      const { data, error } = await query.order('name').limit(50);
       
-      if (error) throw error;
+      console.log('🔍 Parts search query:', { searchTerm, category });
+      console.log('✅ Parts search results:', data ? data.length : 0, 'parts found');
+      console.log('📦 Sample result:', data && data[0] ? data[0] : 'none');
+      
+      if (error) {
+        console.error('❌ Parts search error:', error);
+        throw error;
+      }
       
       // Hide loading, show results
       document.getElementById('catalogLoading').style.display = 'none';
@@ -198,8 +287,8 @@ class PartsCatalogModal {
       
       this.displayResults(data);
     } catch (error) {
-      console.error('Error searching parts:', error);
-      showNotification('Search failed', 'error');
+      console.error('❌ Error searching parts:', error);
+      showNotification('Search failed: ' + error.message, 'error');
       document.getElementById('catalogLoading').style.display = 'none';
       document.getElementById('catalogResults').style.display = 'block';
     }
@@ -223,10 +312,15 @@ class PartsCatalogModal {
     let html = '<div class="parts-list">';
     
     parts.forEach(part => {
+      // Construct part name with current job vehicle
+      const partDisplayName = this.currentJobVehicle 
+        ? `${part.name} - ${this.currentJobVehicle}`
+        : part.name;
+      
       html += `
         <div class="part-card" data-part-id="${part.id}">
           <div class="part-header">
-            <h4>${part.name}</h4>
+            <h4>${partDisplayName}</h4>
             ${part.category ? `<span class="badge">${part.category}</span>` : ''}
           </div>
           <div class="part-details">
@@ -234,8 +328,9 @@ class PartsCatalogModal {
             ${part.manufacturer ? `<p><strong>Manufacturer:</strong> ${part.manufacturer}</p>` : ''}
             ${part.oem_number ? `<p><strong>OEM #:</strong> ${part.oem_number}</p>` : ''}
             ${part.description ? `<p>${part.description}</p>` : ''}
-            ${part.fits_models ? `<p class="vehicle-fit"><i class="fas fa-car"></i> Fits: ${part.fits_models}</p>` : ''}
-            ${part.suggested_retail_price ? `<p><strong>Est. Price:</strong> $${parseFloat(part.suggested_retail_price).toFixed(2)}</p>` : ''}
+            ${this.currentJobVehicle ? `<p class="vehicle-fit" style="color: #059669; font-weight: 500;"><i class="fas fa-car"></i> For: ${this.currentJobVehicle}</p>` : ''}
+            ${part.fits_models ? `<p class="vehicle-fit" style="color: #6b7280; font-size: 0.9rem;"><i class="fas fa-info-circle"></i> Generally fits: ${part.fits_models}</p>` : ''}
+            ${part.suggested_retail_price ? `<p><strong>Est. Price:</strong> ${parseFloat(part.suggested_retail_price).toFixed(2)}</p>` : ''}
           </div>
           <div class="part-actions">
             <button class="btn small primary add-part-btn" data-part='${JSON.stringify(part).replace(/'/g, "&#39;")}'>

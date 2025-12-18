@@ -168,6 +168,22 @@ async function __mainBase() {
     await requireAuth();
     
     // Initialize shop switcher for multi-shop users
+    // Ensure demo shop exists in localStorage for demo account so UI shows settings/shop list
+    try {
+      const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+      const sessEmail = (session.email || '').toString().toLowerCase();
+      if (sessEmail === 'demo@demo.com' || sessEmail === 'demo@demo.com') {
+        try {
+          const shops = JSON.parse(localStorage.getItem('xm_shops') || '[]');
+          if (!shops.find(s => String(s.id) === 'shop_demo')) {
+            const demoShop = { id: 'shop_demo', name: 'Demo Shop', phone: '', email: 'demo@demo.com', zipcode: '', logo: '', owner_id: session.user_id || session.user?.id || null, staff_limit: 3 };
+            shops.unshift(demoShop);
+            localStorage.setItem('xm_shops', JSON.stringify(shops));
+            console.log('[app] Seeded demo shop into localStorage for demo account');
+          }
+        } catch (e) { /* ignore localStorage seed failures */ }
+      }
+    } catch (e) {}
     await initShopSwitcher();
     
     // Add admin link to nav for multi-shop capable users

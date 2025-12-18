@@ -454,25 +454,78 @@ class PartsModalHandler {
     resultsDiv.innerHTML = '<p class="notice" style="text-align: center;">Searching...</p>';
 
     try {
-      // Search parts directly from Supabase
+      // NEW APPROACH: Search ALL parts from catalog_parts first (no vehicle filter)
+      // This makes all 1000+ parts available for any vehicle
       const { supabase } = await import('../helpers/supabase.js');
-      let query = supabase
+      let mainQuery = supabase
         .from('catalog_parts')
         .select(`*, category:catalog_categories(name)`);
 
-      // Show all parts compatible with selected year and newer
-      if (this.selectedYear) query = query.lte('year', this.selectedYear);
-      if (this.selectedMake) query = query.eq('make', this.selectedMake);
-      if (this.selectedModel) query = query.eq('model', this.selectedModel);
-      if (category) query = query.eq('category_id', category);
+      // ONLY filter by category and search term - NO vehicle filtering!
+      if (category) mainQuery = mainQuery.eq('category_id', category);
       if (searchTerm) {
-        query = query.or(`part_name.ilike.%${searchTerm}%,part_number.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+        mainQuery = mainQuery.or(`part_name.ilike.%${searchTerm}%,part_number.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
       }
-      query = query.order('part_name');
+      mainQuery = mainQuery.order('part_name').limit(100);
 
-      const { data, error } = await query;
-      if (error) throw error;
-      this.displayResults(data);
+      const { data: allParts, error: mainErr } = await mainQuery;
+      if (mainErr) throw mainErr;
+
+      console.debug('[PartsModalHandler] universal search returned', Array.isArray(allParts) ? allParts.length : 0, 'rows');
+      if (Array.isArray(allParts) && allParts.length > 0) {
+        this.displayResults(allParts);
+        return;
+      }
+
+      // Fallback 2: query universal_parts_catalog - SHOW ALL PARTS regardless of vehicle
+      console.debug('[PartsModalHandler] running fallback search against universal_parts_catalog');
+      try {
+        let uQuery = supabase
+          .from('universal_parts_catalog')
+          .select(`*`);
+
+        // REMOVED vehicle filtering - show ALL parts for ANY vehicle
+        if (searchTerm) {
+          uQuery = uQuery.or(`name.ilike.%${searchTerm}%,part_number.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`);
+        }
+        if (category) {
+          uQuery = uQuery.eq('category', category);
+        }
+        
+        uQuery = uQuery.order('name').limit(50);
+
+        const { data: uData, error: uErr } = await uQuery;
+        if (uErr) throw uErr;
+        console.debug('[PartsModalHandler] universal_parts_catalog returned', Array.isArray(uData) ? uData.length : 0, 'rows');
+
+        if (Array.isArray(uData) && uData.length > 0) {
+          // Normalize universal catalog rows into the shape expected by displayResults
+          const normalized = uData.map(r => ({
+            id: r.id,
+            part_name: r.name || r.part_name || '',
+            part_number: r.part_number || '',
+            description: r.description || r.notes || '',
+            year: r.year || null,
+            make: r.make || null,
+            model: r.model || null,
+            category: { name: r.category_name || r.category || 'Part' }
+          }));
+          this.displayResults(normalized);
+          return;
+        }
+      } catch (uErr) {
+        console.error('[PartsModalHandler] universal catalog fallback failed', uErr);
+        resultsDiv.innerHTML = `<p class="notice error">Search failed. Parts catalog fallback failed (network/CORS). Try again or contact support.</p>`;
+        return;
+      }
+
+      // No results from any source
+      resultsDiv.innerHTML = `
+        <p class="notice" style="text-align: center; padding: 2rem 1rem;">
+          <strong style="display: block; margin-bottom: 0.5rem;">No parts found. Try adjusting your search or selecting a different year/make/model.</strong>
+          <small style="color: var(--muted); font-size: 0.85rem;">If a specific vehicle returns no results, check that the vehicle naming matches the parts data in your catalog (e.g., "Corvette" vs "Corvette Coupe").</small>
+        </p>
+      `;
     } catch (error) {
       console.error('Error searching parts:', error);
       resultsDiv.innerHTML = '<p class="notice error">Search failed. Please try again.</p>';
@@ -496,6 +549,10 @@ class PartsModalHandler {
       return;
     }
 
+    // Get current job's vehicle info for display
+    const jobVehicle = this.currentJob ? 
+      `${this.currentJob.year || ''} ${this.currentJob.make || ''} ${this.currentJob.model || ''}`.trim() : '';
+
     let html = '<div style="display: grid; gap: 12px;">';
     html += `
       <div style="background: var(--card-bg); padding: 12px; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 8px;">
@@ -506,20 +563,37 @@ class PartsModalHandler {
     `;
     
     parts.forEach(part => {
+      // Remove any existing vehicle from part name (e.g. "A/C Compressor - Audi Q5" -> "A/C Compressor")
+      let cleanPartName = part.part_name;
+      // Remove pattern like " - [vehicle]" from the end
+      cleanPartName = cleanPartName.replace(/\s*-\s*\d{4}\s+[\w\s]+$/i, '').trim();
+      cleanPartName = cleanPartName.replace(/\s*-\s*[A-Z][\w\s]+$/i, '').trim();
+      
+      // Add current job vehicle to part name
+      const displayName = jobVehicle ? `${cleanPartName} - ${jobVehicle}` : cleanPartName;
+      
+      // Clean description - remove vehicle-specific info and keep only generic description
+      let cleanDescription = part.description || '';
+      // Remove patterns like "for Audi A6 around model years 2020-2025"
+      cleanDescription = cleanDescription.replace(/for\s+[A-Z][\w\s]+around\s+model\s+years\s+\d{4}[-–]\d{4}/gi, '');
+      cleanDescription = cleanDescription.replace(/for\s+\d{4}\s+[A-Z][\w\s]+/gi, '');
+      cleanDescription = cleanDescription.replace(/for\s+[A-Z][\w\s]+\d{4}[-–]\d{4}/gi, '');
+      cleanDescription = cleanDescription.trim();
+      // Remove leading/trailing punctuation that might be left over
+      cleanDescription = cleanDescription.replace(/^[,\.\s]+|[,\.\s]+$/g, '').trim();
+      
       html += `
         <div class="part-result-card" style="background: var(--card-bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
             <div>
-              <strong>${part.part_name}</strong>
+              <strong>${displayName}</strong>
               ${part.part_number ? `<br><small style="color: var(--muted);">Part #: ${part.part_number}</small>` : ''}
             </div>
             <span class="badge" style="background: var(--accent); color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem;">
               ${part.category?.name || 'Part'}
             </span>
           </div>
-          ${part.description ? `<p style="font-size: 0.9rem; color: var(--muted); margin: 8px 0;">${part.description}</p>` : ''}
-          ${part.year && part.make && part.model ? 
-            `<p style="font-size: 0.85rem; color: var(--accent); margin: 8px 0;">Fits: ${part.year} ${part.make} ${part.model}</p>` : ''}
+          ${cleanDescription ? `<p style="font-size: 0.9rem; color: var(--muted); margin: 8px 0;">${cleanDescription}</p>` : ''}
           <div style="display: flex; justify-content: flex-end; margin-top: 8px;">
             <button class="btn info small add-catalog-part" data-part='${JSON.stringify(part)}'>
               Add to Job

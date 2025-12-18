@@ -348,11 +348,14 @@ export async function upsertFolderToSupabase(folder, shopId) {
     
     console.log('📁 Syncing folder to Supabase:', folder.name);
     
+    // Note: `inventory_folders` table does not include a `meta` column
+    // in some deployments; avoid sending `meta` to prevent PostgREST
+    // schema cache errors (PGRST204). If you want `meta` on folders,
+    // add the column in the DB instead of sending it here.
     const folderPayload = {
       shop_id: shopId,
       name: folder.name,
-      unit: folder.unit || null,
-      meta: folder.meta || null
+      unit: folder.unit || null
     };
     
     let folderId = folder.id;

@@ -7,6 +7,8 @@ import { setupInventoryPricing } from './helpers/inventory-pricing.js';
 let inventory = JSON.parse(localStorage.getItem('inventory') || '[]');
 // Folders (preset categories like Oil)
 let inventoryFolders = JSON.parse(localStorage.getItem('inventoryFolders') || '[]');
+// Track whether we've already fetched remote inventory this session
+let remoteInventoryFetched = false;
 
 // DOM references (initialized in setupInventory)
 let inventoryGrid;
@@ -71,15 +73,16 @@ function confirmDialog(message) {
 
 async function renderInventory() {
   if (!inventoryGrid) return;
-  // Try to fetch authoritative inventory/folders from Supabase first
+  // Try to fetch authoritative inventory/folders from Supabase once per session
   try {
     let shopId = null;
     try { shopId = JSON.parse(localStorage.getItem('xm_session')||'{}').shopId || null; } catch (e) {}
-    if (shopId) {
+    if (shopId && !remoteInventoryFetched) {
       const { fetchInventoryForShop } = await import('./helpers/inventory-api.js');
       const remote = await fetchInventoryForShop(shopId);
+      remoteInventoryFetched = true;
       if (remote) {
-        // Replace in-memory lists with remote values when present
+        // Replace in-memory lists with remote values when present (only once)
         if (Array.isArray(remote.items) && remote.items.length > 0) {
           inventory = remote.items.map(it => ({
             name: it.name,
@@ -96,7 +99,6 @@ async function renderInventory() {
         }
         if (Array.isArray(remote.folders) && remote.folders.length > 0) {
           inventoryFolders = remote.folders.map(f => {
-            // preserve local meta (e.g., blueBorder) if remote doesn't include it
             const localMatch = (inventoryFolders || []).find(x => String(x.id) === String(f.id) || (x.name || '').toLowerCase() === (f.name || '').toLowerCase());
             return ({
               id: f.id,
@@ -1188,7 +1190,7 @@ export async function setupInventory() {
   if (orderModalClose) orderModalClose.addEventListener('click', () => {
     if (!orderModal) return; orderModal.classList.add('hidden'); orderModal.setAttribute('aria-hidden', 'true');
   });
-  if (orderForm) orderForm.addEventListener('submit', (e) => {
+  if (orderForm) orderForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const sel = orderItemSelect.value || '';
     const q = parseInt(orderQty.value, 10) || 1;
@@ -1200,8 +1202,28 @@ export async function setupInventory() {
         inventory[idx].qty = (parseInt(inventory[idx].qty, 10) || 0) + q;
         inventory[idx].lastOrder = new Date().toISOString();
         updateOutOfStockFlag(inventory[idx]);
+        // Persist locally first
         localStorage.setItem('inventory', JSON.stringify(inventory));
         renderInventory();
+        // Then try to persist remotely (if shopId present)
+        try {
+          const { upsertInventoryItemRemote } = await import('./helpers/inventory-api.js');
+          let shopId = null;
+          try { shopId = JSON.parse(localStorage.getItem('xm_session')||'{}').shopId || null; } catch (e) {}
+          if (shopId) {
+            const result = await upsertInventoryItemRemote(inventory[idx], shopId);
+            if (result && result.id) {
+              // Update local record with authoritative ID/pricing
+              inventory[idx].id = result.id;
+              inventory[idx].cost_price = result.cost_price || inventory[idx].cost_price || null;
+              inventory[idx].sell_price = result.sell_price || inventory[idx].sell_price || null;
+              inventory[idx].markup_percent = result.markup_percent || inventory[idx].markup_percent || null;
+              try { localStorage.setItem('inventory', JSON.stringify(inventory)); } catch (e) {}
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to sync inventory item remote after order', err);
+        }
       } else if (sel.startsWith('folder:')) {
         const parts = sel.split(':');
         const fIdx = parseInt(parts[1], 10);
@@ -1212,7 +1234,8 @@ export async function setupInventory() {
         it.qty = (parseInt(it.qty, 10) || 0) + q;
         it.lastOrder = new Date().toISOString();
         updateOutOfStockFlag(it);
-        saveFolders();
+        // Persist folder changes and sync to Supabase
+        try { await saveFolders(); } catch (e) { console.warn('Failed to saveFolders after order', e); }
         // Refresh open folder modal if it's the same folder
         try { if (typeof currentFolderRender === 'function') currentFolderRender(); } catch(e) {}
         try { renderInventory(); } catch(e) {}
