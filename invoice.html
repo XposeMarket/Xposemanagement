@@ -385,26 +385,14 @@ import { getShopData } from './helpers/storage.js';
       const partLaborGroups = [];
       let usedIndexes = new Set();
 
-      // 1. Load service and labor names from settings for strict matching
+      // 1. Load service names from settings for strict matching
       let serviceNames = [];
-      let laborNames = [];
       try {
         const d = JSON.parse(localStorage.getItem('xm_data') || '{}');
         serviceNames = ((d.settings && d.settings.services) || []).map(s => (s.name || '').toLowerCase().trim());
-        laborNames = ((d.settings && d.settings.labor_rates) || []).map(r => (r.name || '').toLowerCase().trim());
-      } catch (e) { serviceNames = []; laborNames = []; }
+      } catch (e) { serviceNames = []; }
 
       // 2. First pass: Detect Part+Labor pairs
-      // Helper: normalize item names by removing leading 'labor' prefixes and trailing price text
-      function normalizeItemName(n) {
-        if (!n) return '';
-        let s = String(n).trim();
-        // remove leading 'labor', 'labor -', 'labor:'
-        s = s.replace(/^labor\s*[-:\s]*/i, '');
-        // remove trailing price like ' - $60/hr' or ' — $60/hr' or ' - $60'
-        s = s.replace(/[\s\u2013\u2014-]+\$?\d+(?:[.,]\d+)?(?:\/?hr|\/?h| per hour|\/hour)?\b.*$/i, '');
-        return s.trim().toLowerCase();
-      }
       // Look for items with linkedItemId to identify explicit pairs
       for (let i = 0; i < items.length; i++) {
         if (usedIndexes.has(i)) continue;
@@ -461,21 +449,14 @@ import { getShopData } from './helpers/storage.js';
         if (usedIndexes.has(i)) continue;
         const itm = items[i];
         const name = (itm.name || '').toLowerCase().trim();
-        const normalized = normalizeItemName(itm.name);
 
         // Priority 1: Service (strict - must match settings)
-        if (serviceNames.length && serviceNames.includes(normalized)) {
+        if (serviceNames.length && serviceNames.includes(name)) {
           serviceItems.push(itm);
           continue;
         }
 
-        // Priority 2: Labor (if name matches saved labor rates)
-        if (laborNames.length && laborNames.includes(normalized)) {
-          laborItems.push(itm);
-          continue;
-        }
-
-        // Priority 3: Labor (by naming patterns and known labor types)
+        // Priority 2: Labor (by naming patterns and known labor types)
         const isLabor = 
           name.startsWith('labor') || 
           name.startsWith('labor:') || 
@@ -542,8 +523,8 @@ import { getShopData } from './helpers/storage.js';
           let laborPrice = Number(labor.price) || 0;
           let laborTotal = laborQty * laborPrice;
           subtotal += laborTotal;
-          // Extract actual labor description (normalize to remove prefixes/prices)
-          let displayLaborName = normalizeItemName(labor.name) || `Labor (${laborQty} hr${laborQty !== 1 ? 's' : ''})`;
+          // Extract actual labor description
+          let displayLaborName = labor.name.replace(/^labor:/i, '').trim() || `Labor (${laborQty} hr${laborQty !== 1 ? 's' : ''})`;
           const trLabor = document.createElement('tr');
           trLabor.innerHTML = `<td style="padding-left:20px;">${displayLaborName}</td><td style="text-align:center">${laborQty}</td><td style="text-align:right">${laborPrice.toFixed(2)}</td><td style="text-align:right">${laborTotal.toFixed(2)}</td>`;
           itemsTbody.appendChild(trLabor);
@@ -585,9 +566,8 @@ import { getShopData } from './helpers/storage.js';
           const price = Number(itm.price) || 0;
           const total = qty * price;
           subtotal += total;
-          const displayName = normalizeItemName(itm.name) || itm.name || 'Labor';
           const trLabor = document.createElement('tr');
-          trLabor.innerHTML = `<td>${displayName}</td><td style="text-align:center">${qty}</td><td style="text-align:right">$${price.toFixed(2)}</td><td style="text-align:right">$${total.toFixed(2)}</td>`;
+          trLabor.innerHTML = `<td>${itm.name}</td><td style="text-align:center">${qty}</td><td style="text-align:right">$${price.toFixed(2)}</td><td style="text-align:right">$${total.toFixed(2)}</td>`;
           itemsTbody.appendChild(trLabor);
         }
       }
