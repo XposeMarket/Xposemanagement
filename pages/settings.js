@@ -391,11 +391,20 @@ function setupSettings() {
           .upsert(payload, { onConflict: 'shop_id' });
         
         if (error) throw error;
+        // Update local cache and notify other windows/tabs
+        try {
+          const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
+          localData.settings = settings;
+          localStorage.setItem('xm_data', JSON.stringify(localData));
+          window.dispatchEvent(new Event('xm_data_updated'));
+        } catch (e) { /* ignore local cache failures */ }
       } else {
         // Save to localStorage
         const data = JSON.parse(localStorage.getItem('xm_data') || '{}');
         data.settings = settings;
         localStorage.setItem('xm_data', JSON.stringify(data));
+        // Notify other windows/tabs
+        try { window.dispatchEvent(new Event('xm_data_updated')); } catch(e){}
       }
     } catch (ex) {
       console.error('Error saving settings:', ex);

@@ -1161,32 +1161,32 @@ async function openLaborModal(jobId, partItemId, partName) {
     let settings = JSON.parse(localStorage.getItem('xm_data') || '{}').settings || {};
     let rates = settings.labor_rates || [];
     console.log('[openLaborModal] labor_rates from localStorage:', rates);
-    // If no local rates, attempt to fetch from Supabase `data` table as a fallback
-    if ((!rates || rates.length === 0)) {
-      try {
-        const supabase = getSupabaseClient();
-        const shopId = getCurrentShopId();
-        if (supabase && shopId) {
-          const { data: dataRecord, error } = await supabase
-            .from('data')
-            .select('settings')
-            .eq('shop_id', shopId)
-            .single();
-          if (!error && dataRecord && dataRecord.settings) {
-            settings = dataRecord.settings || {};
-            rates = settings.labor_rates || [];
-            console.log('[openLaborModal] fetched labor_rates from Supabase:', rates);
-            // update localStorage cache so subsequent calls are fast
-            try {
-              const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
-              localData.settings = Object.assign(localData.settings || {}, settings);
-              localStorage.setItem('xm_data', JSON.stringify(localData));
-            } catch (e) { /* ignore local cache failures */ }
-          }
+    // Attempt to fetch latest settings from Supabase (if available) to avoid stale local cache
+    try {
+      const supabase = getSupabaseClient();
+      const shopId = getCurrentShopId();
+      if (supabase && shopId) {
+        const { data: dataRecord, error } = await supabase
+          .from('data')
+          .select('settings')
+          .eq('shop_id', shopId)
+          .single();
+        if (!error && dataRecord && dataRecord.settings) {
+          const fetchedSettings = dataRecord.settings || {};
+          const fetchedRates = fetchedSettings.labor_rates || [];
+          // Always replace local cached settings with authoritative Supabase settings
+          settings = fetchedSettings;
+          rates = fetchedRates;
+          console.log('[openLaborModal] loaded labor_rates from Supabase:', rates);
+          try {
+            const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
+            localData.settings = Object.assign(localData.settings || {}, settings);
+            localStorage.setItem('xm_data', JSON.stringify(localData));
+          } catch (e) { /* ignore local cache failures */ }
         }
-      } catch (e) {
-        console.warn('[openLaborModal] Supabase fallback failed', e);
       }
+    } catch (e) {
+      console.warn('[openLaborModal] Supabase fetch failed', e);
     }
     if (labRateSel) {
       // populate select with only saved labor rates (no placeholder/custom option)
