@@ -1,3 +1,52 @@
+  // Ensure theme panel matches profile card height
+  window.addEventListener('DOMContentLoaded', () => {
+    const card = document.getElementById('profileCard');
+    const panel = document.getElementById('themePanel');
+    if (card && panel) {
+      panel.style.height = card.offsetHeight + 'px';
+    }
+  });
+  // Theme picker swatch logic
+  function setTheme(theme) {
+    const html = document.documentElement;
+    html.classList.remove('theme-alt', 'theme-blue', 'theme-bluegrey', 'theme-dark');
+    if (theme && theme !== 'light') html.classList.add(theme);
+    try { localStorage.setItem('xm_theme', theme); } catch (e) {}
+    // Optionally update user profile theme in localStorage if logged in
+    try {
+      const users = JSON.parse(localStorage.getItem('xm_users') || '[]');
+      const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+      const idx = users.findIndex(u => u.email === session.email);
+      if (idx >= 0) {
+        users[idx].theme = theme;
+        localStorage.setItem('xm_users', JSON.stringify(users));
+      }
+    } catch (e) {}
+    // Highlight selected swatch
+    document.querySelectorAll('.theme-swatch').forEach(el => {
+      el.style.outline = (el.dataset.theme === theme) ? '2.5px solid var(--accent)' : 'none';
+    });
+  }
+
+  // Attach click handlers to swatches
+  setTimeout(() => {
+    const swatches = document.querySelectorAll('.theme-swatch');
+    if (swatches.length) {
+      swatches.forEach(el => {
+        el.addEventListener('click', () => setTheme(el.dataset.theme));
+      });
+      // Highlight current theme
+      let current = 'light';
+      const html = document.documentElement;
+      if (html.classList.contains('theme-dark')) current = 'theme-dark';
+      else if (html.classList.contains('theme-bluegrey')) current = 'theme-bluegrey';
+      else if (html.classList.contains('theme-blue')) current = 'theme-blue';
+      else if (html.classList.contains('theme-alt')) current = 'theme-alt';
+      document.querySelectorAll('.theme-swatch').forEach(el => {
+        el.style.outline = (el.dataset.theme === current) ? '2.5px solid var(--accent)' : 'none';
+      });
+    }
+  }, 0);
 /**
  * pages/profile.js
  * Profile page setup - User profile management (separate from shop info)

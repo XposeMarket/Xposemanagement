@@ -138,16 +138,29 @@ function canAccessPage(pageName, user = null) {
  * Toggle dark theme
  */
 
-// Toggle between default (light) and theme-alt (new theme)
+// Cycle through: default (light) -> theme-alt -> theme-blue -> theme-bluegrey -> theme-dark -> default ...
 function toggleTheme() {
   const html = document.documentElement;
   const isAlt = html.classList.contains('theme-alt');
+  const isBlue = html.classList.contains('theme-blue');
+  const isBlueGrey = html.classList.contains('theme-bluegrey');
+  const isDark = html.classList.contains('theme-dark');
   let nextTheme = 'light';
-  html.classList.remove('theme-alt');
-  if (!isAlt) {
+  html.classList.remove('theme-alt', 'theme-blue', 'theme-bluegrey', 'theme-dark');
+  if (!isAlt && !isBlue && !isBlueGrey && !isDark) {
     html.classList.add('theme-alt');
     nextTheme = 'theme-alt';
+  } else if (isAlt) {
+    html.classList.add('theme-blue');
+    nextTheme = 'theme-blue';
+  } else if (isBlue) {
+    html.classList.add('theme-bluegrey');
+    nextTheme = 'theme-bluegrey';
+  } else if (isBlueGrey) {
+    html.classList.add('theme-dark');
+    nextTheme = 'theme-dark';
   }
+  // else stays light
   try { localStorage.setItem('xm_theme', nextTheme); } catch (e) {}
 
   const u = currentUser();
@@ -170,9 +183,18 @@ function setThemeFromUser() {
   try {
     const stored = localStorage.getItem('xm_theme');
     const html = document.documentElement;
-    html.classList.remove('theme-alt');
+    html.classList.remove('theme-alt', 'theme-blue', 'theme-bluegrey', 'theme-dark');
     if (stored === 'theme-alt') {
       html.classList.add('theme-alt');
+      return;
+    } else if (stored === 'theme-blue') {
+      html.classList.add('theme-blue');
+      return;
+    } else if (stored === 'theme-bluegrey') {
+      html.classList.add('theme-bluegrey');
+      return;
+    } else if (stored === 'theme-dark') {
+      html.classList.add('theme-dark');
       return;
     }
   } catch (e) {
@@ -181,8 +203,11 @@ function setThemeFromUser() {
   const u = currentUser();
   if (u && u.theme) {
     const html = document.documentElement;
-    html.classList.remove('theme-alt');
+    html.classList.remove('theme-alt', 'theme-blue', 'theme-bluegrey', 'theme-dark');
     if (u.theme === 'theme-alt') html.classList.add('theme-alt');
+    else if (u.theme === 'theme-blue') html.classList.add('theme-blue');
+    else if (u.theme === 'theme-bluegrey') html.classList.add('theme-bluegrey');
+    else if (u.theme === 'theme-dark') html.classList.add('theme-dark');
   }
 }
 

@@ -24,7 +24,52 @@
     </div>
   </div>
 </header>
-<main class="container" style="padding:16px 0"><h1>Profile</h1><div class="card" style="max-width:600px"><label>First name</label><input id="pfFirst"><label>Last name</label><input id="pfLast"><label>Email (read-only)</label><input id="pfEmail" disabled><label>Role</label><input id="pfRole" disabled><div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button id="pfSave" class="btn info">Save</button><button id="changeEmailBtn" class="btn">Change Email</button><button id="changePassBtn" class="btn">Change Password</button></div><p id="pfSaved" class="notice"></p></div><p id="pfSaved" class="notice"></p></div></main><!-- Change Email Modal -->
+<main class="container profile-main">
+  <div class="profile-flex">
+    <div id="profileCardCol">
+      <h1>Profile</h1>
+      <div id="profileCard" class="card">
+        <label>First name</label><input id="pfFirst">
+        <label>Last name</label><input id="pfLast">
+        <label>Email (read-only)</label><input id="pfEmail" disabled>
+        <label>Role</label><input id="pfRole" disabled>
+        <div class="profile-btn-row">
+          <button id="pfSave" class="btn info">Save</button>
+          <button id="changeEmailBtn" class="btn">Change Email</button>
+          <button id="changePassBtn" class="btn">Change Password</button>
+        </div>
+        <p id="pfSaved" class="notice"></p>
+      </div>
+      <p id="pfSaved" class="notice"></p>
+    </div>
+    <aside id="themePanel" class="card">
+      <h3>Theme Picker</h3>
+      <div id="themeSwatches">
+        <div class="theme-swatch" data-theme="light" title="Default">
+          <div style="flex:1;background:#fff;"></div>
+          <div style="flex:1;background:#fff;"></div>
+        </div>
+        <div class="theme-swatch" data-theme="theme-alt" title="Alt">
+          <div style="flex:1;background:#eaf6fb;"></div>
+          <div style="flex:1;background:#f7fafc;"></div>
+        </div>
+        <div class="theme-swatch" data-theme="theme-blue" title="Blue">
+          <div style="flex:1;background:#e3f0fa;"></div>
+          <div style="flex:1;background:#f3f8fd;"></div>
+        </div>
+        <div class="theme-swatch" data-theme="theme-bluegrey" title="Blue-Grey">
+          <div style="flex:1;background:#e6eaf1;"></div>
+          <div style="flex:1;background:#f4f6fa;"></div>
+        </div>
+        <div class="theme-swatch" data-theme="theme-dark" title="Dark">
+          <div style="flex:1;background:#232834;"></div>
+          <div style="flex:1;background:#181c23;"></div>
+        </div>
+      </div>
+      <div class="theme-panel-note">Click a color to change theme</div>
+    </aside>
+  </div>
+</main>
 <div id="emailModal" class="card hidden" style="position:fixed;right:20px;bottom:20px;max-width:520px;z-index:50">
   <div class="toolbar" style="justify-content:space-between">
     <h3>Change Email</h3>
