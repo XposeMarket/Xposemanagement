@@ -188,6 +188,12 @@ async function __mainBase() {
     
     // Add admin link to nav for multi-shop capable users
     await addAdminLinkToNav();
+    // Initialize invitation modal for pending invites (if any)
+    try {
+      import('./helpers/invitation-modal.js').then(mod => {
+        if (mod && typeof mod.initInvitationModal === 'function') mod.initInvitationModal().catch(() => {});
+      }).catch(() => {});
+    } catch(e){}
     // Show Inventory link for any authenticated user (local or Supabase)
     const inventoryLink = document.getElementById('inventoryNavLink');
     if (inventoryLink) {

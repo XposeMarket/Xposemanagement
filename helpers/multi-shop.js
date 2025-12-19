@@ -157,8 +157,17 @@ async function shouldShowAdminPage(userId) {
       console.warn('Error while determining owner status:', ex);
     }
 
+    // Normalize plan names and allow explicit 'multi_shop' alias
     const planToCheck = isOwner ? (user?.subscription_plan || '') : (ownerPlan || '');
-    const hasMultiShopPlan = ['local', 'multi'].includes(String(planToCheck).toLowerCase());
+    const planNorm = String(planToCheck).toLowerCase();
+    const hasMultiShopPlan = ['local', 'multi', 'multi_shop'].includes(planNorm);
+
+    // Additionally, if the user's own subscription plan allows multi-shop admin, grant access
+    const userPlan = String(user?.subscription_plan || '').toLowerCase();
+    if (['local', 'multi', 'multi_shop'].includes(userPlan)) {
+      console.log('✅ [ADMIN CHECK] Show admin - user subscription plan allows admin', { userPlan });
+      return { showAdmin: true, reason: 'user_plan_allows_admin', shopCount };
+    }
 
     console.log('🔍 [ADMIN CHECK] Evaluation:', {
       shopCount,

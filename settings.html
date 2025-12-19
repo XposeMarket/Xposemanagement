@@ -121,6 +121,28 @@ function showNotification(message, type = 'success') {
           }
         </style>
     <p class="notice">Slots used: <span id="slotsUsed">0</span> / <span id="slotsMax">3</span></p>
+
+    <!-- Invitations UI -->
+    <div id="invitations-section" style="margin-top:16px;">
+      <div class="card">
+        <h3>Pending Invitations</h3>
+        <div id="pendingInvitesList"><div class="muted">Loading...</div></div>
+
+        <h3 style="margin-top:12px">Invite Existing User</h3>
+        <form id="inviteForm">
+          <div class="grid cols-3">
+            <input id="inviteEmailInput" type="email" placeholder="user@example.com" required>
+            <select id="inviteRoleSelect">
+              <option value="technician">Technician</option>
+              <option value="manager">Manager</option>
+              <option value="service_advisor">Service Advisor</option>
+            </select>
+            <button id="inviteSendBtn" class="btn primary" type="submit">Send Invitation</button>
+          </div>
+        </form>
+        <p class="invite-note">💡 User must have an Xpose account to receive invitation</p>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -481,6 +503,110 @@ document.addEventListener('DOMContentLoaded', function(){
 
       // Initial render
       await renderTeam();
+
+      // --- Invitations: fetch & UI wiring ---
+      async function fetchPendingInvitations() {
+        try {
+          const { data, error } = await sup
+            .from('shop_invitations')
+            .select('*, invited_by:users!invited_by_user_id(first, last, email)')
+            .eq('shop_id', shop.id)
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false });
+
+          if (error) throw error;
+          const listEl = document.getElementById('pendingInvitesList');
+          if (!listEl) return;
+          listEl.innerHTML = '';
+          if (!data || data.length === 0) {
+            listEl.innerHTML = '<div class="muted">No pending invitations.</div>';
+            return;
+          }
+
+          data.forEach(inv => {
+            const item = document.createElement('div');
+            item.className = 'pending-invite-item';
+            item.style.display = 'flex';
+            item.style.justifyContent = 'space-between';
+            item.style.alignItems = 'center';
+            item.style.padding = '8px 0';
+            item.innerHTML = `
+              <div>
+                <div style="font-weight:600">${inv.invited_email}</div>
+                <div style="color:#666">Role: ${inv.role} • Sent ${new Date(inv.created_at).toLocaleDateString()}</div>
+              </div>
+              <div>
+                <button class="btn" data-invite-id="${inv.id}" data-action="cancel">Cancel</button>
+              </div>
+            `;
+            listEl.appendChild(item);
+          });
+
+          // Wire cancel buttons
+          listEl.querySelectorAll('button[data-action="cancel"]').forEach(b => {
+            b.addEventListener('click', async (e) => {
+              const id = b.getAttribute('data-invite-id');
+              if (!id) return;
+              if (!confirm('Cancel this invitation?')) return;
+              try {
+                const { error } = await sup.from('shop_invitations').delete().eq('id', id);
+                if (error) throw error;
+                fetchPendingInvitations();
+              } catch (ex) {
+                console.error('Error canceling invitation:', ex);
+                alert('Failed to cancel invitation.');
+              }
+            });
+          });
+        } catch (ex) {
+          console.error('Error fetching pending invitations:', ex);
+        }
+      }
+
+      // Invite form handler
+      const inviteForm = document.getElementById('inviteForm');
+      if (inviteForm) {
+        inviteForm.addEventListener('submit', async (ev) => {
+          ev.preventDefault();
+          const emailInput = document.getElementById('inviteEmailInput');
+          const roleSelect = document.getElementById('inviteRoleSelect');
+          const inviteEmail = (emailInput?.value || '').toLowerCase().trim();
+          const inviteRole = (roleSelect?.value || 'technician');
+          if (!inviteEmail) return alert('Enter an email');
+
+          try {
+            // 1. Check user exists in users table
+            const { data: existingUser, error: userErr } = await sup.from('users').select('id,email').eq('email', inviteEmail).single();
+            if (userErr || !existingUser) {
+              alert("This user doesn't have an Xpose account yet. Ask them to sign up first.");
+              return;
+            }
+
+            // 2. Check if already a member
+            const { data: existingMember } = await sup.from('user_shops').select('id').eq('user_id', existingUser.id).eq('shop_id', shop.id).single();
+            if (existingMember) { alert('This user is already a member of this shop.'); return; }
+
+            // 3. Check for existing pending invitation
+            const { data: existingInvite } = await sup.from('shop_invitations').select('id').eq('invited_email', inviteEmail).eq('shop_id', shop.id).eq('status', 'pending').single();
+            if (existingInvite) { alert('An invitation has already been sent to this email.'); return; }
+
+            // 4. Create invitation
+            const { error: insertError } = await sup.from('shop_invitations').insert({ shop_id: shop.id, invited_by_user_id: currentUser.id, invited_email: inviteEmail, role: inviteRole });
+            if (insertError) throw insertError;
+
+            alert('Invitation sent successfully!');
+            if (emailInput) emailInput.value = '';
+            if (roleSelect) roleSelect.value = 'technician';
+            fetchPendingInvitations();
+          } catch (ex) {
+            console.error('Error sending invitation:', ex);
+            alert('Failed to send invitation. Please try again.');
+          }
+        });
+      }
+
+      // Initial invitations load
+      try { fetchPendingInvitations(); } catch(e){}
 
       // Wire copy button
       if(btnCopy && elJoin){

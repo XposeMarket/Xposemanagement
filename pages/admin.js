@@ -17,6 +17,7 @@ let userShops = [];
 let shopStats = {};
 let canCreate = { canCreate: false, currentShops: 0, maxShops: 0 };
 let currentShopId = null;
+let isSubscriptionOwner = false;
 
 /**
  * Initialize admin page
@@ -86,6 +87,24 @@ async function init() {
   console.log('📊 User has', userShops.length, 'shops');
   console.log('🔒 Can create more shops?', canCreate.canCreate);
   console.log('🏢 Current shop:', currentShopId);
+  
+  // Determine whether this user is the subscription owner (has a subscription_plan)
+  try {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const { data: udata, error: uerr } = await supabase
+        .from('users')
+        .select('id, subscription_plan')
+        .eq('id', userId)
+        .single();
+      if (!uerr && udata) {
+        isSubscriptionOwner = !!udata.subscription_plan;
+      }
+    }
+  } catch (ex) {
+    console.warn('Could not determine subscription owner status:', ex);
+    isSubscriptionOwner = false;
+  }
   
   // Load stats for all shops
   await loadAllShopStats();
@@ -236,14 +255,19 @@ function setupEventListeners() {
   // Add Shop button
   const addShopBtn = document.getElementById('addShopBtn');
   if (addShopBtn) {
-    addShopBtn.addEventListener('click', handleAddShop);
-    
-    // Disable if can't create more shops
-    if (!canCreate.canCreate) {
-      addShopBtn.disabled = true;
-      addShopBtn.title = `You have reached your maximum of ${canCreate.maxShops} shops`;
-      addShopBtn.style.opacity = '0.5';
-      addShopBtn.style.cursor = 'not-allowed';
+    // Only show the Add Shop button to subscription owners
+    if (!isSubscriptionOwner) {
+      addShopBtn.style.display = 'none';
+    } else {
+      addShopBtn.addEventListener('click', handleAddShop);
+
+      // Disable if can't create more shops
+      if (!canCreate.canCreate) {
+        addShopBtn.disabled = true;
+        addShopBtn.title = `You have reached your maximum of ${canCreate.maxShops} shops`;
+        addShopBtn.style.opacity = '0.5';
+        addShopBtn.style.cursor = 'not-allowed';
+      }
     }
   }
   
