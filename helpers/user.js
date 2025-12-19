@@ -137,19 +137,25 @@ function canAccessPage(pageName, user = null) {
 /**
  * Toggle dark theme
  */
+
+// Toggle between default (light) and theme-alt (new theme)
 function toggleTheme() {
   const html = document.documentElement;
-  html.classList.toggle('dark');
-  const dark = html.classList.contains('dark');
-  // Persist to localStorage so selection survives page reloads even before user is loaded
-  try { localStorage.setItem('xm_theme', dark ? 'dark' : 'light'); } catch (e) {}
+  const isAlt = html.classList.contains('theme-alt');
+  let nextTheme = 'light';
+  html.classList.remove('theme-alt');
+  if (!isAlt) {
+    html.classList.add('theme-alt');
+    nextTheme = 'theme-alt';
+  }
+  try { localStorage.setItem('xm_theme', nextTheme); } catch (e) {}
 
   const u = currentUser();
   if (u) {
     const users = readLS(LS.users, []);
     const i = users.findIndex(x => x.id === u.id);
     if (i >= 0) {
-      users[i].theme = dark ? 'dark' : 'light';
+      users[i].theme = nextTheme;
       writeLS(LS.users, users);
     }
   }
@@ -158,21 +164,25 @@ function toggleTheme() {
 /**
  * Set theme from user preference
  */
+
 function setThemeFromUser() {
   // Priority: explicit localStorage override -> user preference -> do nothing
   try {
     const stored = localStorage.getItem('xm_theme');
-    if (stored) {
-      document.documentElement.classList.toggle('dark', stored === 'dark');
+    const html = document.documentElement;
+    html.classList.remove('theme-alt');
+    if (stored === 'theme-alt') {
+      html.classList.add('theme-alt');
       return;
     }
   } catch (e) {
     // ignore
   }
-
   const u = currentUser();
   if (u && u.theme) {
-    document.documentElement.classList.toggle('dark', u.theme === 'dark');
+    const html = document.documentElement;
+    html.classList.remove('theme-alt');
+    if (u.theme === 'theme-alt') html.classList.add('theme-alt');
   }
 }
 

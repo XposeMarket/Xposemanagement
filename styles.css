@@ -1,3 +1,15 @@
+/*
+  The new alternate theme replaces the old theme-alt.
+  If you want to adjust the palette, do so here.
+*/
+:root.theme-alt {
+  --bg: #f7fafc;
+  --text: #183153;
+  --muted: #6c7a89;
+  --card: #eaf6fb;
+  --line: #b5e3e8;
+  --accent: #2ec4b6;
+}
 /* Add Labor pill: small, pill-shaped, matches status pill size */
 .add-labor-pill {
   display: inline-flex;
@@ -217,41 +229,7 @@
 :root{
   --bg:#f3f4f6; --text:#111111; --muted:#6b7280; --card:#ffffff; --line:#e5e7eb; --accent:#e11d48;
 }
-:root.dark{
-  --bg:#002947;
-  --text:#fff;
-  --muted:#8a94a6;
-  --card:#003B5E;
-  --line:#003B5E;
-  --accent:#89C41F;
-}
 
-:root.dark input,
-:root.dark textarea,
-:root.dark select {
-  background: #003B5E !important;
-  color: #fff !important;
-  border: 1px solid #89C41F !important;
-}
-
-:root.dark input:focus,
-:root.dark textarea:focus,
-:root.dark select:focus {
-  outline: 2px solid #89C41F !important;
-}
-
-:root.dark .btn,
-:root.dark button {
-  background: #003B5E !important;
-  color: #fff !important;
-  border: 1px solid #89C41F !important;
-}
-:root.dark .btn.primary,
-:root.dark button.primary {
-  background: #89C41F !important;
-  color: #fff !important;
-  border: none !important;
-}
 *{box-sizing:border-box}
 html,body{margin:0}
 .main-header {
