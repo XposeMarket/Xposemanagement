@@ -843,7 +843,7 @@ function openAssignModal(job) {
     modal.id = 'assignModal';
     modal.className = 'modal-overlay hidden';
     modal.innerHTML = `
-      <div class="modal-content" onclick="event.stopPropagation()" style="max-width:98vw;width:100%;min-width:0;padding:0 8px;box-sizing:border-box;">
+      <div class="modal-content" onclick="event.stopPropagation()" style="max-width:420px;width:100%;min-width:0;padding:0 18px;box-sizing:border-box;margin:10vh auto; border-radius:12px;">
         <div class="modal-head">
           <h3 style="font-size:1.25rem;">Assign Job</h3>
           <button onclick="document.getElementById('assignModal')?.classList.add('hidden')" class="btn-close">&times;</button>
@@ -857,8 +857,8 @@ function openAssignModal(job) {
           </div>
           <div id="assignModalError" style="color:#ef4444;font-weight:500;margin-top:4px;display:none;font-size:1.05rem"></div>
           <div style="display:flex;flex-direction:column;gap:14px;margin-top:16px;">
-            <button id="assignConfirmBtn" class="btn info" style="width:100%;font-size:1.08rem;padding:14px 0;">Assign</button>
-            <button id="assignCancelBtn" class="btn" style="width:100%;font-size:1.08rem;padding:14px 0;">Cancel</button>
+            <button id="assignConfirmBtn" class="btn info" style="width:100%;font-size:1.08rem;padding:14px 0;display:flex;align-items:center;justify-content:center;">Assign</button>
+            <button id="assignCancelBtn" class="btn" style="width:100%;font-size:1.08rem;padding:14px 0;display:flex;align-items:center;justify-content:center;">Cancel</button>
           </div>
         </div>
       </div>
@@ -896,7 +896,7 @@ function openAssignModal(job) {
         errorDiv.style.display = 'block';
         errorDiv.textContent = 'No staff members available. Invite staff or add shop_staff entries.';
       } else {
-        select.innerHTML = '<option value="">-- Select staff --</option>' + staffRows.map(s => `<option value="${s.id}">${(s.first||'').trim()} ${(s.last||'').trim()} ${s.role ? ' - ' + s.role : ''} ${s.email ? ' ('+s.email+')' : ''}</option>`).join('');
+        select.innerHTML = '<option value="">-- Select staff --</option>' + staffRows.map(s => `<option value="${s.id}">${(s.first||'').trim()} ${(s.last||'').trim()}${s.role ? ' - ' + s.role : ''}</option>`).join('');
         errorDiv.style.display = 'none';
       }
 
