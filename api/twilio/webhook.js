@@ -3,36 +3,49 @@
  * Handles incoming messages from Twilio and saves them to Supabase
  */
 
-import { createClient } from '@supabase/supabase-js';
+const { createClient } = require('@supabase/supabase-js');
 
-// Initialize Supabase client
-const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+module.exports = async function handler(req, res) {
+  // Log everything for debugging
+  console.log('🔔 Webhook called!', {
+    method: req.method,
+    body: req.body,
+    headers: req.headers
+  });
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('❌ Missing Supabase credentials');
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-export default async function handler(req, res) {
   // Only accept POST requests
   if (req.method !== 'POST') {
+    console.log('❌ Wrong method:', req.method);
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
+    // Initialize Supabase client
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    console.log('🔑 Supabase config:', {
+      hasUrl: !!supabaseUrl,
+      hasKey: !!supabaseKey,
+      url: supabaseUrl
+    });
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('❌ Missing Supabase credentials');
+      return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
     const {
       MessageSid,
       From,
       To,
       Body,
-      NumMedia,
-      MediaUrl0,
-      MediaContentType0
+      NumMedia
     } = req.body;
 
-    console.log('📨 Incoming Twilio message from:', From, 'to:', To);
+    console.log('📨 Incoming message:', { MessageSid, From, To, Body, NumMedia });
 
     // Find the shop that owns this Twilio number
     const { data: twilioNumber, error: numberError } = await supabase
@@ -41,9 +54,10 @@ export default async function handler(req, res) {
       .eq('phone_number', To)
       .single();
 
+    console.log('📱 Found Twilio number:', { twilioNumber, numberError });
+
     if (numberError || !twilioNumber) {
       console.error('❌ Twilio number not found:', To, numberError);
-      // Still return 200 to Twilio so it doesn't retry
       return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
     }
 
@@ -51,7 +65,7 @@ export default async function handler(req, res) {
 
     // Find or create thread for this conversation
     let thread;
-    const { data: existingThread } = await supabase
+    const { data: existingThread, error: threadFindError } = await supabase
       .from('threads')
       .select('*')
       .eq('shop_id', shopId)
@@ -59,17 +73,21 @@ export default async function handler(req, res) {
       .eq('archived', false)
       .maybeSingle();
 
+    console.log('🔍 Thread search:', { existingThread, threadFindError });
+
     if (existingThread) {
       thread = existingThread;
       
       // Update thread's last_message_at
-      await supabase
+      const { error: updateError } = await supabase
         .from('threads')
         .update({
           last_message: Body?.substring(0, 100) || 'Media message',
           last_message_at: new Date().toISOString()
         })
         .eq('id', existingThread.id);
+
+      console.log('📝 Updated thread:', updateError);
         
     } else {
       // Create new thread
@@ -84,6 +102,8 @@ export default async function handler(req, res) {
         })
         .select()
         .single();
+
+      console.log('➕ Created thread:', { newThread, threadError });
 
       if (threadError) {
         console.error('❌ Error creating thread:', threadError);
@@ -121,10 +141,12 @@ export default async function handler(req, res) {
       .select()
       .single();
 
+    console.log('💾 Message save result:', { message, messageError });
+
     if (messageError) {
       console.error('❌ Error saving message:', messageError);
     } else {
-      console.log('✅ Message saved:', message.id);
+      console.log('✅ Message saved successfully:', message.id);
     }
 
     // Respond to Twilio with empty TwiML
@@ -137,4 +159,4 @@ export default async function handler(req, res) {
     res.setHeader('Content-Type', 'text/xml');
     return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
   }
-}
+};
