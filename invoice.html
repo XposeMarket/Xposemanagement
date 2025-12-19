@@ -38,7 +38,7 @@
   <b>From:</b><br><span id="invShopName"></span><br><span id="invShopPhone"></span><br><span id="invShopEmail"></span>
 </div>
 <div style="margin-top:16px; padding:12px; border:1px solid #ddd; border-radius:4px; background:#f9f9f9;">
-  <table class="table" id="invItems"><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody></tbody></table>
+  <table class="table" id="invItems"><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody id="invItemsBody"></tbody></table>
   <div style="text-align:right;margin-top:10px">
     <div><b>Subtotal:</b> <span id="iSub">0.00</span></div>
     <div><b>Tax:</b> <span id="iTax">0.00</span></div>
@@ -531,6 +531,7 @@ import { getShopData } from './helpers/storage.js';
           subtotal += laborTotal;
           // Extract actual labor description
           let displayLaborName = labor.name.replace(/^labor:/i, '').trim() || `Labor (${laborQty} hr${laborQty !== 1 ? 's' : ''})`;
+          displayLaborName = `Labor - ${displayLaborName}`;
           const trLabor = document.createElement('tr');
           trLabor.innerHTML = `<td style="padding-left:20px;">${displayLaborName}</td><td style="text-align:center">${laborQty}</td><td style="text-align:right">${laborPrice.toFixed(2)}</td><td style="text-align:right">${laborTotal.toFixed(2)}</td>`;
           itemsTbody.appendChild(trLabor);
@@ -573,7 +574,8 @@ import { getShopData } from './helpers/storage.js';
           const total = qty * price;
           subtotal += total;
           const trLabor = document.createElement('tr');
-          trLabor.innerHTML = `<td>${itm.name}</td><td style="text-align:center">${qty}</td><td style="text-align:right">$${price.toFixed(2)}</td><td style="text-align:right">$${total.toFixed(2)}</td>`;
+          let displayLaborName = itm.name ? `Labor - ${itm.name}` : 'Labor';
+          trLabor.innerHTML = `<td>${displayLaborName}</td><td style="text-align:center">${qty}</td><td style="text-align:right">$${price.toFixed(2)}</td><td style="text-align:right">$${total.toFixed(2)}</td>`;
           itemsTbody.appendChild(trLabor);
         }
       }
