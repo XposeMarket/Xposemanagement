@@ -227,7 +227,16 @@ async function canCreateShop(userId) {
     }
     
     const currentShops = ownedShops?.length || 0;
-    const maxShops = user?.max_shops || 1;
+    // Respect stored max_shops when present, otherwise derive from subscription_plan
+    const planLimits = { single: 1, local: 3, multi: 6 };
+    let maxShops = 1;
+    if (user && (user.max_shops || user.max_shops === 0 || user.max_shops === null)) {
+      maxShops = Number(user.max_shops) || 1;
+      if (maxShops <= 0) maxShops = 1;
+    } else {
+      const plan = String(user?.subscription_plan || 'single').toLowerCase();
+      maxShops = planLimits[plan] || 1;
+    }
     const plan = user?.subscription_plan || 'single';
     
     return {
@@ -264,7 +273,6 @@ async function switchShop(shopId) {
     
     if (accessError || !access) {
       console.error('User does not have access to this shop');
-      alert('You do not have access to this shop.');
       return false;
     }
     
@@ -322,7 +330,7 @@ async function addUserToShop(userId, shopId, role = 'owner') {
 /**
  * Create a new shop for the user
  */
-async function createAdditionalShop(shopName, shopType = 'Mechanic') {
+async function createAdditionalShop(shopName, shopType = 'Mechanic', logo = '') {
   const supabase = getSupabaseClient();
   const userId = await getCurrentUserId();
   
@@ -349,6 +357,7 @@ async function createAdditionalShop(shopName, shopType = 'Mechanic') {
       .insert({
         name: shopName,
         type: shopType,
+        logo: logo || null,
         join_code,
         staff_limit: 3,
         owner_id: userId

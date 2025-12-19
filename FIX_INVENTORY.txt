@@ -1,0 +1,28 @@
+DELETE LINES 47-56 and replace with:
+
+function confirmDialog(message) {
+  return new Promise(resolve => {
+    if (!confirmModal || !confirmYesBtn || !confirmNoBtn || !confirmMessageEl) {
+      try { resolve(window.confirm(message)); } catch (e) { resolve(false); }
+      return;
+    }
+    confirmMessageEl.textContent = message;
+    confirmModal.classList.add('confirm-theme');
+    confirmModal.classList.remove('hidden');
+    confirmModal.setAttribute('aria-hidden', 'false');
+
+    const cleanup = () => {
+      confirmModal.classList.remove('confirm-theme');
+      confirmModal.classList.add('hidden');
+      confirmModal.setAttribute('aria-hidden', 'true');
+      confirmYesBtn.removeEventListener('click', onYes);
+      confirmNoBtn.removeEventListener('click', onNo);
+    };
+
+    const onYes = () => { cleanup(); resolve(true); };
+    const onNo = () => { cleanup(); resolve(false); };
+
+    confirmYesBtn.addEventListener('click', onYes);
+    confirmNoBtn.addEventListener('click', onNo);
+  });
+}

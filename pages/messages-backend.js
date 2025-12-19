@@ -409,7 +409,13 @@ function setupMessages() {
       shopTwilioNumber = data && data.length > 0 ? data[0] : null;
       console.log('📱 Shop Twilio number:', shopTwilioNumber);
       updatePhoneNumberDisplay();
-      updateMessagingUI();
+      
+      // Check for pending requests if no number exists
+      if (!shopTwilioNumber) {
+        await checkPhoneNumberStatus();
+      } else {
+        updateMessagingUI();
+      }
     } catch (error) {
       console.error('Error loading shop Twilio number:', error);
     }
@@ -510,7 +516,7 @@ function setupMessages() {
     if (existing) existing.remove();
   }
 
-  // Request phone number from backend
+  // Request phone number (waitlist version)
   async function requestPhoneNumber() {
     try {
       const shopId = await getCurrentShopId();
@@ -522,27 +528,41 @@ function setupMessages() {
       const requestBtn = document.getElementById('requestNumberBtn');
       if (requestBtn) {
         requestBtn.disabled = true;
-        requestBtn.textContent = 'Requesting...';
+        requestBtn.textContent = 'Submitting...';
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/messaging/provision`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ shop_id: shopId })
-      });
+      // Get shop details for area code
+      const { data: shop } = await supabase
+        .from('shops')
+        .select('name, phone')
+        .eq('id', shopId)
+        .single();
+      
+      const areaCode = shop?.phone?.replace(/\D/g, '').substring(0, 3) || null;
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to provision number');
+      // Create request in database
+      const { data, error } = await supabase
+        .from('phone_number_requests')
+        .insert({
+          shop_id: shopId,
+          status: 'pending',
+          requested_area_code: areaCode,
+          notes: `Request from ${shop?.name || 'shop'}`
+        })
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === '23505') { // Unique constraint violation
+          throw new Error('You already have a pending request.');
+        }
+        throw error;
       }
 
-      const result = await response.json();
-      console.log('✅ Number provisioned:', result);
-
-      shopTwilioNumber = result.number;
-      updatePhoneNumberDisplay();
-      updateMessagingUI();
-      alert(`✅ Success! Your number is: ${result.number.phone_number}`);
+      console.log('✅ Phone number request submitted:', data);
+      
+      // Update UI to show pending status
+      await checkPhoneNumberStatus();
 
     } catch (error) {
       console.error('Error requesting phone number:', error);
@@ -553,6 +573,115 @@ function setupMessages() {
         requestBtn.disabled = false;
         requestBtn.textContent = 'Request Number';
       }
+    }
+  }
+
+  // Check phone number status (has number, pending request, or neither)
+  async function checkPhoneNumberStatus() {
+    try {
+      const shopId = await getCurrentShopId();
+      if (!shopId) return;
+
+      // Check for pending request
+      const { data: requestData } = await supabase
+        .from('phone_number_requests')
+        .select('*')
+        .eq('shop_id', shopId)
+        .eq('status', 'pending')
+        .single();
+
+      if (requestData) {
+        showPendingRequestPanel(requestData);
+        return;
+      }
+
+      // If no pending request and no number, show request panel
+      if (!shopTwilioNumber) {
+        showRequestNumberPanel();
+      }
+    } catch (error) {
+      console.error('Error checking phone status:', error);
+    }
+  }
+
+  // Show pending request status
+  function showPendingRequestPanel(request) {
+    const existing = document.getElementById('requestNumberPanel');
+    if (existing) existing.remove();
+
+    const panel = document.createElement('div');
+    panel.id = 'requestNumberPanel';
+    panel.style.cssText = `
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 60px 20px;
+      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+      border-radius: 12px;
+      text-align: center;
+      z-index: 10;
+    `;
+
+    const submittedDate = new Date(request.created_at).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+
+    panel.innerHTML = `
+      <div style="display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 64px; background: #dbeafe; border-radius: 50%; animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;">
+        <svg style="width: 32px; height: 32px; color: #2563eb;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="10" stroke-width="2"/>
+          <polyline points="12 6 12 12 16 14" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h2 style="margin: 0; color: #1e3a8a; font-size: 24px; font-weight: 700;">Phone Number Requested</h2>
+      <p style="margin: 0; color: #475569; max-width: 400px; font-size: 14px; line-height: 1.6;">
+        Your request for a dedicated phone number has been received and is currently being processed. 
+        Please check back shortly—this page will automatically update with your new number information once it's been provisioned.
+      </p>
+      <div style="background: linear-gradient(to bottom right, #eff6ff, #dbeafe); border-radius: 12px; padding: 24px; border: 1px solid #bfdbfe; max-width: 400px; width: 100%;">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 14px;">
+            <span style="color: #374151; font-weight: 600;">Request Status:</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; background: #dbeafe; color: #1e40af; border-radius: 20px; font-size: 12px; font-weight: 700; border: 1px solid #93c5fd;">
+              <svg style="width: 12px; height: 12px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" stroke-width="2"/>
+                <polyline points="12 6 12 12 16 14" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              Processing
+            </span>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 14px;">
+            <span style="color: #374151; font-weight: 600;">Submitted:</span>
+            <span style="color: #111827;">${submittedDate}</span>
+          </div>
+          ${request.requested_area_code ? `
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 14px;">
+            <span style="color: #374151; font-weight: 600;">Requested Area Code:</span>
+            <span style="color: #111827; font-family: monospace;">${request.requested_area_code}</span>
+          </div>
+          ` : ''}
+        </div>
+      </div>
+      <p style="margin: 0; font-size: 13px; color: #64748b;">Typically processed within 24-48 hours</p>
+    `;
+
+    const messagesWrap = document.querySelector('.messages-wrap');
+    if (messagesWrap) {
+      messagesWrap.style.position = 'relative';
+      messagesWrap.appendChild(panel);
+    } else {
+      chatPanel.innerHTML = '';
+      chatPanel.style.position = 'relative';
+      chatPanel.appendChild(panel);
     }
   }
 
@@ -767,21 +896,31 @@ function setupMessages() {
     const shopId = await getCurrentShopId();
     if (!shopId) return;
 
-    // Subscribe to new messages
+    console.log('🔌 Setting up Realtime subscriptions for shop:', shopId);
+
+    // Subscribe to new messages (filter by thread_id since messages don't have shop_id)
     const messagesChannel = supabase
-      .channel('messages')
+      .channel('messages-channel')
       .on('postgres_changes', 
         { 
           event: 'INSERT', 
           schema: 'public', 
-          table: 'messages',
-          filter: `shop_id=eq.${shopId}`
+          table: 'messages'
         }, 
         async (payload) => {
           console.log('📨 New message received:', payload);
           
+          // Check if this message belongs to one of our threads
+          const belongsToShop = threads.some(t => t.id === payload.new.thread_id);
+          
+          if (!belongsToShop) {
+            console.log('⏭️ Message not for this shop, ignoring');
+            return;
+          }
+          
           // If message is for active thread, append it
           if (payload.new.thread_id === activeThreadId) {
+            console.log('✅ Adding message to active thread');
             messages.push(payload.new);
             appendMessageBubble(payload.new);
             scrollChatToBottom();
@@ -791,11 +930,13 @@ function setupMessages() {
           await loadThreads();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Messages channel status:', status);
+      });
 
     // Subscribe to thread updates
     const threadsChannel = supabase
-      .channel('threads')
+      .channel('threads-channel')
       .on('postgres_changes',
         {
           event: '*',
@@ -808,7 +949,9 @@ function setupMessages() {
           await loadThreads();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Threads channel status:', status);
+      });
   }
   // New Thread Modal handlers
   function setupNewThreadModal() {
@@ -854,42 +997,31 @@ function setupMessages() {
           
           const shopName = shop?.name || 'your shop';
 
-          const payload = {
-            shop_id: shopId,
-            to: phoneNumber,
-            body: 'Hi, this is ' + shopName
-          };
+          // Just create thread directly in Supabase without sending a message
+          const { data: threadData, error: threadError } = await supabase
+            .from('threads')
+            .insert({
+              shop_id: shopId,
+              external_recipient: phoneNumber,
+              twilio_number_id: shopTwilioNumber.id,
+              last_message_at: new Date().toISOString()
+            })
+            .select()
+            .single();
 
-          console.log('Sending to API:', API_BASE_URL + '/api/messaging/send');
-          console.log('Payload:', payload);
+          if (threadError) throw threadError;
 
-          // Send initial message to create thread
-          const response = await fetch(`${API_BASE_URL}/api/messaging/send`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error('API error response:', response.status, errorText);
-            let error;
-            try {
-              error = JSON.parse(errorText);
-            } catch {
-              error = { error: errorText };
-            }
-            throw new Error(error.error || `API returned ${response.status}`);
-          }
-
-          const result = await response.json();
-          console.log('✅ Thread created:', result);
+          console.log('✅ Thread created:', threadData);
 
           // Close modal and reload threads
           if (newThreadModal) newThreadModal.classList.add('hidden');
           if (newThreadPhone) newThreadPhone.value = '';
           await loadThreads();
-          alert(`✅ Thread started with ${phoneNumber}`);
+          
+          // Auto-open the new thread
+          if (threadData?.id) {
+            await openThread(threadData.id);
+          }
 
         } catch (error) {
           console.error('Error creating thread:', error);

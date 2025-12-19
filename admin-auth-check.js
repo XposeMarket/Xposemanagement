@@ -86,23 +86,27 @@
           const msg = String(error?.message || '');
           const status = error?.status || null;
           if (/missing sub claim/i.test(msg) && status === 403 && !window.__adminAuthAutoCleared) {
-            debugLog('Detected invalid token (missing sub claim). Clearing local session and retrying once.');
+            debugLog('Detected invalid token (missing sub claim). Redirecting to login.');
             window.__adminAuthAutoCleared = true;
+            
+            // Sign out from Supabase server-side session
             try {
               if (supabase && supabase.auth && typeof supabase.auth.signOut === 'function') {
                 await supabase.auth.signOut();
+                debugLog('Signed out from Supabase');
               }
             } catch (e) { debugLog('signOut failed during auto-clear', e); }
 
-            // Remove common storage keys that may hold an invalid session
+            // Remove ALL storage keys to ensure clean slate
             try {
-              Object.keys(localStorage).filter(k => /supabase|auth|session|xm|sb|token/i.test(k)).forEach(k => localStorage.removeItem(k));
-              debugLog('Cleared localStorage session keys');
-            } catch (e) { debugLog('Failed clearing localStorage', e); }
+              localStorage.clear();
+              sessionStorage.clear();
+              debugLog('Cleared all storage');
+            } catch (e) { debugLog('Failed clearing storage', e); }
 
-            // Reload to allow a fresh login/session without entering an infinite loop
-            debugLog('Reloading page to prompt fresh authentication');
-            window.location.reload();
+            // Redirect to login (DON'T reload to avoid infinite loop)
+            debugLog('Redirecting to login page');
+            window.location.href = 'login.html';
             return;
           }
         } catch (e) {
@@ -221,40 +225,6 @@
   debugLog('Step 7: Authentication successful!', { email: user.email });
   console.log('✅ Admin page authentication successful');
   
-  // Run a lightweight admin eligibility check (instrumentation) so we can see why users may be failing.
-  (async function checkAdminEligibility(){
-    try{
-      const sup = window.getSupabaseClient ? window.getSupabaseClient() : window._supabaseClient || null;
-      if(!sup) { debugLog('Admin eligibility: no supabase client available'); window.__adminAuthUser = user; return; }
-
-      // 1) fetch subscription plan
-      const { data: urow } = await sup.from('users').select('subscription_plan').eq('id', user.id).limit(1).single();
-      const plan = urow?.subscription_plan || null;
-
-      // 2) fetch user_shops
-      const { data: ush } = await sup.from('user_shops').select('shop_id, role').eq('user_id', user.id);
-      const shopCount = (ush && ush.length) ? ush.length : 0;
-      const hasOwnerRole = (ush || []).some(s => (s.role||'').toString().toLowerCase() === 'owner' || (s.role||'').toString().toLowerCase() === 'admin');
-
-      // 3) if needed, check current shop owner_id
-      let ownerMatch = false;
-      try{
-        const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
-        const currentShopId = session.shopId || null;
-        if(currentShopId){
-          const { data: shopRow } = await sup.from('shops').select('owner_id').eq('id', currentShopId).limit(1).single();
-          const shopOwnerId = shopRow?.owner_id ? String(shopRow.owner_id).trim() : null;
-          if(shopOwnerId && String(user.id).trim() === shopOwnerId) ownerMatch = true;
-        }
-      }catch(e){}
-
-      const hasMultiPlan = !!(plan && ['local','multi'].includes(String(plan).toLowerCase()));
-      const showAdmin = (hasOwnerRole && hasMultiPlan) || shopCount >= 2 || ownerMatch;
-
-      // Expose eligibility for the admin page so the admin module can decide UI behavior
-      window.__adminEligible = !!showAdmin;
-      debugLog('Admin eligibility check', { plan, shopCount, hasOwnerRole, ownerMatch, hasMultiPlan, showAdmin });
-    }catch(e){ debugLog('Admin eligibility check failed', { message: e.message }); }
-    finally{ window.__adminAuthUser = user; }
-  })();
+  // Set the authenticated user for admin.js to use
+  window.__adminAuthUser = user;
 })();

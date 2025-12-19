@@ -509,7 +509,7 @@ document.addEventListener('DOMContentLoaded', function(){
         try {
           const { data, error } = await sup
             .from('shop_invitations')
-            .select('*, invited_by:users!invited_by_user_id(first, last, email)')
+            .select('*')
             .eq('shop_id', shop.id)
             .eq('status', 'pending')
             .order('created_at', { ascending: false });

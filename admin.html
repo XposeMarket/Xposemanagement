@@ -6,44 +6,8 @@
   <title>Admin Dashboard - Multi-Shop Management</title>
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    /* Additional admin page styles if needed */
-    .admin-header { font-size: 2rem; font-weight: 700; margin-bottom: 1rem; }
-    .shop-list { margin-bottom: 2rem; }
-    .shop-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); padding: 1rem; margin-bottom: 1rem; }
-    .shop-actions { margin-top: 0.5rem; }
-    .revenue-section { margin-top: 2rem; }
-    .revenue-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    .revenue-table th, .revenue-table td { padding: 0.5rem 1rem; border-bottom: 1px solid #eee; text-align: left; }
-    .overall-revenue { font-size: 1.2rem; font-weight: 600; margin-bottom: 1rem; }
-    .btn { margin-right: 0.5rem; }
-    
-    /* Loading overlay */
-    #authLoading {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(255, 255, 255, 0.95);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 10000;
-      font-size: 18px;
-      font-weight: 600;
-    }
-  </style>
 </head>
 <body>
-  <!-- Loading overlay -->
-  <div id="authLoading">
-    <div style="text-align: center;">
-      <div style="margin-bottom: 16px; font-size: 48px;">🔐</div>
-      <div>Authenticating...</div>
-      <div style="font-size: 14px; color: #666; margin-top: 8px;">Please wait</div>
-    </div>
-  </div>
   
   <header class="main-header" style="display: flex; align-items: center; justify-content: center; position: relative; height: 72px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.04); margin-bottom: 2rem;">
     <div style="position: absolute; left: 24px; top: 0; height: 100%; display: flex; align-items: center;"></div>
@@ -81,32 +45,13 @@
   <!-- 1. Supabase vendor library -->
   <script src="vendor/supabase.umd.js"></script>
   
-  <!-- 2. Initialize Supabase client -->
-  <script src="admin-supabase-init.js"></script>
+  <!-- 2. Main app (handles auth via requireAuth) -->
+  <script type="module" src="app.js"></script>
   
-  <!-- 3. Global helpers -->
-  <script src="init-globals.js"></script>
-  
-  <!-- 4. Multi-tenant functions -->
+  <!-- 3. Multi-tenant functions -->
   <script src="multi-tenant.js"></script>
   
-  <!-- 5. Authentication check (BLOCKS until user is authenticated) -->
-  <script src="admin-auth-check.js"></script>
-  
-  <!-- 6. Remove loading overlay once auth is complete -->
-  <script>
-    // Wait for auth check to complete, then hide loading
-    (function checkAuthComplete() {
-      if (window.__adminAuthUser) {
-        document.getElementById('authLoading').style.display = 'none';
-        console.log('✅ Auth complete, loading admin page...');
-      } else {
-        setTimeout(checkAuthComplete, 100);
-      }
-    })();
-  </script>
-  
-  <!-- 7. Load admin page module -->
+  <!-- 4. Admin page module -->
   <script type="module" src="pages/admin.js"></script>
   
   <footer class="container">© Xpose Market</footer>

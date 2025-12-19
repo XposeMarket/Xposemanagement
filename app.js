@@ -45,7 +45,7 @@ async function addAdminLinkToNav() {
     if (mainNav && !document.getElementById('adminNavLink')) {
       const adminLink = document.createElement('a');
       adminLink.id = 'adminNavLink';
-      adminLink.href = 'admin.html';
+      adminLink.href = '#';
       adminLink.textContent = 'Admin';
       adminLink.style.cssText = `
         background: linear-gradient(135deg, var(--accent), #c72952);
@@ -56,7 +56,6 @@ async function addAdminLinkToNav() {
         box-shadow: 0 2px 8px rgba(225, 29, 72, 0.2);
         transition: all 0.2s;
       `;
-      
       // Hover effect
       adminLink.addEventListener('mouseenter', () => {
         adminLink.style.transform = 'translateY(-1px)';
@@ -66,7 +65,87 @@ async function addAdminLinkToNav() {
         adminLink.style.transform = 'translateY(0)';
         adminLink.style.boxShadow = '0 2px 8px rgba(225, 29, 72, 0.2)';
       });
-      
+      // Show shop switcher dropdown/modal on Admin tab click
+      adminLink.addEventListener('click', async (e) => {
+        e.preventDefault();
+        // Remove any existing dropdown
+        let existing = document.getElementById('adminShopDropdown');
+        if (existing) {
+          existing.remove();
+          return;
+        }
+        // Dynamically create dropdown container
+        const dropdown = document.createElement('div');
+        dropdown.id = 'adminShopDropdown';
+        dropdown.className = 'shop-dropdown';
+        dropdown.style.position = 'absolute';
+        dropdown.style.minWidth = '260px';
+        dropdown.style.zIndex = '9999';
+        dropdown.style.top = (adminLink.offsetTop + adminLink.offsetHeight + 6) + 'px';
+        dropdown.style.left = (adminLink.offsetLeft - 40) + 'px';
+        dropdown.style.boxShadow = '0 8px 32px rgba(0,0,0,0.18)';
+        dropdown.style.background = 'var(--card, #fff)';
+        dropdown.style.borderRadius = '10px';
+        dropdown.style.padding = '0';
+        dropdown.style.border = '1px solid var(--border, #e5e5e5)';
+        // Render shop switcher UI into dropdown
+        const { getCurrentUserId, getCurrentShopId, getUserShops, switchShop } = await import('./helpers/multi-shop.js');
+        const userId = await getCurrentUserId();
+        const userShops = await getUserShops(userId);
+        const currentShopId = getCurrentShopId();
+        const currentShop = userShops.find(s => s.shop_id === currentShopId);
+        dropdown.innerHTML = `
+          <div class="shop-dropdown-header">Currently Viewing</div>
+          <div class="shop-dropdown-current">${currentShop?.shop.name || 'Unknown Shop'}</div>
+          <hr style="margin: 8px 0; border: none; border-top: 1px solid var(--line);">
+          <a href="admin.html" class="shop-dropdown-item admin-link" style="display: flex;align-items: center;gap: 8px;padding: 10px 12px;color: var(--accent);font-weight: 600;text-decoration: none;border-radius: 6px;transition: background 0.2s;background: rgba(225, 29, 72, 0.05);" onmouseover="this.style.background='rgba(225, 29, 72, 0.1)'" onmouseout="this.style.background='rgba(225, 29, 72, 0.05)'">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+            <span>Admin Dashboard</span>
+          </a>
+          <hr style="margin: 8px 0; border: none; border-top: 1px solid var(--line);">
+          <div class="shop-dropdown-header">Switch Shop</div>
+          ${userShops.map(shop => `
+            <button 
+              class="shop-dropdown-item ${shop.shop_id === currentShopId ? 'active' : ''}" 
+              style="width: 100%;display: flex;justify-content: space-between;align-items: center;padding: 10px 12px;background: ${shop.shop_id === currentShopId ? 'var(--card-hover)' : 'transparent'};border: none;border-radius: 6px;cursor: ${shop.shop_id === currentShopId ? 'default' : 'pointer'};text-align: left;transition: background 0.2s;${shop.shop_id === currentShopId ? 'font-weight: 600;' : ''}"
+              ${shop.shop_id !== currentShopId ? `onmouseover=\"this.style.background='var(--card-hover)'\" onmouseout=\"this.style.background='transparent'\"` : ''}
+              ${shop.shop_id === currentShopId ? 'disabled' : ''}
+              data-shop-id="${shop.shop_id}"
+            >
+              <span>${shop.shop.name || 'Unknown Shop'}</span>
+              <span class="shop-role" style="font-size: 11px;padding: 3px 8px;background: rgba(42, 124, 255, 0.1);color: var(--accent);border-radius: 10px;text-transform: capitalize;">${shop.role}</span>
+            </button>
+          `).join('')}
+        `;
+        // Remove dropdown on outside click
+        setTimeout(() => {
+          document.addEventListener('mousedown', function handler(evt) {
+            if (!dropdown.contains(evt.target) && evt.target !== adminLink) {
+              dropdown.remove();
+              document.removeEventListener('mousedown', handler);
+            }
+          });
+        }, 0);
+        // Handle shop switch
+        dropdown.querySelectorAll('button[data-shop-id]').forEach(btn => {
+          btn.addEventListener('click', async (ev) => {
+            const shopId = btn.getAttribute('data-shop-id');
+            if (shopId === currentShopId) return;
+            btn.disabled = true;
+            btn.textContent = 'Switching...';
+            const success = await switchShop(shopId);
+            if (success) {
+              window.location.reload();
+            } else {
+              btn.disabled = false;
+              btn.textContent = (userShops.find(s => s.shop_id === shopId)?.shop.name || 'Unknown Shop');
+              alert('Failed to switch shop. Please try again.');
+            }
+          });
+        });
+        // Insert dropdown into DOM
+        adminLink.parentNode.appendChild(dropdown);
+      });
       mainNav.appendChild(adminLink);
       console.log('✅ Admin link added to navigation');
     }
@@ -156,12 +235,14 @@ async function __mainBase() {
     console.log('🏪 Setting up create-shop page');
     // Already has its own script tag, no need to load here
   } else if (p === "admin") {
-    // Admin page - requires auth but NO subscription check, NO shop switcher
+    // Admin page - Simple authorization: if you can see the link, you can access the page
+    // Authorization is handled by addAdminLinkToNav() which checks Local/Multi/invited status
     console.log('🏠 Setting up admin page');
     await requireAuth();
     
     // Admin page has its own module script tag, it will initialize itself
-    console.log('✅ Admin page ready');
+    console.log('✅ Admin page ready (access controlled by link visibility)');
+    return; // Don't run subscription check for admin page
   } else {
     // All other pages require authentication
     console.log('🔒 Setting up authenticated page:', p);

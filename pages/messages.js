@@ -467,6 +467,10 @@ function setupMessages() {
       renderThreadList();
       openThread(id);
       updatePanelHeights();
+      // Show green confirmation banner
+      if (window.showConfirmationBanner) {
+        window.showConfirmationBanner('New thread created!');
+      }
     });
   }
   if (editThreadsBtn) {

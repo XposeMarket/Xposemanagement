@@ -217,21 +217,21 @@ function setupInvoices() {
       if (!customer) customer = 'Unknown Customer';
       console.log(`[Invoices] Rendering invoice ${inv.id}: customer=${customer}`);
       const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${inv.number || inv.id}</td>
-        <td>${customer}</td>
-        <td>$${calcTotal(inv).toFixed(2)}</td>
-  <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1">${(inv.status || 'open').replace(/_/g, ' ')}</span></td>
-        <td>${inv.due || ''}</td>
-        <td style="text-align:right">
-          <div class="appt-actions-grid" style="display:inline-grid;">
-            <button class="btn small" data-id="${inv.id}" data-action="view">View</button>
-            <button class="btn small" data-id="${inv.id}" data-action="markPaid">Mark Paid</button>
-            <button class="btn small info" data-id="${inv.id}" data-action="edit">Edit</button>
-            <button class="btn small danger" data-id="${inv.id}" data-action="remove" aria-label="Remove invoice"><svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg></button>
-          </div>
-        </td>
-      `;
+        tr.innerHTML = `
+          <td>${inv.number || inv.id}</td>
+          <td>${customer}</td>
+          <td style="font-weight:bold;color:#007bff">$${calcTotal(inv).toFixed(2)}</td>
+          <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1">${(inv.status || 'open').replace(/_/g, ' ')}</span></td>
+          <td>${inv.due || ''}</td>
+          <td style="text-align:right">
+            <div class="appt-actions-grid" style="display:inline-grid;">
+              <button class="btn small" data-id="${inv.id}" data-action="view">View</button>
+              <button class="btn small" data-id="${inv.id}" data-action="markPaid">Mark Paid</button>
+              <button class="btn small info" data-id="${inv.id}" data-action="edit">Edit</button>
+              <button class="btn small danger" data-id="${inv.id}" data-action="remove" aria-label="Remove invoice"><svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg></button>
+            </div>
+          </td>
+        `;
       // On mobile, make row clickable to open actions modal
       if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
         tr.classList.add('inv-row-clickable');
@@ -275,20 +275,20 @@ function setupInvoices() {
       if (!customer) customer = 'Unknown Customer';
       console.log(`[Invoices] Rendering PAID invoice ${inv.id}: customer=${customer}`);
       const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${inv.number || inv.id}</td>
-        <td>${customer}</td>
-        <td>$${calcTotal(inv).toFixed(2)}</td>
-        <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1">${(inv.status || 'paid').replace(/_/g, ' ')}</span></td>
-        <td>${inv.due || ''}</td>
-        <td style="text-align:right">
-          <div class="appt-actions-grid" style="display:inline-grid;">
-            <button class="btn small info" data-id="${inv.id}" data-action="view">View</button>
-            <button class="btn small" data-id="${inv.id}" data-action="markUnpaid">Mark Unpaid</button>
-            <button class="btn small danger" data-id="${inv.id}" data-action="remove" aria-label="Remove invoice"><svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg></button>
-          </div>
-        </td>
-      `;
+        tr.innerHTML = `
+          <td>${inv.number || inv.id}</td>
+          <td>${customer}</td>
+          <td style="font-weight:bold;color:#007bff">$${calcTotal(inv).toFixed(2)}</td>
+          <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1">${(inv.status || 'paid').replace(/_/g, ' ')}</span></td>
+          <td>${inv.due || ''}</td>
+          <td style="text-align:right">
+            <div class="appt-actions-grid" style="display:inline-grid;">
+              <button class="btn small info" data-id="${inv.id}" data-action="view">View</button>
+              <button class="btn small" data-id="${inv.id}" data-action="markUnpaid">Mark Unpaid</button>
+              <button class="btn small danger" data-id="${inv.id}" data-action="remove" aria-label="Remove invoice"><svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg></button>
+            </div>
+          </td>
+        `;
       // Enable mobile modal for paid invoices
       if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
         tr.classList.add('inv-row-clickable');

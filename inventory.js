@@ -4,11 +4,12 @@
 import { INVENTORY_LOW_THRESHOLD } from './helpers/constants.js';
 import { setupInventoryPricing } from './helpers/inventory-pricing.js';
 
-let inventory = JSON.parse(localStorage.getItem('inventory') || '[]');
-// Folders (preset categories like Oil)
-let inventoryFolders = JSON.parse(localStorage.getItem('inventoryFolders') || '[]');
-// Track whether we've already fetched remote inventory this session
-let remoteInventoryFetched = false;
+// REMOVED: localStorage as source of truth
+// All data now comes ONLY from Supabase
+let inventory = [];
+let inventoryFolders = [];
+// Track which shop we're currently viewing
+let currentShopId = null;
 
 // DOM references (initialized in setupInventory)
 let inventoryGrid;
@@ -45,12 +46,10 @@ let confirmNoBtn;
 function confirmDialog(message) {
   return new Promise(resolve => {
     if (!confirmModal || !confirmYesBtn || !confirmNoBtn || !confirmMessageEl) {
-      // fallback to native confirm
       try { resolve(window.confirm(message)); } catch (e) { resolve(false); }
       return;
     }
     confirmMessageEl.textContent = message;
-    // theme this confirm modal like Jobs' green confirmation banner
     confirmModal.classList.add('confirm-theme');
     confirmModal.classList.remove('hidden');
     confirmModal.setAttribute('aria-hidden', 'false');
@@ -73,58 +72,59 @@ function confirmDialog(message) {
 
 async function renderInventory() {
   if (!inventoryGrid) return;
-  // Try to fetch authoritative inventory/folders from Supabase once per session
-  try {
-    let shopId = null;
-    try { shopId = JSON.parse(localStorage.getItem('xm_session')||'{}').shopId || null; } catch (e) {}
-    if (shopId && !remoteInventoryFetched) {
+  
+  // ALWAYS fetch from Supabase (no localStorage)
+  let shopId = null;
+  try { shopId = JSON.parse(localStorage.getItem('xm_session')||'{}').shopId || null; } catch (e) {}
+  
+  if (shopId && shopId !== currentShopId) {
+    console.log('🔄 Shop changed or first load, fetching inventory for shop:', shopId);
+    currentShopId = shopId;
+    
+    try {
       const { fetchInventoryForShop } = await import('./helpers/inventory-api.js');
       const remote = await fetchInventoryForShop(shopId);
-      remoteInventoryFetched = true;
+      
       if (remote) {
-        // Replace in-memory lists with remote values when present (only once)
-        if (Array.isArray(remote.items) && remote.items.length > 0) {
-          inventory = remote.items.map(it => ({
-            name: it.name,
-            qty: it.qty,
-            id: it.id,
-            lastOrder: it.last_order || null,
-            outOfStockDate: it.out_of_stock_date || null,
-            meta: it.meta || null,
-            cost_price: it.cost_price || null,
-            sell_price: it.sell_price || null,
-            markup_percent: it.markup_percent || null
-          }));
-          try { localStorage.setItem('inventory', JSON.stringify(inventory)); } catch (e) {}
-        }
-        if (Array.isArray(remote.folders) && remote.folders.length > 0) {
-          inventoryFolders = remote.folders.map(f => {
-            const localMatch = (inventoryFolders || []).find(x => String(x.id) === String(f.id) || (x.name || '').toLowerCase() === (f.name || '').toLowerCase());
-            return ({
-              id: f.id,
-              name: f.name,
-              unit: f.unit,
-              meta: (f.meta != null) ? f.meta : (localMatch ? localMatch.meta : null),
-              items: (f.items || []).map(i => ({
-                id: i.id,
-                name: i.name,
-                qty: i.qty,
-                lastOrder: i.last_order || null,
-                outOfStockDate: i.out_of_stock_date || null,
-                meta: i.meta || null,
-                vehicles: i.vehicles || null,
-                partNumber: i.part_number || null,
-                cost_price: i.cost_price || null,
-                sell_price: i.sell_price || null,
-                markup_percent: i.markup_percent || null
-              }))
-            });
-          });
-          try { localStorage.setItem('inventoryFolders', JSON.stringify(inventoryFolders)); } catch (e) {}
-        }
+        // Replace arrays with Supabase data
+        inventory = (remote.items || []).map(it => ({
+          name: it.name,
+          qty: it.qty,
+          id: it.id,
+          lastOrder: it.last_order || null,
+          outOfStockDate: it.out_of_stock_date || null,
+          meta: it.meta || null,
+          cost_price: it.cost_price || null,
+          sell_price: it.sell_price || null,
+          markup_percent: it.markup_percent || null
+        }));
+        
+        inventoryFolders = (remote.folders || []).map(f => ({
+          id: f.id,
+          name: f.name,
+          unit: f.unit,
+          meta: f.meta || null,
+          items: (f.items || []).map(i => ({
+            id: i.id,
+            name: i.name,
+            qty: i.qty,
+            lastOrder: i.last_order || null,
+            outOfStockDate: i.out_of_stock_date || null,
+            meta: i.meta || null,
+            vehicles: i.vehicles || null,
+            partNumber: i.part_number || null,
+            cost_price: i.cost_price || null,
+            sell_price: i.sell_price || null,
+            markup_percent: i.markup_percent || null
+          }))
+        }));
+        
+        console.log('✅ Loaded inventory from Supabase:', { items: inventory.length, folders: inventoryFolders.length });
       }
+    } catch (e) {
+      console.warn('renderInventory: remote fetch failed', e);
     }
-  } catch (e) { console.warn('renderInventory: remote fetch failed', e); }
+  }
 
   inventoryGrid.innerHTML = '';
   // render folder panels first
@@ -232,9 +232,9 @@ async function renderInventory() {
         try { showNotification && showNotification('Failed to delete item from remote', 'error'); } catch (e) {}
         return;
       }
-      // Remove locally and persist
+      // Remove locally
       inventory.splice(idx, 1);
-      try { localStorage.setItem('inventory', JSON.stringify(inventory)); } catch (e) { console.warn('Could not save inventory', e); }
+      // REMOVED localStorage - Supabase is source of truth
       renderInventory();
       try {
         if (typeof showNotification === 'function') showNotification(`Removed item "${item.name}" from inventory`, 'success');
@@ -386,23 +386,18 @@ function renderOutOfStockPanel() {
 }
 
 async function saveFolders() {
-  try {
-    localStorage.setItem('inventoryFolders', JSON.stringify(inventoryFolders));
+  // REMOVED: local storage persistence removed — Supabase is the only source of truth
+  let shopId = null;
+  try { shopId = JSON.parse(localStorage.getItem('xm_session')||'{}').shopId || null; } catch (e) {}
 
-    let shopId = null;
-    try { shopId = JSON.parse(localStorage.getItem('xm_session')||'{}').shopId || null; } catch (e) {}
+  if (shopId) {
+    const { upsertFolderToSupabase } = await import('./helpers/inventory-api.js');
 
-    if (shopId) {
-      const { upsertFolderToSupabase } = await import('./helpers/inventory-api.js');
-
-      for (const folder of inventoryFolders) {
-        try { await upsertFolderToSupabase(folder, shopId); } catch (e) { console.warn('Folder sync failed for', folder.name, e); }
-      }
-
-      console.log('✅ Folders synced to Supabase');
+    for (const folder of inventoryFolders) {
+      try { await upsertFolderToSupabase(folder, shopId); } catch (e) { console.warn('Folder sync failed for', folder.name, e); }
     }
-  } catch (e) {
-    console.warn('Could not save folders', e);
+
+    console.log('✅ Folders synced to Supabase');
   }
 }
 
@@ -957,6 +952,13 @@ export async function setupInventory() {
     let shopId = null;
     try { shopId = JSON.parse(localStorage.getItem('xm_session')||'{}').shopId || null; } catch (e) {}
     
+    // Reset fetch flag if shop has changed (same logic as renderInventory)
+    if (shopId && shopId !== lastFetchedShopId) {
+      remoteInventoryFetched = false;
+      lastFetchedShopId = shopId;
+      console.log('🔄 [setupInventory] Shop changed, will re-fetch inventory');
+    }
+    
     if (shopId) {
       const { fetchInventoryForShop } = await import('./helpers/inventory-api.js');
       const remote = await fetchInventoryForShop(shopId);
@@ -977,7 +979,7 @@ export async function setupInventory() {
             sell_price: it.sell_price || null,
             markup_percent: it.markup_percent || null
           }));
-          localStorage.setItem('inventory', JSON.stringify(inventory));
+          // REMOVED: local inventory persistence removed
         }
         
         // Update folders and their items
@@ -1004,7 +1006,6 @@ export async function setupInventory() {
               }))
             });
           });
-          localStorage.setItem('inventoryFolders', JSON.stringify(inventoryFolders));
           console.log('✅ Synced folders from Supabase:', inventoryFolders);
         }
       }
@@ -1203,7 +1204,7 @@ export async function setupInventory() {
         inventory[idx].lastOrder = new Date().toISOString();
         updateOutOfStockFlag(inventory[idx]);
         // Persist locally first
-        localStorage.setItem('inventory', JSON.stringify(inventory));
+        // REMOVED: local inventory persistence removed
         renderInventory();
         // Then try to persist remotely (if shopId present)
         try {
@@ -1212,13 +1213,13 @@ export async function setupInventory() {
           try { shopId = JSON.parse(localStorage.getItem('xm_session')||'{}').shopId || null; } catch (e) {}
           if (shopId) {
             const result = await upsertInventoryItemRemote(inventory[idx], shopId);
-            if (result && result.id) {
+              if (result && result.id) {
               // Update local record with authoritative ID/pricing
               inventory[idx].id = result.id;
               inventory[idx].cost_price = result.cost_price || inventory[idx].cost_price || null;
               inventory[idx].sell_price = result.sell_price || inventory[idx].sell_price || null;
               inventory[idx].markup_percent = result.markup_percent || inventory[idx].markup_percent || null;
-              try { localStorage.setItem('inventory', JSON.stringify(inventory)); } catch (e) {}
+              
             }
           }
         } catch (err) {
@@ -1411,7 +1412,7 @@ export async function setupInventory() {
           inventory[idx] = Object.assign(inventory[idx] || {}, { name, qty, id: result.id, cost_price: result.cost_price || itemData.cost_price || null, sell_price: result.sell_price || itemData.sell_price || null, markup_percent: result.markup_percent || itemData.markup_percent || null });
           updateOutOfStockFlag(inventory[idx]);
         }
-        localStorage.setItem('inventory', JSON.stringify(inventory));
+        // REMOVED: local inventory persistence removed
         renderInventory();
         closeModal();
         try { 

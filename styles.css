@@ -377,7 +377,7 @@ footer.container{
 header.top{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);z-index:10010}
 .top .row{display:flex;align-items:center;justify-content:space-between;padding:12px 0}
 .brand{display:flex;align-items:center;gap:10px}.brand img{height:52px}
-nav a{padding:8px 10px;border-radius:8px} nav a.active, nav a:hover{background:var(--line)}
+nav{display:flex;flex-wrap:nowrap;gap:2px;align-items:center;overflow-x:auto;scrollbar-width:none;}nav::-webkit-scrollbar{display:none;}nav a{padding:8px 8px;border-radius:8px;white-space:nowrap;flex-shrink:0;font-size:14px;} nav a.active, nav a:hover{background:var(--line)}
 .btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--card);color:var(--text);padding:10px 14px;border-radius:10px;cursor:pointer;transition:transform .14s ease,box-shadow .14s ease,filter .12s ease}
 .btn.primary{background:#f59e0b;border-color:transparent;color:#fff;border-radius:18px;padding-left:18px;padding-right:18px;font-size:1em;min-height:38px}
 .btn.danger{background:#b91c1c;border-color:transparent;color:#fff}

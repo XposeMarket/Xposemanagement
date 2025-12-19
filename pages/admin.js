@@ -4,13 +4,13 @@
  */
 
 import { getSupabaseClient } from '../helpers/supabase.js';
+import { todayISO, formatTime12 } from '../helpers/utils.js';
 import { 
   getCurrentUserId, 
   getUserShops, 
   canCreateShop, 
   createAdditionalShop,
-  switchShop,
-  shouldShowAdminPage
+  switchShop
 } from '../helpers/multi-shop.js';
 
 let userShops = [];
@@ -19,62 +19,68 @@ let canCreate = { canCreate: false, currentShops: 0, maxShops: 0 };
 let currentShopId = null;
 let isSubscriptionOwner = false;
 
+// Small helper: ensure a global notification container exists and provide showNotification
+function ensureNotificationEl() {
+  let n = document.getElementById('notification');
+  if (!n) {
+    n = document.createElement('div');
+    n.id = 'notification';
+    n.className = 'notification hidden';
+    document.body.appendChild(n);
+  }
+  return n;
+}
+
+function showNotification(message, type = 'success') {
+  const el = ensureNotificationEl();
+  if (!el) return;
+  el.textContent = message;
+  el.className = 'notification';
+  el.style.background = (type === 'error') ? '#ef4444' : '#10b981';
+  el.classList.remove('hidden');
+  setTimeout(() => { el.classList.add('hidden'); }, 3000);
+}
+
+// Confirmation banner with action buttons (green style)
+function showConfirmBanner(message, onConfirm, onCancel) {
+  // remove existing
+  const existing = document.getElementById('confirmBanner');
+  if (existing) existing.remove();
+  const wrap = document.createElement('div');
+  wrap.id = 'confirmBanner';
+  wrap.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;padding:10px 14px;border-radius:8px;z-index:100200;display:flex;gap:12px;align-items:center;box-shadow:0 4px 14px rgba(0,0,0,0.12)';
+  const txt = document.createElement('div'); txt.textContent = message; txt.style.fontWeight = '600';
+  const actions = document.createElement('div'); actions.style.display = 'flex'; actions.style.gap = '8px';
+  const ok = document.createElement('button'); ok.className = 'btn primary'; ok.textContent = 'Confirm';
+  const cancel = document.createElement('button'); cancel.className = 'btn'; cancel.textContent = 'Cancel';
+  actions.appendChild(ok); actions.appendChild(cancel);
+  wrap.appendChild(txt); wrap.appendChild(actions);
+  document.body.appendChild(wrap);
+  ok.addEventListener('click', () => { wrap.remove(); try { if (typeof onConfirm === 'function') onConfirm(); } catch(e){} });
+  cancel.addEventListener('click', () => { wrap.remove(); try { if (typeof onCancel === 'function') onCancel(); } catch(e){} });
+  // auto-dismiss in 10s
+  setTimeout(() => { try { wrap.remove(); } catch(e){} }, 10000);
+}
+
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
 /**
  * Initialize admin page
  */
 async function init() {
   console.log('🏠 Initializing Admin Dashboard...');
   
-  // Use the pre-authenticated user from auth-check script
-  if (!window.__adminAuthUser) {
-    console.error('❌ No authenticated user available');
+  // Use standard auth flow (same as other pages)
+  const userId = await getCurrentUserId();
+  
+  if (!userId) {
+    console.error('❌ No authenticated user');
     window.location.href = 'login.html';
     return;
   }
   
-  const userId = window.__adminAuthUser.id;
-  // Wait briefly for admin eligibility to be set by `admin-auth-check.js` (it runs an async check),
-  // but if it's not present we'll compute it here via `shouldShowAdminPage`.
-  let adminEligible = typeof window.__adminEligible !== 'undefined' ? window.__adminEligible : null;
-  if (adminEligible === null) {
-    // ask the helper directly (defensive)
-    try {
-      const res = await shouldShowAdminPage(userId);
-      adminEligible = !!res.showAdmin;
-    } catch (e) {
-      adminEligible = false;
-    }
-  }
-
-  if (!adminEligible) {
-    // Show an Access Denied modal instead of redirecting to login so user can inspect logs
-    try {
-      const overlay = document.createElement('div');
-      overlay.style.position = 'fixed'; overlay.style.left = 0; overlay.style.top = 0; overlay.style.right = 0; overlay.style.bottom = 0;
-      overlay.style.background = 'rgba(0,0,0,0.5)'; overlay.style.zIndex = 99999; overlay.style.display = 'flex'; overlay.style.alignItems = 'center'; overlay.style.justifyContent = 'center';
-      const modal = document.createElement('div');
-      modal.style.width = '480px'; modal.style.maxWidth = '92%'; modal.style.background = '#fff'; modal.style.borderRadius = '12px'; modal.style.padding = '24px'; modal.style.boxShadow = '0 20px 60px rgba(0,0,0,0.25)'; modal.style.textAlign = 'center';
-
-      modal.innerHTML = `
-        <div style="font-size:40px">🔒</div>
-        <h2 style="margin:12px 0 8px 0">Subscription Required</h2>
-        <p style="color:#666; margin:0 0 16px 0">Your account does not have access to the Admin Dashboard. Please upgrade or contact the shop owner to gain access.</p>
-      `;
-
-      const btnRow = document.createElement('div'); btnRow.style.display = 'flex'; btnRow.style.gap = '10px'; btnRow.style.justifyContent = 'center'; btnRow.style.marginTop = '18px';
-      const viewPlans = document.createElement('button'); viewPlans.className = 'btn primary'; viewPlans.textContent = 'View Plans'; viewPlans.addEventListener('click', () => { window.location.href = 'settings.html'; });
-      const goBack = document.createElement('button'); goBack.className = 'btn'; goBack.textContent = 'Return'; goBack.addEventListener('click', () => { window.location.href = 'dashboard.html'; });
-      btnRow.appendChild(viewPlans); btnRow.appendChild(goBack);
-      modal.appendChild(btnRow);
-      overlay.appendChild(modal);
-      document.body.appendChild(overlay);
-    } catch (e) {
-      // fallback redirect if modal can't be shown
-      console.warn('Could not render access denied modal, redirecting to dashboard', e);
-      window.location.href = 'dashboard.html';
-    }
-    return;
-  }
+  // SIMPLE: If you can see the admin link, you can use the admin page
+  // Authorization is handled by app.js addAdminLinkToNav() function
   console.log('✅ Using authenticated user:', userId);
   
   // Get current shop from localStorage
@@ -86,6 +92,7 @@ async function init() {
   
   console.log('📊 User has', userShops.length, 'shops');
   console.log('🔒 Can create more shops?', canCreate.canCreate);
+  console.log('🔒 CanCreate details:', canCreate);
   console.log('🏢 Current shop:', currentShopId);
   
   // Determine whether this user is the subscription owner (has a subscription_plan)
@@ -121,45 +128,121 @@ async function init() {
  */
 async function loadAllShopStats() {
   const supabase = getSupabaseClient();
-  
+
+  if (!supabase) {
+    console.warn('loadAllShopStats: Supabase client not available, skipping stats load');
+    // initialize zeroed stats for all shops to avoid undefined values in UI
+    for (const userShop of userShops) {
+      shopStats[userShop.shop.id] = { revenue: 0, totalInvoices: 0, paidInvoices: 0, trendPercent: 0 };
+    }
+    return;
+  }
+
   for (const userShop of userShops) {
     const shopId = userShop.shop.id;
-    
+
     try {
-      // Fetch invoice data for the shop
-      const { data: invoices, error } = await supabase
-        .from('invoices')
-        .select('total, status')
-        .eq('shop_id', shopId);
-      
-      if (error) throw error;
-      
+      // Fetch jobs and invoices for the shop
+      const [invRes, jobRes] = await Promise.all([
+        supabase.from('invoices').select('items, tax_rate, status, created_at').eq('shop_id', shopId),
+        supabase.from('jobs').select('id, customer, customer_first, customer_last, service, services, status, created_at, updated_at').eq('shop_id', shopId)
+      ]);
+
+      if (invRes.error) {
+        console.warn(`loadAllShopStats: Supabase returned error for shop ${shopId}:`, invRes.error.message || invRes.error);
+        shopStats[shopId] = { revenue: 0, totalInvoices: 0, paidInvoices: 0, trendPercent: 0, dailyRevenue: [0,0,0,0,0,0,0], activeJobs: [] };
+        continue;
+      }
+
+      const invoices = Array.isArray(invRes.data) ? invRes.data : [];
+      const jobs = Array.isArray(jobRes.data) ? jobRes.data : [];
+
+      // Fetch appointments as well (we want Appointments Today) and customers for display names
+      let appointments = [];
+      let customerMap = {};
+      try {
+        // Try appointments table first, but many deployments store shop data in the `data` JSONB table.
+        const [aptRes, custRes] = await Promise.all([
+          supabase.from('appointments').select('id, preferred_date, preferred_time, customer, customer_first, customer_last, service, services, status, vehicle').eq('shop_id', shopId),
+          supabase.from('customers').select('id, customer_first, customer_last').eq('shop_id', shopId)
+        ]);
+
+        if (!aptRes.error && Array.isArray(aptRes.data) && aptRes.data.length) {
+          appointments = aptRes.data;
+        } else {
+          // Fallback: read appointments from `data` JSONB for this shop
+          try {
+            const { data: dataRow, error: dataErr } = await supabase.from('data').select('appointments').eq('shop_id', shopId).single();
+            if (!dataErr && dataRow && Array.isArray(dataRow.appointments)) appointments = dataRow.appointments;
+          } catch (de) {
+            console.warn(`Could not load appointments from data table for shop ${shopId}:`, de);
+          }
+        }
+
+        if (!custRes.error && Array.isArray(custRes.data)) {
+          (custRes.data || []).forEach(c => { customerMap[c.id] = c; });
+        }
+      } catch (e) {
+        console.warn(`Could not load appointments/customers for shop ${shopId}:`, e);
+      }
+
+      // Compute today's appointments list and annotate with display fields
+      const today = todayISO();
+      const todayAppointmentsRaw = (appointments || []).filter(a => (a.preferred_date || '').slice(0,10) === today);
+      const todayAppointments = (todayAppointmentsRaw || []).map(a => {
+        let cust = 'N/A';
+        if (a.customer_first || a.customer_last) cust = `${a.customer_first || ''} ${a.customer_last || ''}`.trim();
+        else if (a.customer && customerMap[a.customer]) {
+          const c = customerMap[a.customer]; cust = `${c.customer_first || ''} ${c.customer_last || ''}`.trim();
+        } else if (a.customer) cust = a.customer;
+        const svc = a.service || (Array.isArray(a.services) && a.services[0] ? (a.services[0].name || a.services[0]) : '');
+        return Object.assign({}, a, { displayCustomer: cust, displayService: svc });
+      });
+      const todayAppointmentsCount = todayAppointments.length;
+
       // Calculate revenue (paid invoices)
-      const revenue = invoices
-        .filter(inv => inv.status === 'paid')
-        .reduce((sum, inv) => sum + parseFloat(inv.total || 0), 0);
-      
+      const { calcInvTotal } = await import('../helpers/invoices.js');
+      const paidInvoicesArr = invoices.filter(inv => inv && inv.status === 'paid');
+      const revenue = paidInvoicesArr.reduce((sum, inv) => sum + calcInvTotal(inv), 0);
+
+      // Calculate daily revenue for the past 7 days (Mon-Sun)
+      const dailyRevenue = [0,0,0,0,0,0,0];
+      const now = new Date();
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+      weekStart.setHours(0,0,0,0);
+      for (const inv of paidInvoicesArr) {
+        if (!inv.created_at) continue;
+        const invDate = new Date(inv.created_at);
+        const dayIdx = Math.floor((invDate - weekStart) / (1000*60*60*24));
+        if (dayIdx >= 0 && dayIdx < 7) {
+          dailyRevenue[dayIdx] += calcInvTotal(inv);
+        }
+      }
+
       // Calculate trends (percentage of paid vs total)
       const totalInvoices = invoices.length;
-      const paidInvoices = invoices.filter(inv => inv.status === 'paid').length;
-      const trendPercent = totalInvoices > 0 
-        ? Math.round((paidInvoices / totalInvoices) * 100) 
+      const paidInvoices = paidInvoicesArr.length;
+      const trendPercent = totalInvoices > 0
+        ? Math.round((paidInvoices / totalInvoices) * 100)
         : 0;
-      
+
+      // Active jobs (not completed)
+      const activeJobs = jobs.filter(j => j.status && j.status !== 'completed');
+
       shopStats[shopId] = {
         revenue,
         totalInvoices,
         paidInvoices,
-        trendPercent
+        trendPercent,
+        dailyRevenue,
+        activeJobs,
+        todayAppointmentsCount,
+        todayAppointments
       };
-    } catch (error) {
-      console.error(`Error loading stats for shop ${shopId}:`, error);
-      shopStats[shopId] = {
-        revenue: 0,
-        totalInvoices: 0,
-        paidInvoices: 0,
-        trendPercent: 0
-      };
+    } catch (err) {
+      console.error(`Error loading stats for shop ${shopId}:`, err && (err.message || err));
+      shopStats[shopId] = { revenue: 0, totalInvoices: 0, paidInvoices: 0, trendPercent: 0 };
     }
   }
 }
@@ -171,6 +254,20 @@ function renderShops() {
   const shopListContainer = document.getElementById('shopList');
   if (!shopListContainer) return;
   
+  // Ensure overall shop counter exists (create or update)
+  let overall = document.getElementById('overallShopCount');
+  if (!overall) {
+    overall = document.createElement('div');
+    overall.id = 'overallShopCount';
+    overall.style.cssText = 'font-weight:600;margin-bottom:12px;font-size:16px;color:#222';
+    shopListContainer.parentNode.insertBefore(overall, shopListContainer);
+  }
+  // Determine plan-based max shops display
+  const planName = (canCreate && canCreate.plan) ? String(canCreate.plan).toLowerCase() : '';
+  const planMaxMap = { local: 3, multi: 6 };
+  const maxFromPlan = planMaxMap[planName] || (canCreate && canCreate.maxShops) || userShops.length || 1;
+  overall.textContent = `Shops: ${userShops.length} / ${maxFromPlan}`;
+
   shopListContainer.innerHTML = '';
   
   if (userShops.length === 0) {
@@ -178,44 +275,116 @@ function renderShops() {
     return;
   }
   
-  userShops.forEach(userShop => {
+  userShops.forEach((userShop, idx) => {
     const shop = userShop.shop;
     const role = userShop.role;
     const stats = shopStats[shop.id] || { revenue: 0, totalInvoices: 0, paidInvoices: 0, trendPercent: 0 };
     const isActive = shop.id === currentShopId;
-    
+
+    // Real data: active jobs count
+    const activeJobsCount = stats.activeJobs ? stats.activeJobs.length : 0;
+
     const shopCard = document.createElement('div');
     shopCard.className = 'shop-card';
-    if (isActive) {
-      shopCard.style.border = '2px solid #007bff';
-      shopCard.style.backgroundColor = '#f0f8ff';
-    }
-    
+    shopCard.style.margin = '18px 0';
+    shopCard.style.padding = '18px 18px 24px 18px';
+    shopCard.style.background = 'var(--card)';
+    shopCard.style.borderRadius = '14px';
+    shopCard.style.boxShadow = '0 2px 12px rgba(0,0,0,0.07)';
+    shopCard.style.border = isActive ? '2px solid #007bff' : '1px solid var(--line)';
+
     shopCard.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <div style="flex: 1;">
+      <div style="position: relative; display: flex; flex-direction: row; gap: 0px; align-items: flex-start; flex-wrap: wrap;">
+        <div style="position:absolute; top:-12px; right:-12px; z-index:3; width:36px; height:36px; border-radius:50%; background:#007bff; color:#fff; display:flex;align-items:center;justify-content:center; font-weight:700; font-size:14px; box-shadow:0 2px 6px rgba(0,0,0,0.12); border:3px solid var(--card);">${idx+1}</div>
+        <div style="position: absolute; top: 18px; right: 18px; display: flex; flex-direction: column; gap: 8px; z-index:2;">
+          ${!isActive ? `<button class=\"btn primary switch-shop-btn\" data-shop-id=\"${shop.id}\">Switch to Shop</button>` : ''}
+          ${role === 'owner' ? `<button class=\"btn danger delete-shop-btn\" data-shop-id=\"${shop.id}\">Delete Shop</button>` : ''}
+        </div>
+          <div style="flex:none; min-width:220px; max-width:340px; margin:0; padding:0;">
           <h3 style="margin: 0 0 8px 0; font-size: 18px; font-weight: 600;">
             ${shop.name}
-            ${isActive ? '<span style="color: #007bff; font-size: 14px; margin-left: 8px;">(Active)</span>' : ''}
+            ${isActive ? '<span style=\"color: #007bff; font-size: 14px; margin-left: 8px;\">(Active)</span>' : ''}
           </h3>
-          <div style="color: #666; font-size: 14px; margin-bottom: 4px;">
-            <strong>Role:</strong> ${role}
-          </div>
-          <div style="color: #666; font-size: 14px; margin-bottom: 4px;">
-            <strong>Revenue:</strong> $${stats.revenue.toFixed(2)}
-          </div>
-          <div style="color: #666; font-size: 14px;">
-            <strong>Invoices:</strong> ${stats.paidInvoices}/${stats.totalInvoices} paid (${stats.trendPercent}%)
-          </div>
+          <div style="color: #666; font-size: 14px; margin-bottom: 4px;"><strong>Role:</strong> ${role}</div>
+          <div style="color: #666; font-size: 14px; margin-bottom: 4px;"><strong>Revenue:</strong> $${stats.revenue.toFixed(2)}</div>
+          <div style="color: #666; font-size: 14px; margin-bottom: 4px;"><strong>Invoices:</strong> ${stats.paidInvoices}/${stats.totalInvoices} paid (${stats.trendPercent}%)</div>
+          <div style="color: #666; font-size: 14px; margin-bottom: 4px;"><strong>Active Jobs:</strong> ${activeJobsCount}</div>
         </div>
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          ${!isActive ? `<button class="btn primary switch-shop-btn" data-shop-id="${shop.id}">Switch to Shop</button>` : ''}
-          ${role === 'owner' ? `<button class="btn danger delete-shop-btn" data-shop-id="${shop.id}">Delete Shop</button>` : ''}
+        <div style="margin-left:-12px; width:340px; min-width:220px; display:flex; gap:12px; align-items:flex-start;">
+          <div class="card" style="flex:0 0 260px; padding:12px; background:var(--card); box-shadow:0 2px 8px rgba(0,0,0,0.04); border-radius:10px;">
+            <div style="font-weight:600; font-size:14px; margin-bottom:6px; color:#007bff;">Revenue Trend</div>
+            <canvas id="revenueChart-${shop.id}" width="220" height="140" style="display:block;max-width:100%;margin:0 auto;"></canvas>
+          </div>
+          <div class="card" style="flex:0 0 260px; padding:12px; background:var(--card); box-shadow:0 2px 8px rgba(0,0,0,0.04); border-radius:10px; min-width:120px;">
+            <div style="font-weight:600; font-size:14px; margin-bottom:6px; color:#007bff; display:flex;justify-content:space-between;align-items:center;">
+              <span>Appointments Today</span>
+              <span style="font-size:12px;color:#666">${(stats.todayAppointmentsCount||0)}</span>
+            </div>
+            <div style="color:#666;font-size:12px;margin-bottom:8px">Active Jobs: <strong style="color:#222">${(stats.activeJobs?stats.activeJobs.length:0)}</strong></div>
+            <div id="apptList-${shop.id}" style="display:flex;flex-direction:column;gap:8px;max-height:160px;overflow:auto;">
+              <!-- appointments will be injected here -->
+            </div>
+          </div>
         </div>
       </div>
     `;
-    
+
     shopListContainer.appendChild(shopCard);
+
+    // Render chart with real daily revenue data
+    setTimeout(() => {
+      const ctx = document.getElementById(`revenueChart-${shop.id}`);
+      if (ctx && window.Chart) {
+        new window.Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+            datasets: [{
+              label: 'Revenue',
+              data: stats.dailyRevenue,
+              borderColor: '#007bff',
+              backgroundColor: 'rgba(0,123,255,0.1)',
+              fill: true
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true } }
+          }
+        });
+      }
+    }, 100);
+
+    // Populate appointments list for today
+    setTimeout(() => {
+      try {
+        const listEl = document.getElementById(`apptList-${shop.id}`);
+        if (!listEl) return;
+        listEl.innerHTML = '';
+        const appts = stats.todayAppointments || [];
+        if (!appts.length) {
+          listEl.innerHTML = '<div class="notice">No appointments today</div>';
+          return;
+        }
+        appts.slice(0,8).forEach(a => {
+          const time = a.preferred_time ? formatTime12(a.preferred_time) : '';
+          const cust = a.displayCustomer || (a.customer_first || a.customer_last ? `${a.customer_first || ''} ${a.customer_last || ''}`.trim() : (a.customer || 'N/A'));
+          const svc = a.displayService || (a.service || (Array.isArray(a.services) && a.services[0] ? (a.services[0].name || a.services[0]) : ''));
+          const item = document.createElement('div');
+          item.style.cssText = 'display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:8px;border-radius:6px;background:transparent';
+          item.innerHTML = `<div><b>${cust}</b><br><span class="notice">${time}</span></div><div style="text-align:right;font-weight:700">${svc}</div>`;
+          // clicking an appointment navigates to the appointment page
+          item.addEventListener('click', () => {
+            try { localStorage.setItem('openApptId', a.id); } catch (e) { console.warn('Failed to store openApptId', e); }
+            location.href = 'appointments.html';
+          });
+          listEl.appendChild(item);
+        });
+      } catch (e) {
+        console.warn('Failed to render appointments list for shop', shop.id, e);
+      }
+    }, 160);
   });
 }
 
@@ -267,6 +436,12 @@ function setupEventListeners() {
         addShopBtn.title = `You have reached your maximum of ${canCreate.maxShops} shops`;
         addShopBtn.style.opacity = '0.5';
         addShopBtn.style.cursor = 'not-allowed';
+        // show small plan info next to button
+        const info = document.createElement('span');
+        info.id = 'addShopInfo';
+        info.style.cssText = 'margin-left:10px;color:#666;font-size:13px';
+        info.textContent = `${canCreate.currentShops || 0}/${canCreate.maxShops || 0} (${canCreate.plan || 'plan'})`;
+        addShopBtn.parentNode && addShopBtn.parentNode.insertBefore(info, addShopBtn.nextSibling);
       }
     }
   }
@@ -275,7 +450,12 @@ function setupEventListeners() {
   document.querySelectorAll('.switch-shop-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const shopId = e.target.dataset.shopId;
-      handleSwitchShop(shopId);
+      const shop = userShops.find(s => s.shop.id === shopId);
+      const name = shop ? shop.shop.name : 'selected shop';
+      showConfirmBanner(`Switch to ${name}?`, async () => {
+        // on confirm
+        try { await handleSwitchShop(shopId); } catch(e) { console.warn(e); }
+      }, () => {});
     });
   });
   
@@ -302,26 +482,175 @@ async function handleAddShop() {
     alert(`You have reached your maximum of ${canCreate.maxShops} shops. Upgrade your plan to create more shops.`);
     return;
   }
-  
-  const shopName = prompt('Enter new shop name:');
-  if (!shopName || shopName.trim() === '') {
-    alert('Shop name is required');
-    return;
-  }
-  
+
+  // Ensure modal exists
+  if (!document.getElementById('addShopModal')) createAddShopModal();
+  openAddShopModal();
+}
+
+/**
+ * Create Add Shop modal DOM (minimal form)
+ */
+function createAddShopModal() {
+  const modal = document.createElement('div');
+  modal.id = 'addShopModal';
+  modal.className = 'modal-overlay';
+  modal.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:9999;background:rgba(0,0,0,0.35)';
+  modal.innerHTML = `
+    <div class="modal-content card" style="width:420px;padding:18px;border-radius:12px;">
+      <h3 style="margin-top:0">Create Shop</h3>
+      <div id="addShopErr" style="color:red;min-height:18px;margin-bottom:8px"></div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+        <label style="font-size:13px;color:#444">Shop Name</label>
+        <input id="addShopName" type="text" placeholder="My New Shop" style="padding:8px;border:1px solid var(--line);border-radius:6px" />
+        <label style="font-size:13px;color:#444">Type</label>
+        <select id="addShopType" style="padding:8px;border:1px solid var(--line);border-radius:6px">
+          <option value="Mechanic">Mechanic</option>
+          <option value="Detailer">Detailer</option>
+          <option value="Other">Other</option>
+        </select>
+        <label style="font-size:13px;color:#444">Zipcode (optional)</label>
+        <input id="addShopZip" type="text" placeholder="12345" style="padding:8px;border:1px solid var(--line);border-radius:6px" />
+        <label style="font-size:13px;color:#444">Logo (optional)</label>
+        <div id="logoDrop" style="padding:10px;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;gap:8px;flex-direction:row;">
+          <div style="flex:1;color:#666;font-size:13px">Drag & drop an image here or</div>
+          <button class="btn" id="chooseLogoBtn" type="button">Choose file</button>
+          <input id="addShopLogoFile" type="file" accept="image/*" style="display:none" />
+        </div>
+        <div id="addShopLogoPreview" style="margin-top:8px;display:none;align-items:center;gap:8px">
+          <img id="addShopLogoPreviewImg" src="" alt="logo preview" style="height:40px;border-radius:6px;object-fit:contain;border:1px solid var(--line)" />
+          <div id="addShopLogoPreviewName" style="color:#444;font-size:13px"></div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button class="btn" id="cancelAddShop">Cancel</button>
+        <button class="btn primary" id="submitAddShop">Create</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  document.getElementById('cancelAddShop').addEventListener('click', () => closeAddShopModal());
+  document.getElementById('submitAddShop').addEventListener('click', () => submitAddShopModal());
+  modal.addEventListener('click', (e) => { if (e.target === modal) closeAddShopModal(); });
+
+  // Logo file / drag-and-drop handlers
   try {
-    const userId = window.__adminAuthUser.id;
-    const newShop = await createAdditionalShop(userId, shopName.trim());
-    
-    if (newShop) {
-      alert(`Shop "${shopName}" created successfully!`);
-      window.location.reload(); // Reload to refresh the list
-    } else {
-      alert('Failed to create shop. Please try again.');
+    const drop = document.getElementById('logoDrop');
+    const fileInput = document.getElementById('addShopLogoFile');
+    const chooseBtn = document.getElementById('chooseLogoBtn');
+    const previewWrap = document.getElementById('addShopLogoPreview');
+    const previewImg = document.getElementById('addShopLogoPreviewImg');
+    const previewName = document.getElementById('addShopLogoPreviewName');
+
+    function showPreview(file) {
+      if (!file) { previewWrap.style.display = 'none'; previewImg.src = ''; previewName.textContent = ''; return; }
+      const url = URL.createObjectURL(file);
+      previewImg.src = url;
+      previewName.textContent = file.name;
+      previewWrap.style.display = 'flex';
     }
-  } catch (error) {
-    console.error('Error creating shop:', error);
-    alert(`Error creating shop: ${error.message}`);
+
+    if (drop) {
+      drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.style.borderColor = '#007bff'; });
+      drop.addEventListener('dragleave', (e) => { e.preventDefault(); drop.style.borderColor = 'var(--line)'; });
+      drop.addEventListener('drop', (e) => {
+        e.preventDefault(); drop.style.borderColor = 'var(--line)';
+        const f = (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) ? e.dataTransfer.files[0] : null;
+        if (f) {
+          fileInput.files = e.dataTransfer.files;
+          showPreview(f);
+        }
+      });
+    }
+
+    if (chooseBtn && fileInput) {
+      chooseBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => {
+        const f = (e.target.files && e.target.files[0]) ? e.target.files[0] : null;
+        showPreview(f);
+      });
+    }
+  } catch (e) {
+    console.warn('Logo handlers init failed', e);
+  }
+}
+
+function openAddShopModal() {
+  const modal = document.getElementById('addShopModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  const name = document.getElementById('addShopName');
+  if (name) { name.value = ''; name.focus(); }
+  const err = document.getElementById('addShopErr'); if (err) err.textContent = '';
+}
+
+function closeAddShopModal() {
+  const modal = document.getElementById('addShopModal');
+  if (!modal) return;
+  modal.style.display = 'none';
+}
+
+async function submitAddShopModal() {
+  const nameEl = document.getElementById('addShopName');
+  const typeEl = document.getElementById('addShopType');
+  const zipEl = document.getElementById('addShopZip');
+  const logoEl = document.getElementById('addShopLogo');
+  const logoFileEl = document.getElementById('addShopLogoFile');
+  const err = document.getElementById('addShopErr');
+  if (!nameEl || !typeEl) return;
+  const shopName = (nameEl.value || '').trim();
+  const shopType = (typeEl.value || 'Mechanic').trim();
+  const zipcode = (zipEl && zipEl.value) ? zipEl.value.trim() : '';
+  // If a file was provided, we'll upload it to Supabase Storage and use the public URL as the logo
+  const logo = (logoEl && logoEl.value) ? logoEl.value.trim() : '';
+  const logoFile = (logoFileEl && logoFileEl.files && logoFileEl.files[0]) ? logoFileEl.files[0] : null;
+  if (!shopName) { if (err) err.textContent = 'Shop name is required'; return; }
+
+  try {
+    document.getElementById('submitAddShop').disabled = true;
+    let logoToSave = logo || null;
+    if (logoFile) {
+      try {
+        const supabase = getSupabaseClient();
+        if (supabase && supabase.storage) {
+          const bucket = 'shop-logos';
+          const ext = (logoFile.name || '').split('.').pop();
+          const filePath = `shop_${Date.now()}_${Math.random().toString(36).slice(2,6)}.${ext}`;
+          const { data: uploadData, error: uploadErr } = await supabase.storage.from(bucket).upload(filePath, logoFile);
+          if (uploadErr) {
+            console.warn('Logo upload failed:', uploadErr);
+            if (err) err.textContent = 'Logo upload failed; try again or skip logo.';
+          } else {
+            // Get public URL (handle different supabase-js versions)
+            try {
+              const pub = supabase.storage.from(bucket).getPublicUrl(filePath);
+              logoToSave = (pub && (pub.publicURL || (pub.data && pub.data.publicUrl) || pub.publicUrl)) || null;
+            } catch (pe) {
+              console.warn('Could not get public URL for uploaded logo', pe);
+              logoToSave = null;
+            }
+          }
+        }
+      } catch (uplErr) {
+        console.warn('Logo upload exception', uplErr);
+      }
+    }
+
+    const result = await createAdditionalShop(shopName, shopType, logoToSave);
+    if (result && result.success) {
+      closeAddShopModal();
+      window.location.reload();
+    } else {
+      const msg = (result && result.error) ? result.error : 'Failed to create shop';
+      if (err) err.textContent = msg;
+    }
+  } catch (e) {
+    console.error('Add shop modal error', e);
+    if (err) err.textContent = e && e.message ? e.message : String(e);
+  } finally {
+    document.getElementById('submitAddShop').disabled = false;
   }
 }
 
@@ -333,14 +662,14 @@ async function handleSwitchShop(shopId) {
     const success = await switchShop(shopId);
     
     if (success) {
-      alert('Shop switched successfully! Redirecting to dashboard...');
-      window.location.href = 'dashboard.html';
+      showNotification('Shop switched successfully! Redirecting...', 'success');
+      setTimeout(() => { window.location.href = 'dashboard.html'; }, 800);
     } else {
-      alert('Failed to switch shop. Please try again.');
+      showNotification('Failed to switch shop. Please try again.', 'error');
     }
   } catch (error) {
     console.error('Error switching shop:', error);
-    alert(`Error switching shop: ${error.message}`);
+    showNotification(`Error switching shop: ${error.message}`, 'error');
   }
 }
 
@@ -350,53 +679,66 @@ async function handleSwitchShop(shopId) {
 async function handleDeleteShop(shopId) {
   const shop = userShops.find(us => us.shop.id === shopId);
   if (!shop) return;
-  
-  const confirmDelete = confirm(
-    `Are you sure you want to delete "${shop.shop.name}"?\n\n` +
-    `This will permanently delete all data associated with this shop including:\n` +
-    `- All appointments\n` +
-    `- All jobs\n` +
-    `- All invoices\n` +
-    `- All customers\n` +
-    `- All messages\n\n` +
-    `This action CANNOT be undone!`
-  );
-  
-  if (!confirmDelete) return;
-  
-  const doubleConfirm = prompt(
-    `To confirm deletion, please type the shop name exactly: "${shop.shop.name}"`
-  );
-  
-  if (doubleConfirm !== shop.shop.name) {
-    alert('Shop name did not match. Deletion cancelled.');
-    return;
-  }
-  
-  try {
-    const supabase = getSupabaseClient();
-    
-    // Delete the shop (cascade will handle related data)
-    const { error } = await supabase
-      .from('shops')
-      .delete()
-      .eq('id', shopId);
-    
-    if (error) throw error;
-    
-    alert(`Shop "${shop.shop.name}" has been deleted successfully.`);
-    
-    // If we deleted the current shop, clear it and redirect to dashboard
-    if (shopId === currentShopId) {
-      localStorage.removeItem('xm_current_shop');
-      window.location.href = 'dashboard.html';
-    } else {
-      window.location.reload();
+  // Open custom delete confirmation modal
+  createDeleteShopModal(shopId, shop.shop.name);
+}
+
+/**
+ * Create and show delete confirmation modal that requires typing the shop name
+ */
+function createDeleteShopModal(shopId, shopName) {
+  // If modal exists, remove
+  const existing = document.getElementById('deleteShopModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'deleteShopModal';
+  modal.className = 'modal-overlay';
+  modal.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:10000;background:rgba(0,0,0,0.45)';
+  modal.innerHTML = `
+    <div class="modal-content card" style="width:520px;padding:18px;border-radius:12px;">
+      <h3 style="margin-top:0;color:#b91c1c">Delete Shop — ${escapeHtml(shopName)}</h3>
+      <div style="color:#333;margin-bottom:8px">This will permanently delete all data for this shop, including appointments, jobs, invoices, customers, and messages. This action CANNOT be undone.</div>
+      <div id="deleteShopErr" style="color:red;min-height:20px;margin-bottom:8px"></div>
+      <div style="margin-bottom:8px">To confirm, type the shop name exactly:</div>
+      <input id="confirmDeleteName" type="text" placeholder="Type shop name to confirm" style="padding:8px;border:1px solid var(--line);border-radius:6px;width:100%;margin-bottom:12px" />
+      <div style="display:flex;justify-content:flex-end;gap:8px">
+        <button class="btn" id="cancelDeleteShop">Cancel</button>
+        <button class="btn danger" id="confirmDeleteShop">Delete</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+
+  document.getElementById('cancelDeleteShop').addEventListener('click', () => modal.remove());
+  document.getElementById('confirmDeleteShop').addEventListener('click', async () => {
+    const input = document.getElementById('confirmDeleteName');
+    const err = document.getElementById('deleteShopErr');
+    if (!input) return;
+    if ((input.value || '').trim() !== shopName) {
+      if (err) err.textContent = 'Shop name did not match. Please type the full shop name to confirm.';
+      return;
     }
-  } catch (error) {
-    console.error('Error deleting shop:', error);
-    alert(`Error deleting shop: ${error.message}`);
-  }
+
+    try {
+      const supabase = getSupabaseClient();
+      const { error } = await supabase.from('shops').delete().eq('id', shopId);
+      if (error) throw error;
+      modal.remove();
+      if (typeof showNotification === 'function') showNotification(`Shop "${shopName}" deleted`, 'success');
+      if (shopId === currentShopId) {
+        localStorage.removeItem('xm_current_shop');
+        setTimeout(() => { window.location.href = 'dashboard.html'; }, 900);
+      } else {
+        setTimeout(() => { window.location.reload(); }, 900);
+      }
+    } catch (ex) {
+      console.error('Error deleting shop:', ex);
+      if (err) err.textContent = `Error deleting shop: ${ex && ex.message ? ex.message : String(ex)}`;
+    }
+  });
+
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 }
 
 /**
