@@ -121,6 +121,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // For Twilio webhooks
 
 // Serve static files
 app.use(express.static('.'));
