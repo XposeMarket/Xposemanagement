@@ -255,7 +255,7 @@ async function sendMessage(req, res) {
         thread_id: thread.id,
         shop_id: shopId,
         customer_id: customerId,
-        twilio_message_id: twilioMessage.sid,
+        twilio_message_sid: twilioMessage.sid,
         direction: 'outbound',
         from_number: shopNumber.phone_number,
         to_number: normalizedTo,
@@ -377,7 +377,7 @@ async function receiveWebhook(req, res) {
         thread_id: thread.id,
         shop_id: shopNumber.shop_id,
         customer_id: customerId,
-        twilio_message_id: MessageSid,
+        twilio_message_sid: MessageSid,
         direction: 'inbound',
         from_number: normalizedFrom,
         to_number: normalizedTo,
@@ -442,7 +442,7 @@ async function receiveStatusCallback(req, res) {
     await supabase
       .from('messages')
       .update(updateData)
-      .eq('twilio_message_id', MessageSid);
+      .eq('twilio_message_sid', MessageSid);
     
     return res.status(200).send('Status updated');
     
