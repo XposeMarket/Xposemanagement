@@ -368,14 +368,19 @@ class PartPricingModal {
           const inventoryAPI = await import('../helpers/inventory-api.js');
           const { supabase } = await import('../helpers/supabase.js');
           
+          // Store references at outer scope for later use
+          let invItem = null;
+          let folderItem = null;
+          
           // Check if it's regular inventory or folder inventory
-          const { data: invItem } = await supabase
+          const { data: regularInv } = await supabase
             .from('inventory_items')
             .select('id, qty, name')
             .eq('id', partId)
             .single();
           
-          if (invItem) {
+          if (regularInv) {
+            invItem = regularInv;
             // Regular inventory - use addInventoryToJob (auto-deducts)
             console.log('🔄 Adding regular inventory via addInventoryToJob (auto-deduct)');
             await inventoryAPI.addInventoryToJob(
@@ -394,13 +399,14 @@ class PartPricingModal {
             console.log('✅ Inventory auto-deducted successfully!');
           } else {
             // Try folder inventory
-            const { data: folderItem } = await supabase
+            const { data: folderInv } = await supabase
               .from('inventory_folder_items')
               .select('id, qty, name')
               .eq('id', partId)
               .single();
             
-            if (folderItem) {
+            if (folderInv) {
+              folderItem = folderInv;
               console.log('🔄 Adding folder inventory via addFolderInventoryToJob (auto-deduct)');
               await inventoryAPI.addFolderInventoryToJob(
                 this.currentJobId,
