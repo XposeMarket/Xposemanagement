@@ -736,22 +736,21 @@ function setupMessages() {
 
     const panel = document.createElement('div');
     panel.id = 'requestNumberPanel';
+    // Use fixed positioning so the panel sits above the sliding threads/chat panels on mobile
     panel.style.cssText = `
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      position: fixed;
+      inset: 56px 16px 16px 16px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 20px;
-      padding: 60px 20px;
+      padding: 20px;
       background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
       border-radius: 12px;
       text-align: center;
-      z-index: 10;
+      z-index: 95;
+      box-shadow: 0 8px 30px rgba(2,6,23,0.12);
     `;
     panel.innerHTML = `
       <div style="font-size: 48px;">📞</div>
@@ -767,8 +766,12 @@ function setupMessages() {
 
     const messagesWrap = document.querySelector('.messages-wrap');
     if (messagesWrap) {
-      messagesWrap.style.position = 'relative';
+      // Append as child for desktop but the panel itself is fixed so it will overlay on mobile
       messagesWrap.appendChild(panel);
+      // If on mobile, hide the threads panel so it doesn't slide over this request UI
+      if (window.innerWidth < 900 && threadsPanel) {
+        threadsPanel.classList.add('mobile-hidden');
+      }
     } else {
       chatPanel.innerHTML = '';
       chatPanel.style.position = 'relative';
@@ -785,6 +788,10 @@ function setupMessages() {
   function hideRequestNumberPanel() {
     const existing = document.getElementById('requestNumberPanel');
     if (existing) existing.remove();
+    // Restore threads panel visibility on mobile
+    if (window.innerWidth < 900 && threadsPanel) {
+      threadsPanel.classList.remove('mobile-hidden');
+    }
   }
 
   // Request phone number (waitlist version)
