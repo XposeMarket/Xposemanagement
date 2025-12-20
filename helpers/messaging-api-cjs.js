@@ -297,6 +297,7 @@ async function sendMessage(req, res) {
  * Receive incoming messages from Twilio
  */
 async function receiveWebhook(req, res) {
+  console.log('🚨 WEBHOOK FUNCTION STARTED');
   console.log('🔔 WEBHOOK CALLED!');
   console.log('📨 Request body:', req.body);
   console.log('🔑 Environment check:', {
