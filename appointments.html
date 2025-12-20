@@ -23,8 +23,36 @@
     .splitbar .left { display:flex; align-items:center; gap:8px; }
     .splitbar .right { display:flex; align-items:center; gap:8px; }
 
-    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:70; }
-    .modal-card { width:min(640px,92vw); background:var(--card,#fff); color:inherit; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+    /* Align modals below the sticky header on desktop, but keep them centered on small screens */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      display: flex;
+      align-items: flex-start; /* sit below header */
+      padding-top: 56px; /* account for header height (reduced to open higher) */
+      justify-content: center;
+      z-index: 10020;
+      overflow: auto;
+    }
+    .modal-card {
+      width: min(640px, 92vw);
+      background: var(--card, #fff);
+      color: inherit;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      margin: 12px 0; /* ensure some breathing room when content is tall */
+    }
+
+    @media (max-width: 768px) {
+      .modal-backdrop { align-items: center; padding-top: 0; }
+    }
+    /* Ensure appointment modals don't show an inner scrollbar; let the backdrop scroll when modal
+       content is slightly taller than viewport. This overrides the global `.modal-body` rule. */
+    .modal-backdrop .modal-card .modal-body {
+      overflow: visible !important;
+      max-height: none !important;
+    }
     .modal-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border,#e5e5e5); }
     .modal-body { padding:12px 14px; }
     .modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 14px; border-top:1px solid var(--border,#e5e5e5); }

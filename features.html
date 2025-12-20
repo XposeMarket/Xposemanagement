@@ -178,15 +178,16 @@
         margin-top: 8px;
         margin-bottom: 0;
       }
-      .features-main { padding: 0 4px; }
+      .features-main { padding: 0 12px; }
       .features-title { font-size: 1.3rem; }
       .features-desc { font-size: 1rem; margin-bottom: 24px; }
       .feature-section, .feature-section.reverse {
         flex-direction: column !important;
         gap: 8px;
-        padding: 8px 4px;
-        margin-bottom: 12px;
-        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+        padding: 12px;
+        margin-bottom: 16px;
+        box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+        border-radius: 10px;
       }
       .feature-img {
         width: 100%;
@@ -203,6 +204,14 @@
       .slideshow img { border-radius: 10px; }
       .footer { font-size: 0.98rem; padding: 18px 0 8px 0; margin-top: 32px; }
     }
+
+    /* Image modal for feature screenshots */
+    .image-modal{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.6); z-index:2200 }
+    .image-modal.hidden{ display:none }
+    .image-modal-content{ position:relative; max-width:92%; max-height:92%; padding:10px; box-sizing:border-box }
+    .image-modal-content img{ width:auto; max-width:100%; max-height:82vh; display:block; border-radius:8px; box-shadow:0 12px 36px rgba(0,0,0,0.6) }
+    .image-modal-close{ position:absolute; top:-12px; right:-12px; width:40px; height:40px; border-radius:20px; border:none; background:#fff; color:#111; font-size:20px; cursor:pointer; box-shadow:0 6px 18px rgba(0,0,0,0.2) }
+    .image-modal-caption{ margin-top:8px; text-align:center; color:#fff; font-size:0.95rem }
   </style>
 </head>
 <body>
@@ -309,6 +318,14 @@
           </div>
         </div>
   </main>
+  <!-- Image modal -->
+  <div id="imageModal" class="image-modal hidden" aria-hidden="true">
+    <div class="image-modal-content" role="dialog" aria-modal="true">
+      <button class="image-modal-close" aria-label="Close">×</button>
+      <img id="imageModalImg" src="" alt="" />
+      <div id="imageModalCaption" class="image-modal-caption"></div>
+    </div>
+  </div>
   <footer class="footer" style="background:#f6f8ff;padding:32px 0 16px 0;text-align:center;color:#7f5fff;font-size:1.08rem;">
     <span>© 2025 Xpose Management</span>
     <div style="margin-top:18px;font-size:1.08rem;">
@@ -318,5 +335,40 @@
       <a href="contact.html" style="color:#2a7cff;font-weight:600;">Contact/Support</a>
     </div>
   </footer>
+  <script>
+    (function(){
+      function openModal(src, alt){
+        const modal = document.getElementById('imageModal');
+        const img = document.getElementById('imageModalImg');
+        const cap = document.getElementById('imageModalCaption');
+        if(!modal || !img) return;
+        img.src = src;
+        img.alt = alt || '';
+        if(cap) cap.textContent = alt || '';
+        modal.classList.remove('hidden');
+        modal.setAttribute('aria-hidden','false');
+      }
+      function closeModal(){
+        const modal = document.getElementById('imageModal');
+        const img = document.getElementById('imageModalImg');
+        if(!modal || !img) return;
+        modal.classList.add('hidden');
+        modal.setAttribute('aria-hidden','true');
+        img.src = '';
+      }
+      document.addEventListener('DOMContentLoaded', function(){
+        const imgs = document.querySelectorAll('.feature-img, .slideshow img');
+        imgs.forEach(i => {
+          i.style.cursor = 'zoom-in';
+          i.addEventListener('click', (e) => { openModal(i.src, i.alt || ''); });
+        });
+        const closeBtn = document.querySelector('.image-modal-close');
+        const modal = document.getElementById('imageModal');
+        if(closeBtn) closeBtn.addEventListener('click', closeModal);
+        if(modal) modal.addEventListener('click', (e) => { if(e.target === modal) closeModal(); });
+        document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeModal(); });
+      });
+    })();
+  </script>
 </body>
 </html>
