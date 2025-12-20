@@ -1,12 +1,14 @@
 import { getSupabaseClient } from './supabase.js';
 
 /**
- * Inventory API helper - wraps Supabase calls for inventory and folders.
- * Assumes the following tables exist:
- * - inventory_items (id, shop_id, name, qty, last_order, out_of_stock_date, meta)
+ * UPDATED Inventory API helper - now with automatic deduction support
+ * When parts are added to jobs with inventory linkage, inventory is automatically deducted
+ * 
+ * Tables:
+ * - inventory_items (id, shop_id, name, qty, last_order, out_of_stock_date, meta, cost_price, sell_price, markup_percent)
  * - inventory_folders (id, shop_id, name, unit)
- * - inventory_folder_items (id, folder_id, name, qty, last_order, out_of_stock_date, meta)
- * - job_parts (with inventory linkage)
+ * - inventory_folder_items (id, folder_id, name, qty, last_order, out_of_stock_date, meta, cost_price, sell_price, markup_percent)
+ * - job_parts (with inventory linkage: inventory_item_id, inventory_folder_item_id, auto_deducted)
  * - inventory_transactions (audit trail)
  */
 
@@ -22,7 +24,6 @@ export async function fetchInventoryForShop(shopId) {
     if (itemsErr || foldersErr || folderItemsErr) {
       console.warn('inventory-api: fetch errors', { itemsErr, foldersErr, folderItemsErr });
     }
-    // Assemble folders with their items (ensure meta is preserved)
     const folderMap = (folders || []).map(f => ({ 
       id: f.id,
       shop_id: f.shop_id,
@@ -42,32 +43,531 @@ export async function fetchInventoryForShop(shopId) {
   }
 }
 
+/**
+ * Add inventory item to job with automatic deduction
+ * This is now the PRIMARY way to add inventory to jobs
+ */
+export async function addInventoryToJob(jobId, inventoryItemId, quantity, shopId, partDetails = {}) {
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase || !jobId || !inventoryItemId) {
+      throw new Error('Missing required parameters');
+    }
+    
+    console.log('📦 Adding inventory to job:', { jobId, inventoryItemId, quantity });
+
+    // Quick de-duplication guard: if the same job/item/qty was added very recently,
+    // skip to avoid double-inserts caused by duplicate UI events.
+    try {
+      if (typeof window !== 'undefined') {
+        window._recentInventoryAdds = window._recentInventoryAdds || {};
+        const key = `${jobId}|${inventoryItemId}|${quantity}`;
+        const now = Date.now();
+        const last = window._recentInventoryAdds[key] || 0;
+        if (last && (now - last) < 3000) {
+          console.warn('⚠️ Skipping duplicate addInventoryToJob call (debounce)', key);
+          return null;
+        }
+        window._recentInventoryAdds[key] = now;
+        // clear the marker after a short delay
+        setTimeout(() => { try { delete window._recentInventoryAdds[key]; } catch (e) {} }, 5000);
+      }
+    } catch (e) { console.warn('Could not apply dedupe guard', e); }
+    
+    // Get inventory item details for validation and pricing
+    const { data: invItem, error: invError } = await supabase
+      .from('inventory_items')
+      .select('*')
+      .eq('id', inventoryItemId)
+      .eq('shop_id', shopId)
+      .single();
+    
+    if (invError) throw invError;
+    
+    // Check if enough inventory available
+    if (invItem.qty < quantity) {
+      throw new Error(`Insufficient inventory: ${invItem.name} (available: ${invItem.qty}, requested: ${quantity})`);
+    }
+    
+    // SERVER-SIDE IDEMPOTENCY: check for a very recent identical job_part to avoid double-inserts
+    try {
+      const threshold = new Date(Date.now() - 5000).toISOString();
+      const { data: existingParts } = await supabase
+        .from('job_parts')
+        .select('id')
+        .eq('job_id', jobId)
+        .eq('inventory_item_id', inventoryItemId)
+        .eq('quantity', quantity)
+        .gt('created_at', threshold)
+        .limit(1);
+      if (existingParts && existingParts.length) {
+        console.warn('⚠️ Detected recent identical job_part insert - skipping duplicate insert', existingParts[0].id);
+        return existingParts[0];
+      }
+    } catch (e) {
+      console.warn('Idempotency check failed, proceeding with insert', e);
+    }
+
+    // Create job_parts record - trigger will auto-deduct inventory
+    const payload = {
+      shop_id: shopId,
+      job_id: jobId,
+      inventory_item_id: inventoryItemId,
+      part_name: partDetails.part_name || invItem.name,
+      part_number: partDetails.part_number || null,
+      quantity: quantity || 1,
+      cost_price: partDetails.cost_price || invItem.cost_price || 0,
+      sell_price: partDetails.sell_price || invItem.sell_price || 0,
+      markup_percent: partDetails.markup_percent || invItem.markup_percent || 0,
+      auto_deducted: false // Trigger will set this to true after deduction
+    };
+    
+    const { data, error } = await supabase
+      .from('job_parts')
+      .insert(payload)
+      .select()
+      .single();
+    
+    if (error) {
+      // Check if it's an inventory shortage error
+      if (error.message && error.message.includes('Insufficient inventory')) {
+        throw new Error(error.message);
+      }
+      throw error;
+    }
+    
+    console.log('✅ Inventory added to job and auto-deducted:', data);
+    
+    // Dispatch event for UI updates
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('inventoryChanged', { 
+        detail: { 
+          jobId, 
+          inventoryItemId, 
+          quantity,
+          action: 'deduct'
+        } 
+      }));
+    }
+    
+    return data;
+  } catch (e) {
+    console.error('❌ addInventoryToJob error:', e);
+    throw e;
+  }
+}
+
+/**
+ * Add folder inventory item to job with automatic deduction
+ */
+export async function addFolderInventoryToJob(jobId, folderItemId, quantity, shopId, partDetails = {}) {
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase || !jobId || !folderItemId) {
+      throw new Error('Missing required parameters');
+    }
+    
+    console.log('📦 Adding folder inventory to job:', { jobId, folderItemId, quantity });
+    // Quick de-duplication guard similar to addInventoryToJob
+    try {
+      if (typeof window !== 'undefined') {
+        window._recentInventoryAdds = window._recentInventoryAdds || {};
+        const key = `${jobId}|folder|${folderItemId}|${quantity}`;
+        const now = Date.now();
+        const last = window._recentInventoryAdds[key] || 0;
+        if (last && (now - last) < 3000) {
+          console.warn('⚠️ Skipping duplicate addFolderInventoryToJob call (debounce)', key);
+          return null;
+        }
+        window._recentInventoryAdds[key] = now;
+        setTimeout(() => { try { delete window._recentInventoryAdds[key]; } catch (e) {} }, 5000);
+      }
+    } catch (e) { console.warn('Could not apply dedupe guard', e); }
+    
+    // Get folder item details
+    const { data: folderItem, error: folderError } = await supabase
+      .from('inventory_folder_items')
+      .select('*')
+      .eq('id', folderItemId)
+      .eq('shop_id', shopId)
+      .single();
+    
+    if (folderError) throw folderError;
+    
+    // Check if enough inventory available
+    if (folderItem.qty < quantity) {
+      throw new Error(`Insufficient inventory: ${folderItem.name} (available: ${folderItem.qty}, requested: ${quantity})`);
+    }
+    
+    // SERVER-SIDE IDEMPOTENCY: check for a very recent identical job_part to avoid double-inserts
+    try {
+      const threshold = new Date(Date.now() - 5000).toISOString();
+      const { data: existingParts } = await supabase
+        .from('job_parts')
+        .select('id')
+        .eq('job_id', jobId)
+        .eq('inventory_folder_item_id', folderItemId)
+        .eq('quantity', quantity)
+        .gt('created_at', threshold)
+        .limit(1);
+      if (existingParts && existingParts.length) {
+        console.warn('⚠️ Detected recent identical job_part insert (folder) - skipping duplicate insert', existingParts[0].id);
+        return existingParts[0];
+      }
+    } catch (e) {
+      console.warn('Idempotency check failed (folder), proceeding with insert', e);
+    }
+
+    // Create job_parts record - trigger will auto-deduct
+    const payload = {
+      shop_id: shopId,
+      job_id: jobId,
+      inventory_folder_item_id: folderItemId,
+      part_name: partDetails.part_name || folderItem.name,
+      part_number: partDetails.part_number || null,
+      quantity: quantity || 1,
+      cost_price: partDetails.cost_price || folderItem.cost_price || 0,
+      sell_price: partDetails.sell_price || folderItem.sell_price || 0,
+      markup_percent: partDetails.markup_percent || folderItem.markup_percent || 0,
+      auto_deducted: false
+    };
+    
+    const { data, error } = await supabase
+      .from('job_parts')
+      .insert(payload)
+      .select()
+      .single();
+    
+    if (error) {
+      if (error.message && error.message.includes('Insufficient inventory')) {
+        throw new Error(error.message);
+      }
+      throw error;
+    }
+    
+    console.log('✅ Folder inventory added to job and auto-deducted:', data);
+    
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('inventoryChanged', { 
+        detail: { 
+          jobId, 
+          folderItemId, 
+          quantity,
+          action: 'deduct'
+        } 
+      }));
+    }
+    
+    return data;
+  } catch (e) {
+    console.error('❌ addFolderInventoryToJob error:', e);
+    throw e;
+  }
+}
+
+/**
+ * Remove part from job - automatically returns inventory
+ */
+export async function removeJobPart(jobPartId) {
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase || !jobPartId) {
+      throw new Error('Missing job part ID');
+    }
+    
+    console.log('🗑️ Removing job part:', jobPartId);
+    
+    // Get job part details before deletion
+    const { data: jobPart, error: fetchError } = await supabase
+      .from('job_parts')
+      .select('*')
+      .eq('id', jobPartId)
+      .single();
+    
+    if (fetchError) throw fetchError;
+    
+    // Delete job part - trigger will auto-return inventory
+    const { error: deleteError } = await supabase
+      .from('job_parts')
+      .delete()
+      .eq('id', jobPartId);
+    
+    if (deleteError) throw deleteError;
+    
+    console.log('✅ Job part removed and inventory returned');
+    
+    // Dispatch event for UI updates
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('inventoryChanged', { 
+        detail: { 
+          jobId: jobPart.job_id, 
+          inventoryItemId: jobPart.inventory_item_id || jobPart.inventory_folder_item_id, 
+          quantity: jobPart.quantity,
+          action: 'return'
+        } 
+      }));
+    }
+    
+    return { success: true };
+  } catch (e) {
+    console.error('❌ removeJobPart error:', e);
+    throw e;
+  }
+}
+
+/**
+ * Get all job parts for a job (with inventory linkage info)
+ */
+export async function getJobParts(jobId) {
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase || !jobId) return [];
+    
+    const { data, error } = await supabase
+      .from('job_parts')
+      .select(`
+        *,
+        inventory_item:inventory_items(id, name, qty),
+        inventory_folder_item:inventory_folder_items(id, name, qty)
+      `)
+      .eq('job_id', jobId)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.warn('getJobParts error', e);
+    return [];
+  }
+}
+
+/**
+ * Get low stock items for a shop
+ */
+export async function getLowStockItems(shopId, threshold = 5) {
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase || !shopId) return [];
+    
+    const { data, error } = await supabase
+      .rpc('get_low_stock_items', { 
+        p_shop_id: shopId, 
+        p_threshold: threshold 
+      });
+    
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.warn('getLowStockItems error', e);
+    return [];
+  }
+}
+
+/**
+ * Get inventory usage report for date range
+ */
+export async function getInventoryUsage(shopId, startDate, endDate) {
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase || !shopId) return [];
+    
+    const { data, error } = await supabase
+      .rpc('get_inventory_usage', {
+        p_shop_id: shopId,
+        p_start_date: startDate,
+        p_end_date: endDate
+      });
+    
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.warn('getInventoryUsage error', e);
+    return [];
+  }
+}
+
+/**
+ * Get inventory transactions for audit trail
+ */
+export async function getInventoryTransactions(shopId, filters = {}) {
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase || !shopId) return [];
+    
+    let query = supabase
+      .from('inventory_transactions')
+      .select(`
+        *,
+        inventory_item:inventory_items(name),
+        inventory_folder_item:inventory_folder_items(name),
+        job:jobs(id)
+      `)
+      .eq('shop_id', shopId)
+      .order('created_at', { ascending: false });
+    
+    if (filters.itemId) {
+      query = query.eq('inventory_item_id', filters.itemId);
+    }
+    if (filters.folderItemId) {
+      query = query.eq('inventory_folder_item_id', filters.folderItemId);
+    }
+    if (filters.jobId) {
+      query = query.eq('job_id', filters.jobId);
+    }
+    if (filters.transactionType) {
+      query = query.eq('transaction_type', filters.transactionType);
+    }
+    if (filters.limit) {
+      query = query.limit(filters.limit);
+    }
+    
+    const { data, error } = await query;
+    
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.warn('getInventoryTransactions error', e);
+    return [];
+  }
+}
+
+/**
+ * Manually adjust inventory (for restocking, corrections, etc.)
+ */
+export async function adjustInventoryQuantity(itemId, newQuantity, shopId, notes = '', isFolder = false) {
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase || !itemId || !shopId) {
+      throw new Error('Missing required parameters');
+    }
+    
+    const table = isFolder ? 'inventory_folder_items' : 'inventory_items';
+    
+    // Get current quantity
+    const { data: currentItem, error: fetchError } = await supabase
+      .from(table)
+      .select('qty, name')
+      .eq('id', itemId)
+      .single();
+    
+    if (fetchError) throw fetchError;
+    
+    const quantityBefore = currentItem.qty || 0;
+    const quantityChange = newQuantity - quantityBefore;
+    
+    // Update quantity
+    const { data, error } = await supabase
+      .from(table)
+      .update({ 
+        qty: newQuantity,
+        out_of_stock_date: newQuantity === 0 ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', itemId)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    // Log transaction
+    const transactionPayload = {
+      shop_id: shopId,
+      transaction_type: 'adjustment',
+      quantity: Math.abs(quantityChange),
+      quantity_before: quantityBefore,
+      quantity_after: newQuantity,
+      notes: notes || `Manual adjustment: ${quantityBefore} → ${newQuantity}`
+    };
+    
+    if (isFolder) {
+      transactionPayload.inventory_folder_item_id = itemId;
+    } else {
+      transactionPayload.inventory_item_id = itemId;
+    }
+    
+    await supabase.from('inventory_transactions').insert(transactionPayload);
+    
+    console.log('✅ Inventory adjusted:', currentItem.name, quantityBefore, '→', newQuantity);
+    
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('inventoryChanged', { 
+        detail: { 
+          itemId, 
+          quantityBefore,
+          quantityAfter: newQuantity,
+          action: 'adjustment'
+        } 
+      }));
+    }
+    
+    return data;
+  } catch (e) {
+    console.error('❌ adjustInventoryQuantity error:', e);
+    throw e;
+  }
+}
+
+// LEGACY FUNCTIONS - DEPRECATED but kept for backward compatibility
+// These manually deduct but DON'T create job_parts records
+// Use addInventoryToJob() instead
+
 export async function decrementInventoryItemRemote(itemId, qty = 1, shopId) {
+  console.warn('⚠️ decrementInventoryItemRemote is deprecated. Use addInventoryToJob instead.');
   try {
     const supabase = getSupabaseClient();
     if (!supabase || !itemId) return null;
-    // Fallback: fetch current, then update
-    const cur = await supabase.from('inventory_items').select('qty').eq('id', itemId).single();
+    
+    const cur = await supabase.from('inventory_items').select('qty, name').eq('id', itemId).single();
     if (cur.error) return null;
+    
     const next = Math.max(0, (parseInt(cur.data.qty, 10) || 0) - qty);
-    const { data: d2, error: e2 } = await supabase.from('inventory_items').update({ qty: next, out_of_stock_date: next === 0 ? new Date().toISOString() : null }).eq('id', itemId).select().single();
-    if (e2) throw e2;
-    return d2;
-  } catch (e) { console.warn('decrementInventoryItemRemote', e); return null; }
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .update({ 
+        qty: next, 
+        out_of_stock_date: next === 0 ? new Date().toISOString() : null 
+      })
+      .eq('id', itemId)
+      .select()
+      .single();
+      
+    if (error) throw error;
+    return data;
+  } catch (e) { 
+    console.warn('decrementInventoryItemRemote', e); 
+    return null; 
+  }
 }
 
 export async function decrementFolderItemRemote(folderItemId, qty = 1, shopId) {
+  console.warn('⚠️ decrementFolderItemRemote is deprecated. Use addFolderInventoryToJob instead.');
   try {
     const supabase = getSupabaseClient();
     if (!supabase || !folderItemId) return null;
-    const cur = await supabase.from('inventory_folder_items').select('qty').eq('id', folderItemId).single();
+    
+    const cur = await supabase.from('inventory_folder_items').select('qty, name').eq('id', folderItemId).single();
     if (cur.error) return null;
+    
     const next = Math.max(0, (parseInt(cur.data.qty, 10) || 0) - qty);
-    const { data, error } = await supabase.from('inventory_folder_items').update({ qty: next, out_of_stock_date: next === 0 ? new Date().toISOString() : null }).eq('id', folderItemId).select().single();
+    const { data, error } = await supabase
+      .from('inventory_folder_items')
+      .update({ 
+        qty: next, 
+        out_of_stock_date: next === 0 ? new Date().toISOString() : null 
+      })
+      .eq('id', folderItemId)
+      .select()
+      .single();
+      
     if (error) throw error;
     return data;
-  } catch (e) { console.warn('decrementFolderItemRemote', e); return null; }
+  } catch (e) { 
+    console.warn('decrementFolderItemRemote', e); 
+    return null; 
+  }
 }
+
+// Keep existing upsert and delete functions unchanged
 
 export async function upsertInventoryItemRemote(item, shopId) {
   try {
@@ -122,7 +622,20 @@ export async function upsertFolderItemRemote(folderId, item, shopId) {
   try {
     const supabase = getSupabaseClient();
     if (!supabase) return null;
-    const payload = { shop_id: shopId, folder_id: folderId, name: item.name || '', qty: item.qty || 0, last_order: item.lastOrder || null, out_of_stock_date: item.outOfStockDate || null, meta: item.meta || null, cost_price: item.cost_price || null, sell_price: item.sell_price || null, markup_percent: item.markup_percent || null };
+    
+    const payload = { 
+      shop_id: shopId, 
+      folder_id: folderId, 
+      name: item.name || '', 
+      qty: item.qty || 0, 
+      last_order: item.lastOrder || null, 
+      out_of_stock_date: item.outOfStockDate || null, 
+      meta: item.meta || null, 
+      cost_price: item.cost_price || null, 
+      sell_price: item.sell_price || null, 
+      markup_percent: item.markup_percent || null 
+    };
+    
     if (item.id) {
       const { data, error } = await supabase.from('inventory_folder_items').update(payload).eq('id', item.id).select().single();
       if (error) throw error;
@@ -132,215 +645,12 @@ export async function upsertFolderItemRemote(folderId, item, shopId) {
       if (error) throw error;
       return data;
     }
-  } catch (e) { console.warn('upsertFolderItemRemote', e); return null; }
-}
-
-/**
- * Link inventory item to job part and auto-deduct
- * This creates a job_parts record with inventory linkage
- */
-export async function addInventoryToJob(jobId, inventoryItemId, quantity, shopId, partDetails = {}) {
-  try {
-    const supabase = getSupabaseClient();
-    if (!supabase || !jobId || !inventoryItemId) return null;
-    
-    // Get inventory item details
-    const { data: invItem, error: invError } = await supabase
-      .from('inventory_items')
-      .select('name')
-      .eq('id', inventoryItemId)
-      .single();
-    
-    if (invError) throw invError;
-    
-    // Create job_parts record (trigger will auto-deduct)
-    const payload = {
-      shop_id: shopId,
-      job_id: jobId,
-      inventory_item_id: inventoryItemId,
-      part_name: partDetails.part_name || invItem.name,
-      part_number: partDetails.part_number || null,
-      quantity: quantity || 1,
-      cost_price: partDetails.cost_price || 0,
-      sell_price: partDetails.sell_price || 0,
-      markup_percent: partDetails.markup_percent || 0
-    };
-    
-    const { data, error } = await supabase
-      .from('job_parts')
-      .insert(payload)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    
-    console.log('✅ Inventory added to job and auto-deducted:', data);
-    return data;
-  } catch (e) {
-    console.warn('addInventoryToJob error', e);
-    return null;
+  } catch (e) { 
+    console.warn('upsertFolderItemRemote', e); 
+    return null; 
   }
 }
 
-/**
- * Link folder inventory item to job part and auto-deduct
- */
-export async function addFolderInventoryToJob(jobId, folderItemId, quantity, shopId, partDetails = {}) {
-  try {
-    const supabase = getSupabaseClient();
-    if (!supabase || !jobId || !folderItemId) return null;
-    
-    // Get folder item details
-    const { data: folderItem, error: folderError } = await supabase
-      .from('inventory_folder_items')
-      .select('name')
-      .eq('id', folderItemId)
-      .single();
-    
-    if (folderError) throw folderError;
-    
-    // Create job_parts record (trigger will auto-deduct)
-    const payload = {
-      shop_id: shopId,
-      job_id: jobId,
-      inventory_folder_item_id: folderItemId,
-      part_name: partDetails.part_name || folderItem.name,
-      part_number: partDetails.part_number || null,
-      quantity: quantity || 1,
-      cost_price: partDetails.cost_price || 0,
-      sell_price: partDetails.sell_price || 0,
-      markup_percent: partDetails.markup_percent || 0
-    };
-    
-    const { data, error } = await supabase
-      .from('job_parts')
-      .insert(payload)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    
-    console.log('✅ Folder inventory added to job and auto-deducted:', data);
-    return data;
-  } catch (e) {
-    console.warn('addFolderInventoryToJob error', e);
-    return null;
-  }
-}
-
-/**
- * Get low stock items for a shop
- */
-export async function getLowStockItems(shopId, threshold = 3) {
-  try {
-    const supabase = getSupabaseClient();
-    if (!supabase || !shopId) return [];
-    
-    const { data, error } = await supabase
-      .rpc('get_low_stock_items', { p_shop_id: shopId, p_threshold: threshold });
-    
-    if (error) throw error;
-    return data || [];
-  } catch (e) {
-    console.warn('getLowStockItems error', e);
-    return [];
-  }
-}
-
-/**
- * Get inventory usage report for date range
- */
-export async function getInventoryUsage(shopId, startDate, endDate) {
-  try {
-    const supabase = getSupabaseClient();
-    if (!supabase || !shopId) return [];
-    
-    const { data, error } = await supabase
-      .rpc('get_inventory_usage', {
-        p_shop_id: shopId,
-        p_start_date: startDate,
-        p_end_date: endDate
-      });
-    
-    if (error) throw error;
-    return data || [];
-  } catch (e) {
-    console.warn('getInventoryUsage error', e);
-    return [];
-  }
-}
-
-/**
- * Get all job parts for a job (with inventory linkage info)
- */
-export async function getJobParts(jobId) {
-  try {
-    const supabase = getSupabaseClient();
-    if (!supabase || !jobId) return [];
-    
-    const { data, error } = await supabase
-      .from('job_parts')
-      .select(`
-        *,
-        inventory_item:inventory_items(id, name, qty),
-        inventory_folder_item:inventory_folder_items(id, name, qty)
-      `)
-      .eq('job_id', jobId)
-      .order('created_at', { ascending: false });
-    
-    if (error) throw error;
-    return data || [];
-  } catch (e) {
-    console.warn('getJobParts error', e);
-    return [];
-  }
-}
-
-/**
- * Get inventory transactions for audit trail
- */
-export async function getInventoryTransactions(shopId, filters = {}) {
-  try {
-    const supabase = getSupabaseClient();
-    if (!supabase || !shopId) return [];
-    
-    let query = supabase
-      .from('inventory_transactions')
-      .select(`
-        *,
-        inventory_item:inventory_items(name),
-        inventory_folder_item:inventory_folder_items(name),
-        job:jobs(id)
-      `)
-      .eq('shop_id', shopId)
-      .order('created_at', { ascending: false });
-    
-    if (filters.itemId) {
-      query = query.eq('inventory_item_id', filters.itemId);
-    }
-    if (filters.folderItemId) {
-      query = query.eq('inventory_folder_item_id', filters.folderItemId);
-    }
-    if (filters.jobId) {
-      query = query.eq('job_id', filters.jobId);
-    }
-    if (filters.limit) {
-      query = query.limit(filters.limit);
-    }
-    
-    const { data, error } = await query;
-    
-    if (error) throw error;
-    return data || [];
-  } catch (e) {
-    console.warn('getInventoryTransactions error', e);
-    return [];
-  }
-}
-
-/**
- * Upsert folder and its items to Supabase
- */
 export async function upsertFolderToSupabase(folder, shopId) {
   try {
     const supabase = getSupabaseClient();
@@ -348,10 +658,6 @@ export async function upsertFolderToSupabase(folder, shopId) {
     
     console.log('📁 Syncing folder to Supabase:', folder.name);
     
-    // Note: `inventory_folders` table does not include a `meta` column
-    // in some deployments; avoid sending `meta` to prevent PostgREST
-    // schema cache errors (PGRST204). If you want `meta` on folders,
-    // add the column in the DB instead of sending it here.
     const folderPayload = {
       shop_id: shopId,
       name: folder.name,
@@ -359,13 +665,9 @@ export async function upsertFolderToSupabase(folder, shopId) {
     };
     
     let folderId = folder.id;
-    
-    // Check if ID is a valid UUID (format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
     const isValidUUID = folder.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(folder.id));
     
     if (isValidUUID) {
-      // Has valid UUID, try to update existing
-      console.log('🔄 Updating folder with UUID:', folder.id);
       const { data: folderData, error: folderError } = await supabase
         .from('inventory_folders')
         .update(folderPayload)
@@ -374,8 +676,6 @@ export async function upsertFolderToSupabase(folder, shopId) {
         .single();
       
       if (folderError) {
-        // Might not exist, try insert instead
-        console.log('⚠️ Update failed, trying insert');
         const { data: insertData, error: insertError } = await supabase
           .from('inventory_folders')
           .insert(folderPayload)
@@ -389,11 +689,7 @@ export async function upsertFolderToSupabase(folder, shopId) {
         folderId = folderData.id;
       }
     } else {
-      // No UUID or local ID like "oil_1qt", check if folder already exists by name
-      console.log('➕ Inserting new folder (local ID:', folder.id, ')');
-      
-      // First check if a folder with this name already exists
-      const { data: existingFolder, error: checkError } = await supabase
+      const { data: existingFolder } = await supabase
         .from('inventory_folders')
         .select('id')
         .eq('shop_id', shopId)
@@ -401,8 +697,6 @@ export async function upsertFolderToSupabase(folder, shopId) {
         .maybeSingle();
       
       if (existingFolder) {
-        // Folder exists, update it
-        console.log('📝 Found existing folder, updating:', existingFolder.id);
         const { data: folderData, error: folderError } = await supabase
           .from('inventory_folders')
           .update(folderPayload)
@@ -414,7 +708,6 @@ export async function upsertFolderToSupabase(folder, shopId) {
         folderId = folderData.id;
         folder.id = folderId;
       } else {
-        // Folder doesn't exist, insert new
         const { data: folderData, error: folderError } = await supabase
           .from('inventory_folders')
           .insert(folderPayload)
@@ -427,85 +720,19 @@ export async function upsertFolderToSupabase(folder, shopId) {
       }
     }
     
-    // Upsert folder items
     if (folder.items && folder.items.length > 0) {
       for (const item of folder.items) {
-        const itemPayload = {
-          shop_id: shopId,
-          folder_id: folderId,
-          name: item.name,
-          qty: item.qty || 0,
-          last_order: item.lastOrder || null,
-          out_of_stock_date: item.outOfStockDate || null,
-          meta: item.meta || null,
-          cost_price: item.cost_price || null,
-          sell_price: item.sell_price || null,
-          markup_percent: item.markup_percent || null
-        };
-        
-        const isValidItemUUID = item.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(item.id));
-        
-        if (isValidItemUUID) {
-          // Update existing item
-          const { data, error } = await supabase
-            .from('inventory_folder_items')
-            .update(itemPayload)
-            .eq('id', item.id)
-            .select()
-            .single();
-          
-          if (error) {
-            // Try insert if update fails
-            const { data: insertData, error: insertError } = await supabase
-              .from('inventory_folder_items')
-              .insert(itemPayload)
-              .select()
-              .single();
-            
-            if (insertError) throw insertError;
-            item.id = insertData.id;
-          }
-        } else {
-          // Check if item exists by name in this folder
-          const { data: existingItem } = await supabase
-            .from('inventory_folder_items')
-            .select('id')
-            .eq('folder_id', folderId)
-            .eq('name', item.name)
-            .maybeSingle();
-          
-          if (existingItem) {
-            // Update existing
-            const { data, error } = await supabase
-              .from('inventory_folder_items')
-              .update(itemPayload)
-              .eq('id', existingItem.id)
-              .select()
-              .single();
-            
-            if (error) throw error;
-            item.id = existingItem.id;
-          } else {
-            // Insert new
-            const { data, error } = await supabase
-              .from('inventory_folder_items')
-              .insert(itemPayload)
-              .select()
-              .single();
-            
-            if (error) throw error;
-            item.id = data.id;
-          }
-        }
+        await upsertFolderItemRemote(folderId, item, shopId);
       }
     }
     
     console.log('✅ Folder synced:', folder.name);
     
-    // Save updated folders with UUIDs back to localStorage
-    try {
-      localStorage.setItem('inventoryFolders', JSON.stringify(window.inventoryFolders || []));
-    } catch (e) {}
+    if (typeof window !== 'undefined' && window.inventoryFolders) {
+      try {
+        localStorage.setItem('inventoryFolders', JSON.stringify(window.inventoryFolders || []));
+      } catch (e) {}
+    }
     
     return folderId;
   } catch (e) {
@@ -514,34 +741,29 @@ export async function upsertFolderToSupabase(folder, shopId) {
   }
 }
 
-/**
- * Delete an inventory item by id
- */
 export async function deleteInventoryItemRemote(itemId) {
   try {
     const supabase = getSupabaseClient();
     if (!supabase || !itemId) return false;
+    
     const { data, error } = await supabase.from('inventory_items').delete().eq('id', itemId).select();
-    // If no rows were returned, PostgREST may return an error code PGRST116 when using .single();
-    // here treat "no rows" as a non-fatal condition (item already absent).
     if (error) {
-      // treat PGRST116 (no rows) as success (nothing to delete)
       if (error.code === 'PGRST116') return true;
       console.warn('deleteInventoryItemRemote error', error);
       return false;
     }
-    // If data is an array, deletion succeeded; return true.
     return Array.isArray(data) ? true : !!data;
-  } catch (e) { console.warn('deleteInventoryItemRemote', e); return false; }
+  } catch (e) { 
+    console.warn('deleteInventoryItemRemote', e); 
+    return false; 
+  }
 }
 
-/**
- * Delete a folder item by id
- */
 export async function deleteFolderItemRemote(folderItemId) {
   try {
     const supabase = getSupabaseClient();
     if (!supabase || !folderItemId) return false;
+    
     const { data, error } = await supabase.from('inventory_folder_items').delete().eq('id', folderItemId).select();
     if (error) {
       if (error.code === 'PGRST116') return true;
@@ -549,5 +771,8 @@ export async function deleteFolderItemRemote(folderItemId) {
       return false;
     }
     return Array.isArray(data) ? true : !!data;
-  } catch (e) { console.warn('deleteFolderItemRemote', e); return false; }
+  } catch (e) { 
+    console.warn('deleteFolderItemRemote', e); 
+    return false; 
+  }
 }

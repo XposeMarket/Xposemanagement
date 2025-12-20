@@ -160,7 +160,7 @@ export function addPartAndLaborToInvoice(apptId, part, labor) {
 
     // 1) Part line
     const partLine = {
-      name: `Part: ${(part.name || "").toString()}${part.brand ? (" · " + part.brand) : ""}`,
+      name: `${(part.name || "").toString()}${part.brand ? (" · " + part.brand) : ""}`,
       qty: 1,
       price: Number(part.price || 0)
     };

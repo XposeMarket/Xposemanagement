@@ -1,9 +1,12 @@
+// NOTE: This is the UPDATED version with automatic inventory deduction
+// Replace your existing partPricingModal.js with this file
+
 // Notification functions are defined at the end of this file to avoid
 // referencing `PartPricingModal` before the class is initialized.
 /**
  * Part Pricing Modal Component
  * Allows manual entry of cost/sell prices after calling supplier
- * NOW WITH AUTOMATIC INVENTORY DEDUCTION + UI REFRESH!
+ * NOW WITH AUTOMATIC INVENTORY DEDUCTION!
  */
 
 class PartPricingModal {
@@ -172,18 +175,15 @@ class PartPricingModal {
     if (nameEl) nameEl.textContent = this.currentPart.name || this.currentPart.part_name;
     if (numberEl) numberEl.textContent = this.currentPart.part_number || 'N/A';
     
-    // Show stock info for inventory items - STORE ITEM ID FOR REFRESH
+    // Show stock info for inventory items
     if (stockInfoEl) {
       if (isInventoryItem && typeof this.currentPart.qty_available !== 'undefined') {
         const qty = parseInt(this.currentPart.qty_available) || 0;
         const stockColor = qty === 0 ? '#ef4444' : qty <= 5 ? '#f59e0b' : '#10b981';
         stockInfoEl.innerHTML = `<strong style="color: ${stockColor};">In Stock: ${qty}</strong>`;
         stockInfoEl.style.display = 'block';
-        // Store item ID for later updates
-        stockInfoEl.dataset.itemId = partId;
       } else {
         stockInfoEl.style.display = 'none';
-        delete stockInfoEl.dataset.itemId;
       }
     }
     
@@ -316,7 +316,7 @@ class PartPricingModal {
 
   /**
    * Save the part with pricing to the job
-   * NOW WITH AUTOMATIC INVENTORY DEDUCTION + PROPER UI REFRESH!
+   * NOW WITH AUTOMATIC INVENTORY DEDUCTION!
    */
   async savePart() {
     const quantity = parseInt(document.getElementById('pricingQuantity').value) || 1;
@@ -419,64 +419,10 @@ class PartPricingModal {
             }
           }
           
-          // COMPREHENSIVE UI REFRESH - Multiple approaches
-          console.log('🔄 Starting comprehensive UI refresh...');
-          
-          // 1. Refresh inventory UI using global function if available
-          try {
-            if (typeof window.refreshInventoryUI === 'function') {
-              await window.refreshInventoryUI(shopId);
-              console.log('✅ Global UI refresh completed');
-            }
-          } catch(e) {
-            console.warn('Global refresh failed:', e);
-          }
-          
-          // 2. Update pricing modal stock info immediately
-          const stockInfoEl = document.getElementById('pricingStockInfo');
-          if (stockInfoEl && stockInfoEl.dataset.itemId === partId) {
-            try {
-              const { data: freshItem } = await supabase
-                .from(invItem ? 'inventory_items' : 'inventory_folder_items')
-                .select('qty')
-                .eq('id', partId)
-                .single();
-              
-              if (freshItem) {
-                const newQty = parseInt(freshItem.qty) || 0;
-                const stockColor = newQty === 0 ? '#ef4444' : newQty <= 5 ? '#f59e0b' : '#10b981';
-                stockInfoEl.innerHTML = `<strong style="color: ${stockColor};">In Stock: ${newQty}</strong>`;
-                console.log(`✅ Updated stock display: ${newQty} remaining`);
-              }
-            } catch(e) {
-              console.warn('Could not update stock info:', e);
-            }
-          }
-          
-          // 3. Update parts modal if it's displaying inventory
-          try {
-            if (window.partsModalHandler && typeof window.partsModalHandler.displayInventoryResults === 'function') {
-              await window.partsModalHandler.displayInventoryResults();
-              console.log('✅ Parts modal refreshed');
-            }
-          } catch(e) {
-            console.warn('Parts modal refresh failed:', e);
-          }
-          
-          // 4. Trigger inventory updated event for any listeners
-          window.dispatchEvent(new CustomEvent('inventory-updated', {
-            detail: { itemId: partId, shopId, newQty: (invItem?.qty || folderItem?.qty) - quantity }
-          }));
-          
-          // 5. Legacy support - call window.renderInventory if it exists
+          // Refresh inventory UI
           try { 
-            if (typeof window.renderInventory === 'function') {
-              await window.renderInventory(); 
-              console.log('✅ Legacy renderInventory called');
-            }
-          } catch(e) {
-            console.warn('Legacy renderInventory failed:', e);
-          }
+            if (typeof window.renderInventory === 'function') window.renderInventory(); 
+          } catch(e){}
           
         } catch (invError) {
           console.error('❌ Inventory deduction failed:', invError);
@@ -529,26 +475,12 @@ class PartPricingModal {
         groupName: groupName
       };
 
-      // Add to invoice display (for ALL part types)
-      // For inventory items: pass inventoryAlreadyDeducted=true because addInventoryToJob already deducted via DB trigger
-      // For other items: pass inventoryAlreadyDeducted=false
+      // Also add to invoice
       try {
         const partName = this.currentPart.name || this.currentPart.part_name || '';
         if (typeof window.addPartToInvoice === 'function') {
-          const partItemId = await window.addPartToInvoice(
-            this.currentJobId, 
-            partName, 
-            quantity, 
-            sellPrice, 
-            costPrice, 
-            groupName,
-            isInventoryUUID  // TRUE for inventory (already deducted), FALSE for catalog/manual
-          );
-          if (isInventoryUUID) {
-            console.log('[✅ PartPricingModal] added INVENTORY item to invoice display (inventory already deducted by DB trigger)', { partItemId });
-          } else {
-            console.log('[PartPricingModal] added catalog/manual part to invoice', { partItemId });
-          }
+          const partItemId = await window.addPartToInvoice(this.currentJobId, partName, quantity, sellPrice, costPrice, groupName);
+          console.log('[PartPricingModal] added part to invoice', { partItemId });
           if (partItemId) this.lastAddedPartData.invoiceItemId = partItemId;
         }
       } catch (err) {

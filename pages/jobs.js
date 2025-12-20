@@ -1315,9 +1315,10 @@ function handleSkipLabor() {
  * @param {number} price - Price per unit
  * @param {number} cost - Cost price (optional)
  * @param {string} groupName - Optional group name for P&R (Part & Replace) grouping
+ * @param {boolean} inventoryAlreadyDeducted - If true, skip inventory deduction (already handled)
  * @returns {Promise<string>} - Returns the part item ID for linking
  */
-async function addPartToInvoice(jobId, partName, quantity, price, cost, groupName) {
+async function addPartToInvoice(jobId, partName, quantity, price, cost, groupName, inventoryAlreadyDeducted = false) {
   // Find the job and related appointment
   const job = allJobs.find(j => j.id === jobId);
   if (!job) throw new Error('Job not found');
@@ -1337,12 +1338,13 @@ async function addPartToInvoice(jobId, partName, quantity, price, cost, groupNam
   // Add part item to invoice
   const partItem = {
     id: itemId,
-    name: `Part: ${partName}`,
+    name: partName,
     qty: quantity,
     price: price,
     cost_price: (typeof cost !== 'undefined') ? Number(cost) : undefined,
     type: 'part',
-    groupName: groupName || partName // Store group name for invoice display
+    groupName: groupName || partName, // Store group name for invoice display
+    inventoryAlreadyDeducted: inventoryAlreadyDeducted // Track if inventory was already deducted
   };
   
   invoice.items = invoice.items || [];
@@ -1372,8 +1374,12 @@ async function addPartToInvoice(jobId, partName, quantity, price, cost, groupNam
   // Dispatch event to trigger UI refresh
   window.dispatchEvent(new CustomEvent('partAdded', { detail: { jobId } }));
   console.log('Part added to invoice:', partItem);
-  // Show success notification to the user (ensure single-part adds always show feedback)
-  try { showNotification('Part added to invoice', 'success'); } catch (e) {}
+  
+  // Show success notification (only if inventory wasn't already deducted)
+  // This prevents duplicate success messages when inventory was handled by addInventoryToJob
+  if (!inventoryAlreadyDeducted) {
+    try { showNotification('Part added to invoice', 'success'); } catch (e) {}
+  }
   
   // Return item ID for linking with labor
   return itemId;

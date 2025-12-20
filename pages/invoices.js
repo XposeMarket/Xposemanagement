@@ -62,6 +62,7 @@ window.openInvoiceActionsModal = function(inv) {
  */
 
 import { getSupabaseClient } from '../helpers/supabase.js';
+import { handleItemDeletion, handleQuantityChange, setupInvoiceInventoryMonitoring, handleInvoiceSave } from '../helpers/invoice-inventory-handler.js';
 
 function setupInvoices() {
   // Helper to map invoice status to tag class for color
@@ -449,6 +450,20 @@ function setupInvoices() {
       document.getElementById('closeInv').onclick = () => {
         document.getElementById('invModal').classList.add('hidden');
       };
+      // Setup inventory monitoring for invoice edits (if linked to a job)
+      try {
+        // expose current job/shop to the inventory handler
+        window._currentJobId = job && job.id ? job.id : window._currentJobId || null;
+        window._currentShopId = shopId || window._currentShopId || null;
+        if (inv.appointment_id) {
+          const theJob = jobs.find(j => j.appointment_id === inv.appointment_id);
+          if (theJob && theJob.id) {
+            setupInvoiceInventoryMonitoring(inv.items || [], theJob.id, shopId);
+          }
+        }
+      } catch (e) {
+        console.warn('Could not setup inventory monitoring:', e);
+      }
       // Note: generic Add Item button removed; only Parts and Labor are allowed
   }
 
@@ -852,27 +867,42 @@ function setupInvoices() {
           const cancelBtn = document.getElementById('confirmItemRemoveCancel');
 
           if (confirmBtn) {
-            confirmBtn.onclick = () => {
-              try {
-                if (Array.isArray(itemsArr) && __pendingRemoveIndex !== null && itemsArr[__pendingRemoveIndex]) {
-                  // If removing a part that has an attached labor row immediately after it, remove both
-                  const targetIdx = __pendingRemoveIndex;
-                  const target = itemsArr[targetIdx];
-                  if (target && target.type === 'part' && itemsArr[targetIdx + 1] && itemsArr[targetIdx + 1].type === 'labor' && itemsArr[targetIdx + 1]._attached) {
-                    itemsArr.splice(targetIdx, 2);
-                  } else if (target && target.type === 'labor' && target._attached && itemsArr[targetIdx - 1] && itemsArr[targetIdx - 1].type === 'part' && itemsArr[targetIdx - 1]._hasAttachedLabor) {
-                    // If removing an attached labor directly (shouldn't normally show a remove button), also remove the parent part
-                    itemsArr.splice(targetIdx - 1, 2);
-                  } else {
-                    itemsArr.splice(targetIdx, 1);
+              confirmBtn.onclick = async () => {
+                try {
+                  if (Array.isArray(itemsArr) && __pendingRemoveIndex !== null && itemsArr[__pendingRemoveIndex]) {
+                    const targetIdx = __pendingRemoveIndex;
+                    const target = itemsArr[targetIdx];
+
+                    // Try to return inventory before removing item
+                    try {
+                      const jobId = window._currentJobId;
+                      const shopId = window._currentShopId;
+                      if (jobId && shopId && target) {
+                        console.log('🗑️ Deleting item with inventory check:', target);
+                        await handleItemDeletion(target, jobId, shopId);
+                      }
+                    } catch (invError) {
+                      console.error('Inventory return error:', invError);
+                      if (typeof showNotification === 'function') {
+                        showNotification('Warning: Could not return inventory', 'error');
+                      }
+                    }
+
+                    // Now remove from array (preserve existing removal rules)
+                    if (target && target.type === 'part' && itemsArr[targetIdx + 1] && itemsArr[targetIdx + 1].type === 'labor' && itemsArr[targetIdx + 1]._attached) {
+                      itemsArr.splice(targetIdx, 2);
+                    } else if (target && target.type === 'labor' && target._attached && itemsArr[targetIdx - 1] && itemsArr[targetIdx - 1].type === 'part' && itemsArr[targetIdx - 1]._hasAttachedLabor) {
+                      itemsArr.splice(targetIdx - 1, 2);
+                    } else {
+                      itemsArr.splice(targetIdx, 1);
+                    }
                   }
-                }
-              } catch (e) { console.error('Error removing item', e); }
-              // re-render and hide modal
-              renderItems(itemsArr || []);
-              if (modal) modal.classList.add('hidden');
-              __pendingRemoveIndex = null;
-            };
+                } catch (e) { console.error('Error removing item', e); }
+                // re-render and hide modal
+                renderItems(itemsArr || []);
+                if (modal) modal.classList.add('hidden');
+                __pendingRemoveIndex = null;
+              };
           }
           if (cancelBtn) {
             cancelBtn.onclick = () => {
@@ -1175,7 +1205,7 @@ function setupInvoices() {
 
       const priorItems = Array.isArray(inv.items) ? JSON.parse(JSON.stringify(inv.items)) : [];
       const domRows = Array.from(document.querySelectorAll('#items .grid'));
-      inv.items = domRows.map(row => {
+      const newItems = domRows.map(row => {
         const rawNameEl = row.querySelector('.itm-name');
         const rawSelect = row.querySelector('.itm-labor-select');
         let rawName = '';
@@ -1200,9 +1230,7 @@ function setupInvoices() {
         let matched = null;
         if (priorItems && priorItems.length) {
           matched = priorItems.find(pi => {
-            // Exact match by name + type
             if ((pi.name || '').toString().trim() === name && (pi.type || 'part') === type) return true;
-            // Match by name only (best effort)
             if ((pi.name || '').toString().trim() === name) return true;
             return false;
           });
@@ -1212,7 +1240,6 @@ function setupInvoices() {
         if (matched) {
           if (typeof matched.cost_price !== 'undefined') item.cost_price = Number(matched.cost_price);
           else if (typeof matched.cost !== 'undefined') item.cost_price = Number(matched.cost);
-          // Preserve any other custom fields as needed
           Object.keys(matched).forEach(k => {
             if (!(k in item)) item[k] = matched[k];
           });
@@ -1220,7 +1247,17 @@ function setupInvoices() {
         return item;
       });
 
-      // Also update job items if job exists
+      // NEW: Handle inventory adjustments BEFORE updating the invoice
+      try {
+        await handleInvoiceSave(newItems);
+      } catch (invError) {
+        console.error('❌ Inventory adjustment failed:', invError);
+        showNotification(invError.message || 'Inventory adjustment failed', 'error');
+        return; // Stop save if inventory adjustment fails
+      }
+
+      // Assign computed items back to invoice and update job if present
+      inv.items = newItems;
       if (job) job.items = JSON.parse(JSON.stringify(inv.items));
     }
 
