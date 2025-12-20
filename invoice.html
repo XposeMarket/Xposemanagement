@@ -34,10 +34,10 @@
 <script src="vendor/jspdf.umd.min.js"></script>
 <h1>Invoice <span id="invNo"></span></h1>
 <div><b>Customer:</b> <span id="invCustomer">-</span></div><div><b>Vehicle:</b> <span id="invVehicle">-</span></div><p class="notice" id="invMeta" style="margin-top:6px"></p>
-<div style="margin-top:16px; padding:12px; border:1px solid #ddd; border-radius:4px; background:#f9f9f9;">
+<div style="margin-top:16px; padding:12px; border:1px solid var(--line); border-radius:4px; background:var(--card);">
   <b>From:</b><br><span id="invShopName"></span><br><span id="invShopPhone"></span><br><span id="invShopEmail"></span>
 </div>
-<div style="margin-top:16px; padding:12px; border:1px solid #ddd; border-radius:4px; background:#f9f9f9;">
+<div style="margin-top:16px; padding:12px; border:1px solid var(--line); border-radius:4px; background:var(--card);">
   <table class="table" id="invItems"><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody id="invItemsBody"></tbody></table>
   <div style="text-align:right;margin-top:10px">
     <div><b>Subtotal:</b> <span id="iSub">0.00</span></div>
@@ -512,7 +512,7 @@ import { getShopData } from './helpers/storage.js';
           let groupTitle = (part.groupName && part.groupName.trim()) || (labor.groupName && labor.groupName.trim()) || (part.name.replace(/^part:/i, '').trim() + ' P+R');
           // Group header
           const trHeader = document.createElement('tr');
-          trHeader.innerHTML = `<td colspan="4" style="font-weight:bold;background:#f3f4f6;padding:8px;">${groupTitle}</td>`;
+          trHeader.innerHTML = `<td colspan="4" style="font-weight:bold;background:var(--line);color:var(--text);padding:8px;">${groupTitle}</td>`;
           itemsTbody.appendChild(trHeader);
           // Part row (always show part name)
           let partQty = Number(part.qty) || 0;
@@ -550,8 +550,8 @@ import { getShopData } from './helpers/storage.js';
       }
       // Render Parts
       if (partItems.length) {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="4" style="font-weight:bold;background:#f3f4f6;">Parts</td>`;
+          const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="4" style="font-weight:bold;background:var(--line);color:var(--text);padding:8px;">Parts</td>`;
         itemsTbody.appendChild(tr);
         for (const itm of partItems) {
           const qty = Number(itm.qty) || 0;
@@ -566,7 +566,7 @@ import { getShopData } from './helpers/storage.js';
       // Render Labor
       if (laborItems.length) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="4" style="font-weight:bold;background:#f3f4f6;">Labor</td>`;
+        tr.innerHTML = `<td colspan="4" style="font-weight:bold;background:var(--line);color:var(--text);padding:8px;">Labor</td>`;
         itemsTbody.appendChild(tr);
         for (const itm of laborItems) {
           const qty = Number(itm.qty) || 0;
@@ -582,7 +582,7 @@ import { getShopData } from './helpers/storage.js';
       // Render Services
       if (serviceItems.length) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td colspan="4" style="font-weight:bold;background:#f3f4f6;">Services</td>`;
+        tr.innerHTML = `<td colspan="4" style="font-weight:bold;background:var(--line);color:var(--text);padding:8px;">Services</td>`;
         itemsTbody.appendChild(tr);
         for (const itm of serviceItems) {
           const qty = Number(itm.qty) || 0;

@@ -54,15 +54,17 @@ function showNotification(message, type = 'success') {
     </div>
   </div>
 
+  <!-- Shop Info + Services: side-by-side on desktop, stacked on mobile -->
+  <div class="grid cols-2" style="gap:16px; margin-bottom:16px;">
   <!-- Shop Info Panel -->
-  <div class="card" style="position:relative; overflow:visible; margin-bottom:16px;">
+  <div class="card" style="position:relative; overflow:visible;">
     <h3>Shop Info</h3>
-    <img id="shopLogoPreview" src="" alt="Logo preview" style="position:absolute; top:8px; right:8px; width:64px; height:auto; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,0.12); display:none; object-fit:contain; background:#fff; padding:4px;" />
+    <img id="shopLogoPreview" src="" alt="Logo preview" style="position:absolute; top:8px; right:8px; width:64px; height:auto; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,0.12); display:none; object-fit:contain; background:var(--card); padding:4px; border:1px solid var(--line);" />
     <label>Shop Name</label><input id="shopName"><label>Phone</label><input id="shopPhone"><label>Email</label><input id="shopEmail"><label>Zipcode</label><input id="shopZipcode"><label>Shop Logo</label><input id="shopLogoFile" type="file" accept="image/*"><button id="saveShop" class="btn info" style="margin-top:10px">Save</button><p id="shopSaved" class="notice"></p>
   </div>
 
   <!-- Services and Labor Panel -->
-  <div class="card" style="margin-bottom:16px;">
+  <div class="card">
     <h3>Services</h3>
     <div id="svcList"></div>
     <div class="grid cols-3" style="margin-top:10px"><input id="svcName" placeholder="Service name"><input id="svcPrice" type="number" placeholder="Base price"><button id="svcAdd" class="btn primary">Add</button></div>
@@ -80,6 +82,8 @@ function showNotification(message, type = 'success') {
       <p class="notice">Click a rate to remove it.</p>
     </div>
   </div>
+
+</div>
 
   <!-- Shop Access & Team (hardcoded into page for reliability) -->
   <div class="card" id="xm-team-card" style="margin-bottom:16px;">
@@ -120,7 +124,7 @@ function showNotification(message, type = 'success') {
         <style>
           .owner-badge {
             background: #ffd700;
-            color: #333;
+            color: #041014;
             font-weight: bold;
             border-radius: 4px;
             padding: 2px 6px;
@@ -373,12 +377,13 @@ document.addEventListener('DOMContentLoaded', function(){
               const roleEl = document.createElement('span');
               roleEl.className = 'role-badge';
               roleEl.textContent = (u.role || 'staff');
-              roleEl.style.border = '1px solid #ddd';
+              roleEl.style.border = '1px solid var(--line)';
               roleEl.style.padding = '4px 8px';
               roleEl.style.borderRadius = '6px';
               roleEl.style.cursor = 'pointer';
               roleEl.style.display = 'inline-block';
-              roleEl.style.background = '#fff';
+              roleEl.style.background = 'var(--card)';
+              roleEl.style.color = 'var(--text)';
               roleEl.title = 'Click to change role';
               roleEl.dataset.email = (u.email || '').toLowerCase();
               roleEl.dataset.role = (u.role || 'staff');
@@ -542,7 +547,7 @@ document.addEventListener('DOMContentLoaded', function(){
             item.innerHTML = `
               <div>
                 <div style="font-weight:600">${inv.invited_email}</div>
-                <div style="color:#666">Role: ${inv.role} • Sent ${new Date(inv.created_at).toLocaleDateString()}</div>
+                <div style="color:var(--muted)">Role: ${inv.role} • Sent ${new Date(inv.created_at).toLocaleDateString()}</div>
               </div>
               <div>
                 <button class="btn" data-invite-id="${inv.id}" data-action="cancel">Cancel</button>

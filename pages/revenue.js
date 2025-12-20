@@ -109,10 +109,10 @@ async function setupRevenuePage() {
       document.getElementById('staff-list').innerHTML = '<div>No staff found for this shop.</div>';
     } else {
       const staffHtml = staffList.map((s, idx) => `
-        <div class="staff-panel" style="padding:12px 16px; border-bottom:1px solid #eee;">
+        <div class="staff-panel" style="padding:12px 16px; border-bottom:1px solid var(--line);">
           <div class="staff-left">
             <div class="staff-name" style="font-weight:bold; font-size:1.05em;">${s.first_name || ''} ${s.last_name || ''}</div>
-            <div class="staff-email" style="color:#555;">${s.email || ''}</div>
+            <div class="staff-email" style="color:var(--muted);">${s.email || ''}</div>
           </div>
           <div class="staff-right">
             <div class="staff-meta">
@@ -126,14 +126,14 @@ async function setupRevenuePage() {
           </div>
         </div>
       `).join('');
-      document.getElementById('staff-list').innerHTML = `<div style="border:1px solid #ddd; border-radius:8px; overflow:hidden; background:#fafbfc;">${staffHtml}</div>`;
+      document.getElementById('staff-list').innerHTML = `<div style="border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--card);">${staffHtml}</div>`;
       // Attach click handlers to staff panels to show weekly jobs for that staff
       Array.from(document.querySelectorAll('.staff-panel')).forEach(panel => {
         panel.style.cursor = 'pointer';
         panel.addEventListener('click', async (e) => {
           // Find staff id from panel content by matching the name/email rendered
-          const nameEl = panel.querySelector('div[style*="font-weight:bold"]');
-          const emailEl = panel.querySelector('div[style*="color:#555"]');
+          const nameEl = panel.querySelector('.staff-name') || panel.querySelector('div[style*="font-weight:bold"]');
+          const emailEl = panel.querySelector('.staff-email') || panel.querySelector('div[style*="color:#555"]');
           let staffObj = null;
           if (nameEl && emailEl) {
             const nameText = nameEl.textContent.trim();
@@ -254,8 +254,8 @@ async function setupRevenuePage() {
             const entries = grouped[d.iso] || [];
             const dayTotal = entries.reduce((s, e) => s + (e.totalRevenue || 0), 0);
             return `
-              <div class="staff-week-row" style="padding:12px 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
-                <div style="display:flex;align-items:center;gap:12px;"><div style="font-weight:600;">${d.label}</div><div style="width:28px;height:28px;border-radius:14px;background:#f1f3f5;display:flex;align-items:center;justify-content:center;font-size:0.9em;">${entries.length}</div></div>
+              <div class="staff-week-row" style="padding:12px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;">
+                <div style="display:flex;align-items:center;gap:12px;"><div style="font-weight:600;">${d.label}</div><div style="width:28px;height:28px;border-radius:14px;background:var(--card);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:0.9em;color:var(--text);">${entries.length}</div></div>
                 <div style="display:flex;align-items:center;gap:12px;"><div style="font-weight:600;">${formatCurrency(dayTotal)}</div><button class="btn small staff-expand" data-date="${d.iso}">Expand</button></div>
               </div>`;
           }).join('');
@@ -305,11 +305,11 @@ async function setupRevenuePage() {
                   detailsEl.innerHTML = '<div class="notice" style="padding:8px 12px">No jobs for this day.</div>';
                 } else {
                   const jobsHtml = entries.map(en => `
-                    <div style="padding:8px 12px;border-top:1px dashed #eee;display:flex;justify-content:space-between;align-items:center;">
-                      <div style="max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(en.appt?.service || en.job.description || en.job.id || '').slice(0,80)}</div>
-                      <div style="display:flex;gap:12px;align-items:center;"><div>${formatCurrency(en.totalRevenue)}</div><button class="btn tiny staff-invoice" data-jobid="${en.job.id}">Invoice</button></div>
-                    </div>
-                  `).join('');
+                        <div style="padding:8px 12px;border-top:1px dashed var(--line);display:flex;justify-content:space-between;align-items:center;">
+                          <div style="max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(en.appt?.service || en.job.description || en.job.id || '').slice(0,80)}</div>
+                          <div style="display:flex;gap:12px;align-items:center;"><div>${formatCurrency(en.totalRevenue)}</div><button class="btn tiny staff-invoice" data-jobid="${en.job.id}">Invoice</button></div>
+                        </div>
+                      `).join('');
                   detailsEl.innerHTML = jobsHtml;
 
                   // Attach invoice handlers (open preview with job & staff context)
@@ -578,10 +578,10 @@ async function setupRevenuePage() {
 
         // Render placeholders for revenue values; they'll be updated after fetching job labor
         return `
-          <div class="job-panel" style="padding:12px 16px; border-bottom:1px solid #eee; display:flex; align-items:center; cursor:pointer;" data-job-id="${j.id}">
+          <div class="job-panel" style="padding:12px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; cursor:pointer;" data-job-id="${j.id}">
             <div style="flex:2;">
               <div style="font-weight:bold; font-size:1.1em;">${jobName}</div>
-              <div style="color:#555;">Scheduled: ${schedDate}</div>
+              <div style="color:var(--muted);">Scheduled: ${schedDate}</div>
             </div>
             <div style="flex:2;">
               <span style="margin-right:16px;">Staff: <strong>${staffName}</strong></span>
@@ -600,7 +600,7 @@ async function setupRevenuePage() {
           </div>
         `;
       }).join('');
-      document.getElementById('job-list').innerHTML = `<div style="border:1px solid #ddd; border-radius:8px; overflow:hidden; background:#fafbfc;">${jobHtml}</div>`;
+      document.getElementById('job-list').innerHTML = `<div style="border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--card);">${jobHtml}</div>`;
     }
 
     // After rendering, fetch job labor for each job to compute staff revenue (staff hourly_rate * total_hours)
@@ -787,8 +787,8 @@ async function showInvoicePreview(inv, jobObj, shopId, staffList = []) {
   modal.style.left = '50%';
   modal.style.top = '50%';
   modal.style.transform = 'translate(-50%, -50%)';
-  modal.style.background = '#fff';
-  modal.style.border = '1px solid #ddd';
+  modal.style.background = 'var(--card)';
+  modal.style.border = '1px solid var(--line)';
   modal.style.borderRadius = '8px';
   modal.style.boxShadow = '0 6px 18px rgba(0,0,0,0.12)';
   modal.style.zIndex = 1200;
@@ -811,7 +811,7 @@ async function showInvoicePreview(inv, jobObj, shopId, staffList = []) {
     content.innerHTML = '<div>No invoice found for this job.</div>';
   } else {
     const items = inv ? (inv.items || []) : [];
-    const rows = items.map(it => `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f1f1f1;"><div>${it.name || it.description || it.label || 'Item'}</div><div>${formatCurrency((Number(it.qty||0) * Number(it.price||0))||0)}</div></div>`).join('');
+    const rows = items.map(it => `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line);"><div>${it.name || it.description || it.label || 'Item'}</div><div>${formatCurrency((Number(it.qty||0) * Number(it.price||0))||0)}</div></div>`).join('');
     const total = items.reduce((s, it) => s + ((Number(it.qty||0) * Number(it.price||0))||0), 0);
     const partsCost = items.reduce((s, it) => s + ((Number(it.qty||0) * Number(it.cost_price || it.cost || 0))||0), 0);
 
@@ -882,7 +882,7 @@ async function showInvoicePreview(inv, jobObj, shopId, staffList = []) {
         <div style="display:flex;justify-content:space-between;"><div>Assigned</div><div>${assignedLabel}</div></div>
         <div style="display:flex;justify-content:space-between;"><div>Labor Hours</div><div>${totalHours.toFixed(2)} h</div></div>
         <div style="display:flex;justify-content:space-between;"><div>Staff Revenue</div><div>${formatCurrency(staffRevenue)}</div></div>
-        <div style="display:flex;justify-content:space-between;font-weight:700;border-top:1px solid #eee;padding-top:6px;"><div>Net</div><div>${formatCurrency(net)}</div></div>
+        <div style="display:flex;justify-content:space-between;font-weight:700;border-top:1px solid var(--line);padding-top:6px;"><div>Net</div><div>${formatCurrency(net)}</div></div>
       </div>
     `;
   }

@@ -107,6 +107,10 @@
   --card: #232834;
   --line: #2d3342;
   --accent: #4b90e2;
+  --folder-bg: linear-gradient(180deg, var(--card), rgba(255,255,255,0.04));
+  --folder-border: 1px dashed var(--line);
+  --folder-blue-bg: linear-gradient(180deg, var(--card), rgba(240,249,255,0.04));
+  --folder-blue-border: color-mix(in srgb, var(--line) 70%, #bfdbfe 30%);
 }
 /*
   Blue-grey theme: similar style to theme-alt, but with blue-grey tones
@@ -360,6 +364,10 @@
 }
 :root{
   --bg:#f3f4f6; --text:#111111; --muted:#6b7280; --card:#ffffff; --line:#e5e7eb; --accent:#e11d48;
+  --folder-bg: linear-gradient(180deg,#fffef5,#ffffff);
+  --folder-border: 1px dashed #f3e6c9;
+  --folder-blue-bg: linear-gradient(180deg,#f5fbff,#ffffff);
+  --folder-blue-border: #bfdbfe;
 }
 
 *{box-sizing:border-box}
@@ -643,13 +651,19 @@ nav{display:flex;flex-wrap:nowrap;gap:2px;align-items:center;overflow-x:auto;scr
 #inventoryGrid.inventory-grid::-webkit-scrollbar-thumb{ background: linear-gradient(180deg, var(--line), rgba(0,0,0,0.12)); border-radius:8px; border:2px solid transparent; background-clip: padding-box; }
 .inventory-card .btn{padding:8px 10px;font-size:13px}
 
-/* Folder card specific styling */
-.folder-card{background:linear-gradient(180deg,#fffef5,#ffffff);border:1px dashed #f3e6c9}
+/* Folder card specific styling (theme-aware) */
+.folder-card{
+  background: var(--folder-bg);
+  border: var(--folder-border);
+}
 
-.folder-card .btn{background:#f59e0b;color:#fff;border:none}
+.folder-card .btn{ background: #f59e0b; color: #fff; border: none }
 
 /* Blue variant for special folders (e.g., Coolant) */
-.folder-card.blue{ background: linear-gradient(180deg,#f5fbff,#ffffff); border-color: #bfdbfe }
+.folder-card.blue{
+  background: var(--folder-blue-bg);
+  border-color: var(--folder-blue-border);
+}
 .folder-card.blue .btn{ background: #60a5fa !important; color: #041014 !important; border: none !important }
 
 /* Delete/danger button style */
@@ -749,6 +763,9 @@ nav{display:flex;flex-wrap:nowrap;gap:2px;align-items:center;overflow-x:auto;scr
 .grid{display:grid;gap:16px}.grid.cols-2{grid-template-columns:1fr 1fr}.grid.cols-3{grid-template-columns:1fr 1fr 1fr}
 label{font-size:13px;color:var(--muted)} input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);outline:none}
 .table{width:100%;border-collapse:collapse}.table th,.table td{border-bottom:1px solid var(--line);padding:10px 8px;text-align:left}
+
+/* Ensure staff table text respects theme color (fixes dark theme readability) */
+#staffTable th, #staffTable td, #shopOwner { color: var(--text); }
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
 @media (max-width:768px){ .kpis{grid-template-columns:repeat(2,1fr)} }
 @media (max-width:768px){ .kpis{grid-template-columns:1fr} }
