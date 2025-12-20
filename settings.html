@@ -146,13 +146,15 @@ function showNotification(message, type = 'success') {
             <div class="grid cols-3">
               <input id="inviteEmailInput" type="email" placeholder="user@example.com" required>
               <select id="inviteRoleSelect">
-                <option value="technician">Technician</option>
-                <option value="manager">Manager</option>
-                <option value="service_advisor">Service Advisor</option>
+                <option value="staff">Staff</option>
+                <option value="service_writer">Service Writer</option>
+                <option value="receptionist">Receptionist</option>
+                <option value="admin">Admin</option>
               </select>
               <button id="inviteSendBtn" class="btn primary" type="submit">Send Invitation</button>
             </div>
           </form>
+          <p id="inviteNotice" class="notice" style="margin-top:8px;"></p>
           <p class="invite-note">💡 User must have an Xpose account to receive invitation</p>
         </div>
       </div>
@@ -561,20 +563,36 @@ document.addEventListener('DOMContentLoaded', function(){
             b.addEventListener('click', async (e) => {
               const id = b.getAttribute('data-invite-id');
               if (!id) return;
-              if (!confirm('Cancel this invitation?')) return;
+              
+              const confirmed = await showConfirm('Cancel this invitation?', 'Cancel Invite', 'Keep');
+              if (!confirmed) return;
+              
               try {
                 const { error } = await sup.from('shop_invitations').delete().eq('id', id);
                 if (error) throw error;
+                showInviteNotification('Invitation cancelled successfully.', 'success');
                 fetchPendingInvitations();
               } catch (ex) {
                 console.error('Error canceling invitation:', ex);
-                alert('Failed to cancel invitation.');
+                showInviteNotification('Failed to cancel invitation.', 'error');
               }
             });
           });
         } catch (ex) {
           console.error('Error fetching pending invitations:', ex);
         }
+      }
+
+      // Helper to show invite notification
+      function showInviteNotification(message, type = 'success') {
+        const noticeEl = document.getElementById('inviteNotice');
+        if (!noticeEl) return;
+        noticeEl.textContent = message;
+        noticeEl.className = 'notice ' + (type === 'error' ? 'danger' : 'success');
+        setTimeout(() => {
+          noticeEl.textContent = '';
+          noticeEl.className = 'notice';
+        }, 4000);
       }
 
       // Invite form handler
@@ -585,36 +603,120 @@ document.addEventListener('DOMContentLoaded', function(){
           const emailInput = document.getElementById('inviteEmailInput');
           const roleSelect = document.getElementById('inviteRoleSelect');
           const inviteEmail = (emailInput?.value || '').toLowerCase().trim();
-          const inviteRole = (roleSelect?.value || 'technician');
-          if (!inviteEmail) return alert('Enter an email');
+          const inviteRole = (roleSelect?.value || 'staff');
+          if (!inviteEmail) {
+            showInviteNotification('Please enter an email address', 'error');
+            return;
+          }
 
           try {
-            // 1. Check user exists in users table
-            const { data: existingUser, error: userErr } = await sup.from('users').select('id,email').eq('email', inviteEmail).single();
-            if (userErr || !existingUser) {
-              alert("This user doesn't have an Xpose account yet. Ask them to sign up first.");
+            // 1. Check if user exists in shop_staff OR users table (need auth_id to identify them)
+            let targetAuthId = null;
+            let targetEmail = inviteEmail;
+            let targetFirstName = '';
+            let targetLastName = '';
+
+            // First check shop_staff by email (case-insensitive)
+            const { data: staffUsers, error: staffErr } = await sup
+              .from('shop_staff')
+              .select('auth_id,email,first_name,last_name')
+              .ilike('email', inviteEmail)
+              .limit(1);
+            
+            if (staffErr) {
+              console.error('Error checking shop_staff table:', staffErr);
+            }
+            
+            const staffUser = staffUsers && staffUsers.length > 0 ? staffUsers[0] : null;
+            if (staffUser && staffUser.auth_id) {
+              targetAuthId = staffUser.auth_id;
+              targetFirstName = staffUser.first_name || '';
+              targetLastName = staffUser.last_name || '';
+              console.log('Found user in shop_staff:', staffUser);
+            }
+
+            // If not found in shop_staff, check users table
+            if (!targetAuthId) {
+              const { data: existingUsers, error: userErr } = await sup
+                .from('users')
+                .select('id,email,auth_id,first_name,last_name')
+                .ilike('email', inviteEmail)
+                .limit(1);
+              
+              if (userErr) {
+                console.error('Error checking users table:', userErr);
+              }
+              
+              const existingUser = existingUsers && existingUsers.length > 0 ? existingUsers[0] : null;
+              if (existingUser) {
+                // Use id as auth_id if auth_id is not set (most users have id = auth_id)
+                targetAuthId = existingUser.auth_id || existingUser.id;
+                targetFirstName = existingUser.first_name || existingUser.first || '';
+                targetLastName = existingUser.last_name || existingUser.last || '';
+                console.log('Found user in users table:', existingUser);
+              }
+            }
+
+            // If still not found anywhere, they don't have an account
+            if (!targetAuthId) {
+              showInviteNotification(
+                "This user doesn't have an Xpose account yet. Ask them to sign up first.",
+                'error'
+              );
+              console.log('User not found in shop_staff or users:', inviteEmail);
               return;
             }
 
-            // 2. Check if already a member
-            const { data: existingMember } = await sup.from('user_shops').select('id').eq('user_id', existingUser.id).eq('shop_id', shop.id).single();
-            if (existingMember) { alert('This user is already a member of this shop.'); return; }
+            console.log('Found user with auth_id:', targetAuthId);
 
-            // 3. Check for existing pending invitation
-            const { data: existingInvite } = await sup.from('shop_invitations').select('id').eq('invited_email', inviteEmail).eq('shop_id', shop.id).eq('status', 'pending').single();
-            if (existingInvite) { alert('An invitation has already been sent to this email.'); return; }
+            // 2. Check if already a staff member at THIS shop (by auth_id + shop_id)
+            const { data: existingStaff } = await sup
+              .from('shop_staff')
+              .select('id')
+              .eq('auth_id', targetAuthId)
+              .eq('shop_id', shop.id)
+              .limit(1);
+            const alreadyMember = existingStaff && existingStaff.length > 0;
+            
+            if (alreadyMember) {
+              showInviteNotification('This user is already a staff member at this shop.', 'error');
+              return;
+            }
 
-            // 4. Create invitation
-            const { error: insertError } = await sup.from('shop_invitations').insert({ shop_id: shop.id, invited_by_user_id: currentUser.id, invited_email: inviteEmail, role: inviteRole });
+            // 3. Check for existing pending invitation (use ilike for case-insensitive)
+            const { data: existingInvites } = await sup
+              .from('shop_invitations')
+              .select('id')
+              .ilike('invited_email', inviteEmail)
+              .eq('shop_id', shop.id)
+              .eq('status', 'pending')
+              .limit(1);
+            const existingInvite = existingInvites && existingInvites.length > 0 ? existingInvites[0] : null;
+            
+            if (existingInvite) {
+              showInviteNotification('An invitation has already been sent to this email.', 'error');
+              return;
+            }
+
+            // 4. Create invitation with auth_id so we can identify them when they accept
+            const { error: insertError } = await sup
+              .from('shop_invitations')
+              .insert({
+                shop_id: shop.id,
+                invited_by_user_id: currentUser.id,
+                invited_email: targetEmail,
+                invited_auth_id: targetAuthId,
+                role: inviteRole
+              });
             if (insertError) throw insertError;
 
-            alert('Invitation sent successfully!');
+            showInviteNotification('Invitation sent successfully!', 'success');
             if (emailInput) emailInput.value = '';
-            if (roleSelect) roleSelect.value = 'technician';
+            if (roleSelect) roleSelect.value = 'staff';
             fetchPendingInvitations();
           } catch (ex) {
             console.error('Error sending invitation:', ex);
-            alert('Failed to send invitation. Please try again.');
+            showInviteNotification('Failed to send invitation. Please try again.', 'error');
           }
         });
       }

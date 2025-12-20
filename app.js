@@ -290,6 +290,15 @@ async function __mainBase() {
     
     // Add admin link to nav for multi-shop capable users
     await addAdminLinkToNav();
+    
+    // Initialize invitations notification system
+    try {
+      const { initInvitations } = await import('./helpers/invitations.js');
+      await initInvitations();
+    } catch (e) {
+      console.warn('Could not initialize invitations:', e);
+    }
+    
     // Initialize invitation modal for pending invites (if any)
     try {
       import('./helpers/invitation-modal.js').then(mod => {
