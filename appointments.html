@@ -47,11 +47,14 @@
     @media (max-width: 768px) {
       .modal-backdrop { align-items: center; padding-top: 0; }
     }
-    /* Ensure appointment modals don't show an inner scrollbar; let the backdrop scroll when modal
-       content is slightly taller than viewport. This overrides the global `.modal-body` rule. */
+    /* Restore standard modal scrolling so modals scroll internally on small screens
+       instead of growing past the viewport. Keep a sensible max-height on the card. */
+    .modal-backdrop .modal-card {
+      max-height: calc(90vh);
+    }
     .modal-backdrop .modal-card .modal-body {
-      overflow: visible !important;
-      max-height: none !important;
+      overflow: auto !important;
+      max-height: calc(80vh - 120px) !important;
     }
     .modal-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border,#e5e5e5); }
     .modal-body { padding:12px 14px; }
