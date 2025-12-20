@@ -9,6 +9,223 @@
 import { supabase } from '../helpers/supabase.js';
 
 function setupMessages() {
+    // Wire up Customer Info Modal Save button
+    const newCustSave = document.getElementById('newCustSave');
+    if (newCustSave) {
+      newCustSave.addEventListener('click', async () => {
+        if (!activeThread) {
+          alert('No thread selected.');
+          return;
+        }
+        const newCustFirst = document.getElementById('newCustFirst');
+        const newCustLast = document.getElementById('newCustLast');
+        const newCustPhone = document.getElementById('newCustPhone');
+        const newCustEmail = document.getElementById('newCustEmail');
+        const newCustNotes = document.getElementById('newCustNotes');
+        const emailVal = (newCustEmail?.value || '').trim();
+        const rawPhone = (newCustPhone?.value || '').trim();
+        const phoneVal = rawPhone === '' ? null : normalizePhone(rawPhone);
+        const updates = {
+          customer_first: newCustFirst?.value?.trim() || '',
+          customer_last: newCustLast?.value?.trim() || '',
+          phone: phoneVal,
+          email: emailVal === '' ? null : emailVal,
+          notes: newCustNotes?.value?.trim() || '',
+          updated_at: new Date().toISOString()
+        };
+        try {
+          let customerId = activeThread.customer_id;
+          const shopId = await getCurrentShopId();
+          if (!shopId) throw new Error('No shop ID found');
+
+          // If no linked customer, try to find an existing customer by phone or email
+          if (!customerId) {
+            let existing = null;
+            try {
+              if (updates.phone && updates.email) {
+                const orFilter = `phone.eq.${updates.phone},email.eq.${updates.email}`;
+                const { data: found } = await supabase
+                  .from('customers')
+                  .select('*')
+                  .eq('shop_id', shopId)
+                  .or(orFilter)
+                  .limit(1);
+                if (found && found.length) existing = found[0];
+              } else if (updates.phone) {
+                const { data: found } = await supabase
+                  .from('customers')
+                  .select('*')
+                  .eq('shop_id', shopId)
+                  .eq('phone', updates.phone)
+                  .limit(1);
+                if (found && found.length) existing = found[0];
+              } else if (updates.email) {
+                const { data: found } = await supabase
+                  .from('customers')
+                  .select('*')
+                  .eq('shop_id', shopId)
+                  .eq('email', updates.email)
+                  .limit(1);
+                if (found && found.length) existing = found[0];
+              }
+            } catch (e) {
+              console.warn('Could not query existing customer:', e.message || e);
+            }
+
+            if (existing) {
+              // Merge updates into existing customer and link thread
+              const merged = Object.assign({}, existing, updates, { updated_at: new Date().toISOString() });
+              const { error: updErr } = await supabase
+                .from('customers')
+                .update({
+                  customer_first: merged.customer_first,
+                  customer_last: merged.customer_last,
+                  phone: merged.phone,
+                  email: merged.email,
+                  notes: merged.notes,
+                  updated_at: merged.updated_at
+                })
+                .eq('id', existing.id);
+              if (updErr) throw updErr;
+              customerId = existing.id;
+
+              const { error: threadUpdateError } = await supabase
+                .from('threads')
+                .update({ 
+                  customer_id: customerId,
+                  customer_first: merged.customer_first,
+                  customer_last: merged.customer_last
+                })
+                .eq('id', activeThread.id);
+              if (threadUpdateError) throw threadUpdateError;
+            } else {
+              // Insert new customer - if duplicate exists, just find and use it
+              const insertData = Object.assign({}, updates, {
+                shop_id: shopId,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              });
+              
+              const { data: newCustomer, error: insertError } = await supabase
+                .from('customers')
+                .insert([insertData])
+                .select()
+                .single();
+                
+              if (insertError && insertError.code === '23505') {
+                // Duplicate exists - find existing customer by phone
+                const { data: existingCust } = await supabase
+                  .from('customers')
+                  .select('*')
+                  .eq('shop_id', shopId)
+                  .eq('phone', updates.phone)
+                  .single();
+                
+                if (existingCust) {
+                  customerId = existingCust.id;
+                  // Update existing customer with new info
+                  await supabase
+                    .from('customers')
+                    .update(updates)
+                    .eq('id', customerId);
+                } else {
+                  // Shouldn't happen but throw if it does
+                  throw new Error('Duplicate error but customer not found');
+                }
+              } else if (insertError) {
+                throw insertError;
+              } else {
+                customerId = newCustomer.id;
+              }
+              // Link thread to customer and cache name
+              const { error: threadUpdateError } = await supabase
+                .from('threads')
+                .update({ 
+                  customer_id: customerId,
+                  customer_first: newCustomer.customer_first,
+                  customer_last: newCustomer.customer_last
+                })
+                .eq('id', activeThread.id);
+              if (threadUpdateError) throw threadUpdateError;
+            }
+          } else {
+            // Updating an existing linked customer: detect if another customer with same phone/email exists
+            let duplicate = null;
+            try {
+              if (updates.phone) {
+                const { data: found } = await supabase
+                  .from('customers')
+                  .select('*')
+                  .eq('shop_id', shopId)
+                  .eq('phone', updates.phone)
+                  .limit(1);
+                if (found && found.length && found[0].id !== customerId) duplicate = found[0];
+              }
+              if (!duplicate && updates.email) {
+                const { data: found } = await supabase
+                  .from('customers')
+                  .select('*')
+                  .eq('shop_id', shopId)
+                  .eq('email', updates.email)
+                  .limit(1);
+                if (found && found.length && found[0].id !== customerId) duplicate = found[0];
+              }
+            } catch (e) {
+              console.warn('Duplicate check failed:', e.message || e);
+            }
+
+            if (duplicate) {
+              // Merge into duplicate and point thread at that customer
+              const merged = Object.assign({}, duplicate, updates, { updated_at: new Date().toISOString() });
+              const { error: dupUpdErr } = await supabase
+                .from('customers')
+                .update({
+                  customer_first: merged.customer_first,
+                  customer_last: merged.customer_last,
+                  phone: merged.phone,
+                  email: merged.email,
+                  notes: merged.notes,
+                  updated_at: merged.updated_at
+                })
+                .eq('id', duplicate.id);
+              if (dupUpdErr) throw dupUpdErr;
+
+              // Re-link thread to the duplicate customer
+              const { error: threadUpdateError } = await supabase
+                .from('threads')
+                .update({ 
+                  customer_id: duplicate.id,
+                  customer_first: merged.customer_first,
+                  customer_last: merged.customer_last
+                })
+                .eq('id', activeThread.id);
+              if (threadUpdateError) throw threadUpdateError;
+              customerId = duplicate.id;
+            } else {
+              // Safe to update the existing customer
+              const { error } = await supabase
+                .from('customers')
+                .update(updates)
+                .eq('id', customerId);
+              if (error) throw error;
+              // Also update cached name in thread
+              const { error: threadUpdateError } = await supabase
+                .from('threads')
+                .update({
+                  customer_first: updates.customer_first,
+                  customer_last: updates.customer_last
+                })
+                .eq('id', activeThread.id);
+              if (threadUpdateError) throw threadUpdateError;
+            }
+          }
+          if (custModal) custModal.classList.add('hidden');
+          await loadThreads();
+        } catch (ex) {
+          alert('Error saving customer: ' + (ex.message || ex));
+        }
+      });
+    }
   console.log('📄 setupMessages (backend) initializing');
 
   const threadListEl = document.getElementById('threadList');
@@ -31,6 +248,7 @@ function setupMessages() {
   let activeThread = null;
   let messages = [];
   let shopTwilioNumber = null;
+  let _lastLoadedShopId = null;
   const API_BASE_URL = 'https://xpose-stripe-server.vercel.app';
   
   // Helper function to re-query buttons after header updates
@@ -171,19 +389,19 @@ function setupMessages() {
         return null;
       }
 
-      // Get shop owned by this user
-      const { data: shops, error: shopError } = await supabase
-        .from('shops')
-        .select('id')
-        .eq('owner_id', user.id)
-        .limit(1);
+      // Read the user's `shop_id` from the `users` table which is updated by `switchShop()`.
+      const { data: userRow, error: userRowErr } = await supabase
+        .from('users')
+        .select('shop_id')
+        .eq('id', user.id)
+        .single();
 
-      if (shopError) {
-        console.error('Error fetching shop:', shopError);
+      if (userRowErr) {
+        console.error('Error fetching current shop from users table:', userRowErr);
         return null;
       }
 
-      return shops && shops.length > 0 ? shops[0].id : null;
+      return userRow?.shop_id || null;
     } catch (error) {
       console.error('Error in getCurrentShopId:', error);
       return null;
@@ -198,6 +416,9 @@ function setupMessages() {
         console.error('No shop ID found');
         return;
       }
+
+      // remember which shop we loaded for; used to detect changes
+      _lastLoadedShopId = shopId;
 
       const { data, error } = await supabase
         .from('threads')
@@ -244,7 +465,10 @@ function setupMessages() {
     threadListEl.innerHTML = '';
     const list = threads.filter(t => {
       if (!threadFilter) return true;
-      const customerName = t.customer ? `${t.customer.first_name || ''} ${t.customer.last_name || ''}`.trim() : '';
+      // Prefer cached name, then joined customer, then recipient
+      const customerName = `${t.customer_first || ''} ${t.customer_last || ''}`.trim() ||
+        (t.customer ? `${t.customer.first_name || ''} ${t.customer.last_name || ''}`.trim() : '') ||
+        t.external_recipient || '';
       const hay = `${customerName}${t.external_recipient||''}${t.last_message||''}`.toLowerCase();
       return hay.indexOf(threadFilter) !== -1;
     });
@@ -260,7 +484,9 @@ function setupMessages() {
       // Avatar
       const av = document.createElement('div');
       av.style.cssText = 'width:44px;height:44px;border-radius:8px;background:#e6eefc;flex:0 0 44px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#1e40af';
-      const displayName = t.customer ? `${t.customer.first_name || ''} ${t.customer.last_name || ''}`.trim() : t.external_recipient;
+      const displayName = `${t.customer_first || ''} ${t.customer_last || ''}`.trim() ||
+        (t.customer ? `${t.customer.first_name || ''} ${t.customer.last_name || ''}`.trim() : '') ||
+        t.external_recipient;
       av.textContent = (displayName || 'U').slice(0,1).toUpperCase();
 
       // Meta (name + last message)
@@ -311,6 +537,21 @@ function setupMessages() {
     });
   }
 
+  // If user switches shop elsewhere in the app (server-side change), ensure threads are reloaded.
+  window.addEventListener('focus', async () => {
+    try {
+      const supa = supabase;
+      const { data: { user } } = await supa.auth.getUser();
+      if (!user) return;
+      const { data: userRow } = await supa.from('users').select('shop_id').eq('id', user.id).single();
+      const current = userRow?.shop_id || null;
+      if (current && current !== _lastLoadedShopId) {
+        await loadThreads();
+        await loadShopTwilioNumber();
+      }
+    } catch (e) { console.warn('Error checking shop change on focus', e); }
+  });
+
   // Open a thread
   async function openThread(id) {
     const thread = threads.find(x => x.id === id);
@@ -319,13 +560,43 @@ function setupMessages() {
     activeThreadId = id;
     activeThread = thread;
 
-    const displayName = thread.customer 
-      ? `${thread.customer.first_name || ''} ${thread.customer.last_name || ''}`.trim() 
-      : thread.external_recipient;
+    // Mark thread as read if there are unread messages
+    if (thread.unread_count && thread.unread_count > 0) {
+      try {
+        const { error } = await supabase
+          .from('threads')
+          .update({ unread_count: 0 })
+          .eq('id', thread.id);
+        if (!error) {
+          thread.unread_count = 0;
+        }
+      } catch (err) {
+        console.error('Failed to mark thread as read:', err);
+      }
+    }
+
+
+    // Prefer cached name, then joined customer, then recipient
+    const displayName = `${thread.customer_first || ''} ${thread.customer_last || ''}`.trim() ||
+      (thread.customer ? `${thread.customer.first_name || ''} ${thread.customer.last_name || ''}`.trim() : '') ||
+      thread.external_recipient;
 
     threadTitle.textContent = displayName || 'Unknown';
     threadSubtitle.textContent = thread.external_recipient || '';
-    threadAvatar.textContent = (displayName || 'U').slice(0,1).toUpperCase();
+    // Match thread panel avatar style
+    if (threadAvatar) {
+      threadAvatar.textContent = (displayName || 'U').slice(0,1).toUpperCase();
+      threadAvatar.style.width = '44px';
+      threadAvatar.style.height = '44px';
+      threadAvatar.style.borderRadius = '8px';
+      threadAvatar.style.background = '#e6eefc';
+      threadAvatar.style.display = 'flex';
+      threadAvatar.style.alignItems = 'center';
+      threadAvatar.style.justifyContent = 'center';
+      threadAvatar.style.fontWeight = '700';
+      threadAvatar.style.color = '#1e40af';
+      threadAvatar.style.fontSize = '1.5rem';
+    }
 
     // Load messages
     await loadMessages(id);
@@ -797,12 +1068,46 @@ function setupMessages() {
     }
   }
 
+  // Permanently delete a thread and its messages
+  async function deleteThreadPermanent(threadId) {
+    try {
+      // Delete messages first
+      const { error: delMsgsErr } = await supabase
+        .from('messages')
+        .delete()
+        .eq('thread_id', threadId);
+      if (delMsgsErr) throw delMsgsErr;
+
+      // Delete the thread row
+      const { error: delThreadErr } = await supabase
+        .from('threads')
+        .delete()
+        .eq('id', threadId);
+      if (delThreadErr) throw delThreadErr;
+
+      if (activeThreadId === threadId) {
+        activeThreadId = null;
+        activeThread = null;
+        chatBox.innerHTML = '';
+        threadTitle.textContent = 'Select a thread';
+        threadSubtitle.textContent = '';
+        threadAvatar.textContent = '';
+      }
+
+      await loadThreads();
+    } catch (error) {
+      console.error('Error deleting thread permanently:', error);
+      alert('Failed to delete thread: ' + (error.message || error));
+    }
+  }
+
   if (removeThreadClose) removeThreadClose.addEventListener('click', hideRemoveThreadModal);
   if (removeThreadCancel) removeThreadCancel.addEventListener('click', hideRemoveThreadModal);
   if (removeThreadConfirm) {
     removeThreadConfirm.addEventListener('click', async () => {
       if (!pendingRemoveThreadId) return hideRemoveThreadModal();
-      await archiveThread(pendingRemoveThreadId);
+      // Perform permanent delete instead of archive
+      await deleteThreadPermanent(pendingRemoveThreadId);
       hideRemoveThreadModal();
     });
   }
@@ -815,10 +1120,6 @@ function setupMessages() {
   if (threadInfoBtn) {
     threadInfoBtn.addEventListener('click', () => {
       if (!activeThread) return;
-      // Prefill fields: if thread.name looks like a phone number, populate phone; if it looks like an email, populate email; otherwise split into first/last
-      const source = (activeThread.name || activeThread.recipient || '').toString().trim();
-      const isEmail = /@/.test(source);
-      const isPhone = /^[\d\+\-\s\(\)]+$/.test(source);
       const newCustFirst = document.getElementById('newCustFirst');
       const newCustLast = document.getElementById('newCustLast');
       const newCustPhone = document.getElementById('newCustPhone');
@@ -826,30 +1127,12 @@ function setupMessages() {
       const newCustNotes = document.getElementById('newCustNotes');
       const custVehicleSection = document.getElementById('custVehicleSection');
 
-      if (isEmail) {
-        if (newCustEmail) newCustEmail.value = source;
-        if (newCustFirst) newCustFirst.value = '';
-        if (newCustLast) newCustLast.value = '';
-        if (newCustPhone) newCustPhone.value = '';
-      } else if (isPhone) {
-        if (newCustPhone) newCustPhone.value = source;
-        if (newCustFirst) newCustFirst.value = '';
-        if (newCustLast) newCustLast.value = '';
-        if (newCustEmail) newCustEmail.value = '';
-      } else if (source) {
-        const parts = source.split(/\s+/);
-        if (newCustFirst) newCustFirst.value = parts[0] || '';
-        if (newCustLast) newCustLast.value = parts.slice(1).join(' ') || '';
-        if (newCustPhone) newCustPhone.value = '';
-        if (newCustEmail) newCustEmail.value = '';
-      } else {
-        if (newCustFirst) newCustFirst.value = '';
-        if (newCustLast) newCustLast.value = '';
-        if (newCustPhone) newCustPhone.value = '';
-        if (newCustEmail) newCustEmail.value = '';
-      }
-
-      if (newCustNotes) newCustNotes.value = '';
+      // Prefer cached thread fields, then joined customer, then fallback
+      if (newCustFirst) newCustFirst.value = activeThread.customer_first || (activeThread.customer ? activeThread.customer.first_name : '') || '';
+      if (newCustLast) newCustLast.value = activeThread.customer_last || (activeThread.customer ? activeThread.customer.last_name : '') || '';
+      if (newCustPhone) newCustPhone.value = activeThread.phone || (activeThread.customer ? activeThread.customer.phone : '') || '';
+      if (newCustEmail) newCustEmail.value = activeThread.email || (activeThread.customer ? activeThread.customer.email : '') || '';
+      if (newCustNotes) newCustNotes.value = activeThread.notes || (activeThread.customer ? activeThread.customer.notes : '') || '';
       if (custVehicleSection) custVehicleSection.classList.add('hidden');
       if (custModal) custModal.classList.remove('hidden');
       if (newCustFirst) newCustFirst.focus();
@@ -891,67 +1174,58 @@ function setupMessages() {
 
   window.addEventListener('resize', updatePanelHeights);
 
-  // Subscribe to Realtime updates for new messages
-  async function subscribeToMessages() {
+  // Poll for new messages every 3 seconds (alternative to Realtime)
+  let pollInterval = null;
+  let lastMessageCount = 0;
+  
+  async function startPolling() {
     const shopId = await getCurrentShopId();
     if (!shopId) return;
 
-    console.log('🔌 Setting up Realtime subscriptions for shop:', shopId);
+    console.log('🔄 Starting message polling (checking every 3 seconds)');
 
-    // Subscribe to new messages (filter by thread_id since messages don't have shop_id)
-    const messagesChannel = supabase
-      .channel('messages-channel')
-      .on('postgres_changes', 
-        { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'messages'
-        }, 
-        async (payload) => {
-          console.log('📨 New message received:', payload);
+    pollInterval = setInterval(async () => {
+      // Only poll if we have an active thread
+      if (!activeThreadId) return;
+      
+      try {
+        // Check for new messages
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('thread_id', activeThreadId)
+          .order('created_at', { ascending: true });
+        
+        if (error) {
+          console.error('Polling error:', error);
+          return;
+        }
+        
+        // If we have more messages than before, append the new ones
+        if (data && data.length > messages.length) {
+          console.log('📨 New messages detected!', data.length - messages.length, 'new');
+          const newMessages = data.slice(messages.length);
+          newMessages.forEach(msg => {
+            messages.push(msg);
+            appendMessageBubble(msg);
+          });
+          scrollChatToBottom();
           
-          // Check if this message belongs to one of our threads
-          const belongsToShop = threads.some(t => t.id === payload.new.thread_id);
-          
-          if (!belongsToShop) {
-            console.log('⏭️ Message not for this shop, ignoring');
-            return;
-          }
-          
-          // If message is for active thread, append it
-          if (payload.new.thread_id === activeThreadId) {
-            console.log('✅ Adding message to active thread');
-            messages.push(payload.new);
-            appendMessageBubble(payload.new);
-            scrollChatToBottom();
-          }
-          
-          // Reload threads to update last_message
+          // Also reload threads to update last_message
           await loadThreads();
         }
-      )
-      .subscribe((status) => {
-        console.log('📡 Messages channel status:', status);
-      });
-
-    // Subscribe to thread updates
-    const threadsChannel = supabase
-      .channel('threads-channel')
-      .on('postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'threads',
-          filter: `shop_id=eq.${shopId}`
-        },
-        async (payload) => {
-          console.log('🔄 Thread updated:', payload);
-          await loadThreads();
-        }
-      )
-      .subscribe((status) => {
-        console.log('📡 Threads channel status:', status);
-      });
+      } catch (err) {
+        console.error('Error polling for messages:', err);
+      }
+    }, 3000); // Poll every 3 seconds
+  }
+  
+  function stopPolling() {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+      console.log('⏹️ Stopped message polling');
+    }
   }
   // New Thread Modal handlers
   function setupNewThreadModal() {
@@ -1050,8 +1324,11 @@ function setupMessages() {
     attachSendFormListener();
     setupNewThreadModal();
     updatePanelHeights();
-    await subscribeToMessages();
+    startPolling(); // Start polling for new messages
   }
+  
+  // Clean up on page unload
+  window.addEventListener('beforeunload', stopPolling);
 
   init();
 }

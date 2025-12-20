@@ -46,20 +46,44 @@ function showConfirmBanner(message, onConfirm, onCancel) {
   // remove existing
   const existing = document.getElementById('confirmBanner');
   if (existing) existing.remove();
-  const wrap = document.createElement('div');
-  wrap.id = 'confirmBanner';
-  wrap.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;padding:10px 14px;border-radius:8px;z-index:100200;display:flex;gap:12px;align-items:center;box-shadow:0 4px 14px rgba(0,0,0,0.12)';
-  const txt = document.createElement('div'); txt.textContent = message; txt.style.fontWeight = '600';
-  const actions = document.createElement('div'); actions.style.display = 'flex'; actions.style.gap = '8px';
-  const ok = document.createElement('button'); ok.className = 'btn primary'; ok.textContent = 'Confirm';
+
+  // modal overlay
+  const overlay = document.createElement('div');
+  overlay.id = 'confirmBanner';
+  overlay.className = 'modal-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:100200;background:rgba(0,0,0,0.35)';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-content card';
+  modal.style.cssText = 'width:420px;max-width:92%;padding:18px;border-radius:12px;text-align:left';
+
+  const txt = document.createElement('div'); txt.textContent = message; txt.style.fontWeight = '600'; txt.style.marginBottom = '12px';
+  const desc = document.createElement('div'); desc.style.marginBottom = '12px'; desc.style.color = 'var(--muted)';
+
+  const actions = document.createElement('div'); actions.style.display = 'flex'; actions.style.justifyContent = 'flex-end'; actions.style.gap = '8px';
   const cancel = document.createElement('button'); cancel.className = 'btn'; cancel.textContent = 'Cancel';
-  actions.appendChild(ok); actions.appendChild(cancel);
-  wrap.appendChild(txt); wrap.appendChild(actions);
-  document.body.appendChild(wrap);
-  ok.addEventListener('click', () => { wrap.remove(); try { if (typeof onConfirm === 'function') onConfirm(); } catch(e){} });
-  cancel.addEventListener('click', () => { wrap.remove(); try { if (typeof onCancel === 'function') onCancel(); } catch(e){} });
-  // auto-dismiss in 10s
-  setTimeout(() => { try { wrap.remove(); } catch(e){} }, 10000);
+  const ok = document.createElement('button'); ok.className = 'btn primary'; ok.textContent = 'Confirm';
+  actions.appendChild(cancel); actions.appendChild(ok);
+
+  modal.appendChild(txt);
+  if (desc) modal.appendChild(desc);
+  modal.appendChild(actions);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  // Focus first button
+  setTimeout(() => { try { ok.focus(); } catch(e){} }, 50);
+
+  ok.addEventListener('click', () => {
+    overlay.remove();
+    try { if (typeof onConfirm === 'function') onConfirm(); } catch(e){}
+  });
+  cancel.addEventListener('click', () => {
+    overlay.remove();
+    try { if (typeof onCancel === 'function') onCancel(); } catch(e){}
+  });
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.remove(); try { if (typeof onCancel === 'function') onCancel(); } catch(e){} } });
 }
 
 function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -119,6 +143,25 @@ async function init() {
   renderShops();
   renderRevenueTable();
   setupEventListeners();
+
+  // Make header logo act as a back button (fall back to dashboard)
+  try {
+    const logo = document.querySelector('header .brand img') || document.querySelector('header img');
+    if (logo) {
+      logo.style.cursor = 'pointer';
+      logo.addEventListener('click', (e) => {
+        try {
+          if (window.history && window.history.length > 1) {
+            window.history.back();
+          } else {
+            window.location.href = 'dashboard.html';
+          }
+        } catch (ex) {
+          window.location.href = 'dashboard.html';
+        }
+      });
+    }
+  } catch (e) { console.warn('logo back handler attach failed', e); }
   
   console.log('✅ Admin dashboard initialized');
 }
@@ -295,10 +338,11 @@ function renderShops() {
 
     shopCard.innerHTML = `
       <div style="position: relative; display: flex; flex-direction: row; gap: 0px; align-items: flex-start; flex-wrap: wrap;">
+        ${role === 'owner' ? `<button class="btn small danger delete-shop-btn icon-btn" data-shop-id="${shop.id}" aria-label="Delete shop" style="position:absolute; top:-10px; right:28px; z-index:3;">` +
+            `<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg></button>` : ''}
         <div style="position:absolute; top:-12px; right:-12px; z-index:3; width:36px; height:36px; border-radius:50%; background:#007bff; color:#fff; display:flex;align-items:center;justify-content:center; font-weight:700; font-size:14px; box-shadow:0 2px 6px rgba(0,0,0,0.12); border:3px solid var(--card);">${idx+1}</div>
         <div style="position: absolute; top: 18px; right: 18px; display: flex; flex-direction: column; gap: 8px; z-index:2;">
           ${!isActive ? `<button class=\"btn primary switch-shop-btn\" data-shop-id=\"${shop.id}\">Switch to Shop</button>` : ''}
-          ${role === 'owner' ? `<button class=\"btn danger delete-shop-btn\" data-shop-id=\"${shop.id}\">Delete Shop</button>` : ''}
         </div>
           <div style="flex:none; min-width:220px; max-width:340px; margin:0; padding:0;">
           <h3 style="margin: 0 0 8px 0; font-size: 18px; font-weight: 600;">
@@ -330,6 +374,67 @@ function renderShops() {
     `;
 
     shopListContainer.appendChild(shopCard);
+
+    // Normalize inline styles that cause overflow on small screens.
+    // Only override large fixed pixel widths; skip small badges (e.g. circular shop number)
+    (function normalizeShopCard(card){
+      try {
+        const nodes = card.querySelectorAll('[style]');
+        nodes.forEach(n => {
+          const s = (n.getAttribute('style') || '').toLowerCase();
+
+          // If element explicitly uses a 50% border-radius (circular badge), skip width overrides
+          if (/border-radius:\s*50%/.test(s) || /border-radius:\s*\d+px/.test(s) && s.indexOf('50%') !== -1) return;
+
+          // min-width overrides: collapse to 0 to allow flex shrink
+          const minwMatch = s.match(/min-width:\s*(\d+)px/);
+          if (minwMatch && Number(minwMatch[1]) >= 80) {
+            n.style.minWidth = '0';
+            n.style.maxWidth = '100%';
+            n.style.width = '100%';
+          }
+
+          // width overrides: only replace large fixed widths (>=80px)
+          const wMatch = s.match(/width:\s*(\d+)px/);
+          if (wMatch) {
+            const wVal = Number(wMatch[1]);
+            if (wVal >= 80) {
+              n.style.width = '100%';
+              n.style.maxWidth = '100%';
+            }
+          }
+
+          if (/margin-left:\s*-?\d+px/.test(s)) {
+            n.style.marginLeft = '0';
+          }
+          if (/position:\s*absolute/.test(s)) {
+            // Preserve absolute positioning for the delete button / icon-only controls
+            try {
+              const cls = (n.className || '').toString();
+              if (cls.indexOf('delete-shop-btn') !== -1 || cls.indexOf('icon-btn') !== -1) {
+                return; // keep absolute positioning for delete button
+              }
+            } catch (ex) {}
+            // Only change absolute positioning for non-badge, non-delete elements
+            if (!/border-radius:\s*50%/.test(s)) {
+              n.style.position = 'relative';
+              n.style.right = 'auto';
+              n.style.top = 'auto';
+            }
+          }
+
+          // Flex shorthand like "flex: 0 0 260px" -> convert to fluid
+          const flexPxMatch = s.match(/flex:\s*0\s*0\s*(\d+)px/);
+          if (flexPxMatch && Number(flexPxMatch[1]) >= 120) {
+            n.style.flex = '1 1 auto';
+            n.style.width = '100%';
+            n.style.maxWidth = '100%';
+          }
+        });
+      } catch (e) {
+        console.warn('normalizeShopCard error', e);
+      }
+    })(shopCard);
 
     // Render chart with real daily revenue data
     setTimeout(() => {

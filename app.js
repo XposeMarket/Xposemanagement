@@ -81,8 +81,22 @@ async function addAdminLinkToNav() {
         dropdown.style.position = 'absolute';
         dropdown.style.minWidth = '260px';
         dropdown.style.zIndex = '9999';
-        dropdown.style.top = (adminLink.offsetTop + adminLink.offsetHeight + 6) + 'px';
-        dropdown.style.left = (adminLink.offsetLeft - 40) + 'px';
+        // Mobile: full width at left 0, otherwise align to adminLink
+        if (window.innerWidth < 900) {
+          dropdown.style.position = 'fixed';
+          dropdown.style.left = '0';
+          dropdown.style.right = '0';
+          dropdown.style.margin = '0 auto';
+          dropdown.style.width = '90vw';
+          dropdown.style.maxWidth = '420px';
+          dropdown.style.top = '80px'; // fixed position below header
+          dropdown.style.maxHeight = '80vh';
+          dropdown.style.overflowY = 'auto';
+        } else {
+          dropdown.style.position = 'absolute';
+          dropdown.style.top = (adminLink.offsetTop + adminLink.offsetHeight + 6) + 'px';
+          dropdown.style.left = (adminLink.offsetLeft - 40) + 'px';
+        }
         dropdown.style.boxShadow = '0 8px 32px rgba(0,0,0,0.18)';
         dropdown.style.background = 'var(--card, #fff)';
         dropdown.style.borderRadius = '10px';
@@ -117,7 +131,14 @@ async function addAdminLinkToNav() {
             </button>
           `).join('')}
         `;
-        // Remove dropdown on outside click
+        // Add to DOM before scrolling
+        document.body.appendChild(dropdown);
+        // On mobile, scroll dropdown into view at bottom
+        if (window.innerWidth < 900) {
+          setTimeout(() => {
+            dropdown.scrollIntoView({ behavior: 'smooth', block: 'end' });
+          }, 50);
+        }
         setTimeout(() => {
           document.addEventListener('mousedown', function handler(evt) {
             if (!dropdown.contains(evt.target) && evt.target !== adminLink) {

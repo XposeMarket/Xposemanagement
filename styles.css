@@ -1,3 +1,31 @@
+/* Mobile-specific settings page panel order and spacing */
+@media (max-width: 700px) {
+  .container > .card,
+  #invitations-section {
+    margin-bottom: 16px !important;
+  }
+  .container > .card {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .grid.cols-2, .grid.cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+  #xm-team-card {
+    margin-bottom: 16px !important;
+  }
+}
+@media (max-width: 900px) {
+  .threads-panel {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    flex: 1 1 100vw !important;
+    border-radius: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+  }
+}
 /* Profile page mobile/responsive layout */
 .profile-main { padding: 16px 0; }
 .profile-flex {
@@ -370,6 +398,141 @@ footer.container{
   box-sizing: border-box;
   max-width: 1200px;
   margin: 24px auto 40px; /* small gap above, and bottom spacing */
+
+/* Admin page: mobile-friendly overrides */
+@media (max-width: 900px) {
+  /* Reduce horizontal padding for small screens */
+  .container { padding: 0 12px; }
+
+  .admin-header { font-size: 1.25rem; margin: 12px 0; text-align: left; }
+
+  /* Stack shop cards into a single column */
+  #shopList { display: flex; flex-direction: column; gap: 12px; }
+
+  .shop-card {
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 12px !important;
+    margin: 12px 0 !important;
+    border-radius: 12px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+    overflow: visible !important;
+  }
+
+  /* Make absolute-positioned badges and buttons flow better on mobile */
+  .shop-card > div { position: static !important; width: 100% !important; margin-left: 0 !important; }
+  .shop-card .card { width: 100% !important; flex: none !important; margin-left: 0 !important; }
+
+  /* Ensure charts and appointment lists scale to container */
+  .shop-card canvas { max-width: 100% !important; height: auto !important; }
+  .shop-card h3 { font-size: 1.05rem !important; margin-bottom: 8px !important; }
+
+  /* Make action buttons full width and easier to tap */
+  .shop-card .btn { width: 100% !important; box-sizing: border-box; padding: 10px 12px !important; }
+
+  /* Add spacing between stacked inner cards */
+  .shop-card .card { margin-top: 10px !important; }
+
+  /* Revenue table: convert to stacked list for readability */
+  .revenue-section { margin-top: 18px; overflow: visible; }
+  .revenue-table { width: 100%; overflow: auto; }
+  .revenue-table table, .revenue-table thead, .revenue-table tbody, .revenue-table tr, .revenue-table td, .revenue-table th { display: block; }
+  .revenue-table thead { display: none; }
+  .revenue-table tr { display: flex; justify-content: space-between; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+  .revenue-table td { display: block; padding: 0; border: none; }
+
+  /* Full-width Add Shop button on mobile */
+  #addShopBtn { width: 100% !important; padding: 12px !important; font-size: 16px !important; border-radius: 10px !important; }
+
+  /* Make modals responsive */
+  .modal-content { width: 92% !important; max-width: 640px !important; }
+  .modal-overlay { padding: 12px !important; }
+}
+
+/* Additional fixes: prevent inner admin panels from causing horizontal overflow on small screens */
+@media (max-width: 900px) {
+  /* Ensure container doesn't allow horizontal scrolling from shop-cards */
+  .container { overflow-x: hidden; }
+
+  /* Target the inner flex wrapper that holds the revenue chart + appointments and stack it */
+  .shop-card > div > div[style*="margin-left"] {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Make any element with inline min-width or width constraints collapse properly */
+  .shop-card [style*="min-width:"] {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Ensure inner .card elements are full-width and don't overflow */
+  .shop-card .card {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  /* Make canvas responsive */
+  .shop-card canvas { width: 100% !important; height: auto !important; display: block !important; }
+
+  /* Appointment list should wrap and not expand beyond container */
+  .shop-card #apptList-* { max-width: 100%; }
+}
+
+/* Strong overrides to fix admin card overflow caused by inline styles */
+@media (max-width: 900px) {
+  body, html { overflow-x: hidden !important; }
+  .container { overflow-x: hidden !important; }
+
+  /* Match elements that use inline width/min-width/flex to force them to collapse */
+  .shop-card [style*="min-width:"] {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+  .shop-card [style*="width:340px"] {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .shop-card [style*="flex: 0 0 260px"] {
+    flex: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Reset negative margins used for layout on desktop */
+  .shop-card [style*="margin-left:-12px"] {
+    margin-left: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+
+  /* Make revenue charts responsive regardless of canvas attributes */
+  canvas[id^="revenueChart-"] {
+    width: 100% !important;
+    height: auto !important;
+    max-width: 100% !important;
+    display: block !important;
+  }
+
+  /* Ensure appointment list doesn't cause overflow */
+  .shop-card [id^="apptList-"] {
+    max-width: 100% !important;
+    overflow: auto !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Ensure any inline positioned badges don't overflow container */
+  .shop-card [style*="position:absolute"] { position: relative !important; right: auto !important; top: auto !important; }
+}
   padding-left: 40px;
   padding-right: 40px;
 }
@@ -414,6 +577,8 @@ nav{display:flex;flex-wrap:nowrap;gap:2px;align-items:center;overflow-x:auto;scr
 }
 .btn.info:hover{filter:brightness(.95)}
 .btn.small{padding:5px 8px;font-size:13px;min-height:28px}
+.icon-btn { padding: 4px !important; gap: 0 !important; min-width: 34px !important; width: 34px !important; height: 34px !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; border-radius: 8px !important; }
+.icon-btn svg { margin-left: 0 !important; display: block; width: 14px; height: 14px; }
 .btn.quick-create{background:#ffffff;border:2px solid var(--line);color:var(--text);box-shadow:0 4px 8px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.06);transition:all 0.2s ease}
 .btn.quick-create:hover{transform:translateY(-1px);box-shadow:0 6px 12px rgba(0,0,0,0.15), 0 3px 6px rgba(0,0,0,0.1)}
 /* Unified btn hover for consistent interactions across pages */

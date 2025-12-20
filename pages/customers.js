@@ -289,6 +289,90 @@ document.addEventListener('DOMContentLoaded', async () => {
 		}
 	}
 
+	// Subscribe to realtime message/thread updates for this shop and update the customers list
+	async function subscribeToCustomerMessages() {
+		if (!shopId) return;
+		try {
+			console.log('[customers.js] Subscribing to realtime messages for shop', shopId);
+
+			// Messages INSERT - update the affected customer row
+			const messagesChannel = supabase
+				.channel('customers-messages-' + shopId)
+				.on('postgres_changes', {
+					event: 'INSERT',
+					schema: 'public',
+					table: 'messages',
+					filter: `shop_id=eq.${shopId}`
+				}, async (payload) => {
+					try {
+						const msg = payload.new;
+						// If message has a customer_id, refresh that customer
+						if (msg.customer_id) {
+							const { data: cust } = await supabase
+								.from('customers')
+								.select('*')
+								.eq('id', msg.customer_id)
+								.single();
+							if (cust) {
+								const idx = customersArr.findIndex(c => c.id === cust.id);
+								if (idx >= 0) customersArr[idx] = cust;
+								else customersArr.unshift(cust);
+								renderCustomers();
+							}
+						} else if (msg.thread_id) {
+							// If no customer_id, try to resolve via thread -> customer_id
+							const { data: thread } = await supabase
+								.from('threads')
+								.select('customer_id')
+								.eq('id', msg.thread_id)
+								.single();
+							if (thread && thread.customer_id) {
+								const { data: cust } = await supabase
+									.from('customers')
+									.select('*')
+									.eq('id', thread.customer_id)
+									.single();
+								if (cust) {
+									const idx = customersArr.findIndex(c => c.id === cust.id);
+									if (idx >= 0) customersArr[idx] = cust;
+									else customersArr.unshift(cust);
+									renderCustomers();
+								}
+							}
+						}
+					} catch (e) {
+						console.warn('[customers.js] Error handling realtime message payload:', e);
+					}
+				})
+				.subscribe((status) => {
+					console.log('[customers.js] messages channel status:', status);
+				});
+
+			// Threads updates - refresh customers when threads change (e.g., archived or last_message)
+			const threadsChannel = supabase
+				.channel('customers-threads-' + shopId)
+				.on('postgres_changes', {
+					event: '*',
+					schema: 'public',
+					table: 'threads',
+					filter: `shop_id=eq.${shopId}`
+				}, async (payload) => {
+					try {
+						// For simplicity, reload customers to pick up any thread-related cached fields
+						await loadCustomers();
+					} catch (e) {
+						console.warn('[customers.js] Error handling threads payload:', e);
+					}
+				})
+				.subscribe((status) => {
+					console.log('[customers.js] threads channel status:', status);
+				});
+
+		} catch (e) {
+			console.warn('[customers.js] Failed to subscribe to realtime updates:', e);
+		}
+	}
+
 	// Render customers table
 	function renderCustomers() {
 		const empty = document.getElementById('custEmpty');
@@ -754,8 +838,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 				shop_id: shopId,
 				customer_first: first,
 				customer_last: last,
-				phone: phone,
-				email: email,
+				phone: (phone === '' ? null : (function(p){
+					const d = (p||'').replace(/\D/g,'');
+					if (d.length === 11 && d[0] === '1') return '+'+d;
+					if (d.length === 10) return '+1'+d;
+					if (d.length > 0) return '+'+d;
+					return null;
+				})(phone)),
+				email: (email === '' ? null : email),
 				notes: notes,
 				created_at: new Date().toISOString(),
 				updated_at: new Date().toISOString()

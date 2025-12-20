@@ -39,7 +39,7 @@ function showNotification(message, type = 'success') {
 </header>
 <main class="container" style="padding:16px 0">
   <h1>Settings</h1>
-  
+
   <!-- Subscription Status Banner -->
   <div id="subscriptionBanner" class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 24px; margin-bottom: 24px; display: none;">
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
@@ -53,28 +53,36 @@ function showNotification(message, type = 'success') {
       </div>
     </div>
   </div>
-  
-  <div class="grid cols-2"><div class="card" style="position:relative; overflow:visible;"><h3>Shop Info</h3>
-  <!-- Logo preview positioned top-right of this card -->
-  <img id="shopLogoPreview" src="" alt="Logo preview" style="position:absolute; top:8px; right:8px; width:64px; height:auto; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,0.12); display:none; object-fit:contain; background:#fff; padding:4px;" />
-  <label>Shop Name</label><input id="shopName"><label>Phone</label><input id="shopPhone"><label>Email</label><input id="shopEmail"><label>Zipcode</label><input id="shopZipcode"><label>Shop Logo</label><input id="shopLogoFile" type="file" accept="image/*"><button id="saveShop" class="btn info" style="margin-top:10px">Save</button><p id="shopSaved" class="notice"></p></div><div class="card"><h3>Services</h3><div id="svcList"></div><div class="grid cols-3" style="margin-top:10px"><input id="svcName" placeholder="Service name"><input id="svcPrice" type="number" placeholder="Base price"><button id="svcAdd" class="btn primary">Add</button></div><p class="notice">Click a service to remove it.</p>
-<div class="card" style="margin-top:16px">
-  <div class="toolbar" style="justify-content:space-between">
-    <h3>Manage Labor Rates</h3>
+
+  <!-- Shop Info Panel -->
+  <div class="card" style="position:relative; overflow:visible; margin-bottom:16px;">
+    <h3>Shop Info</h3>
+    <img id="shopLogoPreview" src="" alt="Logo preview" style="position:absolute; top:8px; right:8px; width:64px; height:auto; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,0.12); display:none; object-fit:contain; background:#fff; padding:4px;" />
+    <label>Shop Name</label><input id="shopName"><label>Phone</label><input id="shopPhone"><label>Email</label><input id="shopEmail"><label>Zipcode</label><input id="shopZipcode"><label>Shop Logo</label><input id="shopLogoFile" type="file" accept="image/*"><button id="saveShop" class="btn info" style="margin-top:10px">Save</button><p id="shopSaved" class="notice"></p>
   </div>
 
-  <div id="labList"></div>
-  <div class="grid cols-3" style="margin-top:10px">
-    <input id="labName" placeholder="Rate name (e.g., Standard)">
-    <input id="labRate" type="number" step="0.01" placeholder="$/hr">
-    <button id="labAdd" class="btn primary">Add</button>
+  <!-- Services and Labor Panel -->
+  <div class="card" style="margin-bottom:16px;">
+    <h3>Services</h3>
+    <div id="svcList"></div>
+    <div class="grid cols-3" style="margin-top:10px"><input id="svcName" placeholder="Service name"><input id="svcPrice" type="number" placeholder="Base price"><button id="svcAdd" class="btn primary">Add</button></div>
+    <p class="notice">Click a service to remove it.</p>
+    <div class="card" style="margin-top:16px">
+      <div class="toolbar" style="justify-content:space-between">
+        <h3>Manage Labor Rates</h3>
+      </div>
+      <div id="labList"></div>
+      <div class="grid cols-3" style="margin-top:10px">
+        <input id="labName" placeholder="Rate name (e.g., Standard)">
+        <input id="labRate" type="number" step="0.01" placeholder="$/hr">
+        <button id="labAdd" class="btn primary">Add</button>
+      </div>
+      <p class="notice">Click a rate to remove it.</p>
+    </div>
   </div>
-  <p class="notice">Click a rate to remove it.</p>
-</div>
-</div></div>
 
-<!-- Shop Access & Team (hardcoded into page for reliability) -->
-<div class="card" id="xm-team-card" style="margin-top:16px">
+  <!-- Shop Access & Team (hardcoded into page for reliability) -->
+  <div class="card" id="xm-team-card" style="margin-bottom:16px;">
   <h2>Shop Access & Team</h2>
   <div class="grid cols-3">
     <div>
@@ -123,26 +131,27 @@ function showNotification(message, type = 'success') {
     <p class="notice">Slots used: <span id="slotsUsed">0</span> / <span id="slotsMax">3</span></p>
 
     <!-- Invitations UI -->
-    <div id="invitations-section" style="margin-top:16px;">
-      <div class="card">
-        <h3>Pending Invitations</h3>
-        <div id="pendingInvitesList"><div class="muted">Loading...</div></div>
+      <!-- Invitations Panel -->
+      <div id="invitations-section" style="margin-bottom:16px;">
+        <div class="card">
+          <h3>Pending Invitations</h3>
+          <div id="pendingInvitesList"><div class="muted">Loading...</div></div>
 
-        <h3 style="margin-top:12px">Invite Existing User</h3>
-        <form id="inviteForm">
-          <div class="grid cols-3">
-            <input id="inviteEmailInput" type="email" placeholder="user@example.com" required>
-            <select id="inviteRoleSelect">
-              <option value="technician">Technician</option>
-              <option value="manager">Manager</option>
-              <option value="service_advisor">Service Advisor</option>
-            </select>
-            <button id="inviteSendBtn" class="btn primary" type="submit">Send Invitation</button>
-          </div>
-        </form>
-        <p class="invite-note">💡 User must have an Xpose account to receive invitation</p>
+          <h3 style="margin-top:12px">Invite Existing User</h3>
+          <form id="inviteForm">
+            <div class="grid cols-3">
+              <input id="inviteEmailInput" type="email" placeholder="user@example.com" required>
+              <select id="inviteRoleSelect">
+                <option value="technician">Technician</option>
+                <option value="manager">Manager</option>
+                <option value="service_advisor">Service Advisor</option>
+              </select>
+              <button id="inviteSendBtn" class="btn primary" type="submit">Send Invitation</button>
+            </div>
+          </form>
+          <p class="invite-note">💡 User must have an Xpose account to receive invitation</p>
+        </div>
       </div>
-    </div>
   </div>
 </div>
 
