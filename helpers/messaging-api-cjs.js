@@ -253,8 +253,6 @@ async function sendMessage(req, res) {
       .from('messages')
       .insert([{
         thread_id: thread.id,
-        shop_id: shopId,
-        customer_id: customerId,
         twilio_message_sid: twilioMessage.sid,
         direction: 'outbound',
         from_number: shopNumber.phone_number,
@@ -263,8 +261,7 @@ async function sendMessage(req, res) {
         media: media ? (Array.isArray(media) ? media.map(url => ({ url })) : [{ url: media }]) : null,
         status: twilioMessage.status,
         num_segments: twilioMessage.numSegments || 1,
-        num_media: twilioMessage.numMedia || 0,
-        sent_at: new Date().toISOString()
+        num_media: twilioMessage.numMedia || 0
       }])
       .select()
       .single();
@@ -272,6 +269,15 @@ async function sendMessage(req, res) {
     if (saveError) {
       console.error('Error saving message to DB:', saveError);
     }
+    
+    // Update thread's last_message
+    await supabase
+      .from('threads')
+      .update({
+        last_message: body.substring(0, 100),
+        last_message_at: new Date().toISOString()
+      })
+      .eq('id', thread.id);
     
     return res.json({
       success: true,
@@ -289,27 +295,42 @@ async function sendMessage(req, res) {
  * Receive incoming messages from Twilio
  */
 async function receiveWebhook(req, res) {
+  console.log('🔔 WEBHOOK CALLED!');
+  console.log('📨 Request body:', req.body);
+  console.log('🔑 Environment check:', {
+    hasSupabaseUrl: !!process.env.SUPABASE_URL,
+    hasSupabaseKey: !!(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY || process.env.SUPABASE_SERVICE_KEY),
+    hasTwilioSid: !!process.env.TWILIO_ACCOUNT_SID
+  });
+  
   try {
     const { From, To, Body, MessageSid, NumMedia } = req.body;
+    
+    console.log('📞 From:', From, 'To:', To, 'Body:', Body);
     
     const supabase = getSupabase();
     const normalizedFrom = normalizePhone(From);
     const normalizedTo = normalizePhone(To);
     
+    console.log('🔄 Normalized - From:', normalizedFrom, 'To:', normalizedTo);
+    
     // Find shop by Twilio number
-    const { data: shopNumbers } = await supabase
+    const { data: shopNumbers, error: shopError } = await supabase
       .from('shop_twilio_numbers')
       .select('*')
       .eq('phone_number', normalizedTo)
-      .eq('provisioning_status', 'active')
       .limit(1);
     
-    if (!shopNumbers || shopNumbers.length === 0) {
-      console.error('No shop found for Twilio number:', normalizedTo);
-      return res.status(404).send('Number not found');
+    console.log('🏪 Shop lookup result:', { shopNumbers, shopError });
+    
+    if (shopError || !shopNumbers || shopNumbers.length === 0) {
+      console.error('❌ No shop found for Twilio number:', normalizedTo);
+      // Return 200 to Twilio so it doesn't retry
+      return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
     }
     
     const shopNumber = shopNumbers[0];
+    console.log('✅ Found shop:', shopNumber.shop_id);
     
     // Find or create customer
     let customerId = null;
@@ -317,15 +338,20 @@ async function receiveWebhook(req, res) {
       .from('customers')
       .select('*')
       .eq('shop_id', shopNumber.shop_id)
-      .eq('phone_normalized', normalizedFrom)
+      .eq('phone', normalizedFrom)
       .limit(1);
     
     if (customers && customers.length > 0) {
       customerId = customers[0].id;
+      console.log('✅ Found existing customer:', customerId);
+    } else {
+      console.log('ℹ️ No existing customer found');
     }
     
     // Find or create thread
+    console.log('🔍 Finding/creating thread...');
     const thread = await findOrCreateThread(shopNumber.shop_id, customerId, normalizedFrom, shopNumber.id);
+    console.log('✅ Thread ready:', thread.id);
     
     // Process media if present
     let mediaUrls = null;
@@ -338,31 +364,50 @@ async function receiveWebhook(req, res) {
           mediaUrls.push({ url: mediaUrl, contentType });
         }
       }
+      console.log('📎 Media attachments:', mediaUrls.length);
     }
     
     // Save message to database
-    await supabase
+    console.log('💾 Saving message to database...');
+    const { data: savedMessage, error: saveError } = await supabase
       .from('messages')
       .insert([{
         thread_id: thread.id,
-        shop_id: shopNumber.shop_id,
-        customer_id: customerId,
-        twilio_message_sid: MessageSid,
+        twilio_message_id: MessageSid,
         direction: 'inbound',
         from_number: normalizedFrom,
         to_number: normalizedTo,
         body: Body || '',
         media: mediaUrls,
         status: 'received',
-        num_media: parseInt(NumMedia) || 0,
-        received_at: new Date().toISOString()
-      }]);
+        num_media: parseInt(NumMedia) || 0
+      }])
+      .select()
+      .single();
     
-    return res.status(200).send('Message received');
+    if (saveError) {
+      console.error('❌ Error saving message:', saveError);
+    } else {
+      console.log('✅ Message saved:', savedMessage.id);
+    }
+    
+    // Update thread's last_message
+    await supabase
+      .from('threads')
+      .update({
+        last_message: (Body || '').substring(0, 100),
+        last_message_at: new Date().toISOString()
+      })
+      .eq('id', thread.id);
+    
+    console.log('✅ Webhook processing complete');
+    return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
     
   } catch (error) {
-    console.error('Error processing webhook:', error);
-    return res.status(500).send('Internal server error');
+    console.error('❌ WEBHOOK ERROR:', error);
+    console.error('Stack:', error.stack);
+    // Still return 200 to Twilio to prevent retries
+    return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
   }
 }
 
