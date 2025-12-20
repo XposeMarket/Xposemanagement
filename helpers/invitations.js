@@ -5,6 +5,7 @@
 
 import { getSupabaseClient } from './supabase.js';
 import { createNotification } from './invitations_functions.js';
+import { getNotificationIcon, getPriorityBadge } from './shop-notifications.js';
 
 let currentUserAuthId = null;
 let currentUserEmail = null;
@@ -410,15 +411,14 @@ function renderInvitationsList() {
       // Grey out read notifications
       const cardStyle = isRead ? 'opacity: 0.6; background: var(--line);' : '';
       
-      // Determine icon based on notification type
-      let icon = '🔔';
-      let iconBg = '#60a5fa';
-      if (item.type === 'invitation_accepted') {
-        icon = '✅';
-        iconBg = '#10b981';
-      } else if (item.type === 'invitation_declined') {
-        icon = '❌';
-        iconBg = '#ef4444';
+      // Get icon based on category/type
+      const { icon, iconBg } = getNotificationIcon(item.category || 'invitation', item.type);
+      
+      // Get priority badge if priority exists
+      let priorityBadge = '';
+      if (item.priority && item.priority !== 'normal') {
+        const priority = getPriorityBadge(item.priority);
+        priorityBadge = `<span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: ${priority.bg}; color: ${priority.color}; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 8px;">${priority.text}</span>`;
       }
 
       return `
@@ -428,7 +428,10 @@ function renderInvitationsList() {
               ${icon}
             </div>
             <div style="flex: 1;">
-              <h3 style="margin: 0 0 4px 0; font-size: 16px;">${item.title}</h3>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <h3 style="margin: 0 0 4px 0; font-size: 16px;">${item.title}</h3>
+                ${priorityBadge}
+              </div>
               <p style="margin: 0; color: var(--muted); font-size: 14px;">${item.message}</p>
               <p style="margin: 4px 0 0 0; color: var(--muted); font-size: 12px;">${dateStr} at ${timeStr}</p>
             </div>
@@ -561,7 +564,13 @@ async function acceptInvitation(inviteId) {
       { shop_id: invitation.shop_id, invitee_email: userEmail }
     );
 
-    alert(`Successfully joined ${invitation.shops?.name || 'the shop'}!`);
+    // Show success banner
+    const notifBanner = document.createElement('div');
+    notifBanner.className = 'notification';
+    notifBanner.textContent = `Successfully joined ${invitation.shops?.name || 'the shop'}!`;
+    notifBanner.style.background = '#10b981';
+    document.body.appendChild(notifBanner);
+    setTimeout(() => notifBanner.remove(), 3000);
 
     // Refresh invitations list
     await fetchPendingInvitations();
@@ -673,5 +682,30 @@ async function dismissInvitation(inviteId) {
   } catch (err) {
     console.error('[Invitations] Error dismissing invitation:', err);
     alert('Failed to dismiss invitation. Please try again.');
+  }
+}
+
+/**
+ * Mark a notification as read
+ */
+async function markNotificationAsRead(notifId) {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', notifId);
+
+    if (error) throw error;
+
+    // Refresh invitations/notifications list
+    await fetchPendingInvitations();
+    renderInvitationsList();
+
+  } catch (err) {
+    console.error('[Invitations] Error marking notification as read:', err);
+    alert('Failed to mark notification as read. Please try again.');
   }
 }

@@ -9,34 +9,111 @@ import { readLS, writeLS } from './storage.js';
 import { currentUser, currentShop } from './user.js';
 import { getSupabaseClient } from './supabase.js';
 
+/**
+ * Initialize session shop ID for user
+ * For staff with multiple shops, picks the first one if none is set
+ */
+async function initializeSessionShopId() {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  
+  try {
+    // Check if shop ID is already in session
+    const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+    if (session.shopId) {
+      console.log('✅ Shop ID already in session:', session.shopId);
+      return;
+    }
+    
+    // Get current user
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) return;
+    
+    // Check shop_staff table (for staff members)
+    const { data: staffShops } = await supabase
+      .from('shop_staff')
+      .select('shop_id')
+      .eq('auth_id', authUser.id)
+      .order('created_at', { ascending: true })
+      .limit(1);
+    
+    if (staffShops && staffShops.length > 0) {
+      // Staff member - use their first shop
+      const shopId = staffShops[0].shop_id;
+      session.shopId = shopId;
+      localStorage.setItem('xm_session', JSON.stringify(session));
+      console.log('✅ Set session shop ID from shop_staff:', shopId);
+      return;
+    }
+    
+    // Check users table (for owners)
+    const { data: userData } = await supabase
+      .from('users')
+      .select('shop_id')
+      .eq('id', authUser.id)
+      .single();
+    
+    if (userData && userData.shop_id) {
+      // Owner - use their shop_id
+      session.shopId = userData.shop_id;
+      localStorage.setItem('xm_session', JSON.stringify(session));
+      console.log('✅ Set session shop ID from users table:', userData.shop_id);
+      return;
+    }
+    
+    // Check user_shops table (for multi-shop owners)
+    const { data: userShops } = await supabase
+      .from('user_shops')
+      .select('shop_id')
+      .eq('user_id', authUser.id)
+      .order('created_at', { ascending: true })
+      .limit(1);
+    
+    if (userShops && userShops.length > 0) {
+      // Multi-shop owner - use their first shop
+      const shopId = userShops[0].shop_id;
+      session.shopId = shopId;
+      localStorage.setItem('xm_session', JSON.stringify(session));
+      console.log('✅ Set session shop ID from user_shops:', shopId);
+      return;
+    }
+    
+    console.warn('⚠️ Could not find any shop for user');
+  } catch (err) {
+    console.error('❌ Error initializing session shop ID:', err);
+  }
+}
+
 // Helper: check if authenticated user is a shop_staff and return a normalized user-like object
 async function getStaffAsAppUser(supabase, authUser){
   if(!supabase || !authUser) return null;
   try{
     // Prefer auth_id lookup, fallback to email
-    const { data: byAuth, error: authErr } = await supabase.from('shop_staff').select('*').eq('auth_id', authUser.id).limit(1).single();
-    if(!authErr && byAuth){
+    const { data: byAuth, error: authErr } = await supabase.from('shop_staff').select('*').eq('auth_id', authUser.id).limit(1);
+    if(!authErr && byAuth && byAuth.length > 0){
+      const staff = byAuth[0];
       return {
         id: authUser.id,
         auth_id: authUser.id,
-        first: byAuth.first_name || '',
-        last: byAuth.last_name || '',
-        email: byAuth.email || authUser.email,
-        role: byAuth.role || 'staff',
-        shop_id: byAuth.shop_id
+        first: staff.first_name || '',
+        last: staff.last_name || '',
+        email: staff.email || authUser.email,
+        role: staff.role || 'staff',
+        shop_id: staff.shop_id
       };
     }
     if(authUser.email){
-      const { data: byEmail, error: emailErr } = await supabase.from('shop_staff').select('*').ilike('email', authUser.email).limit(1).single();
-      if(!emailErr && byEmail){
+      const { data: byEmail, error: emailErr } = await supabase.from('shop_staff').select('*').ilike('email', authUser.email).limit(1);
+      if(!emailErr && byEmail && byEmail.length > 0){
+        const staff = byEmail[0];
         return {
           id: authUser.id,
           auth_id: authUser.id,
-          first: byEmail.first_name || '',
-          last: byEmail.last_name || '',
-          email: byEmail.email || authUser.email,
-          role: byEmail.role || 'staff',
-          shop_id: byEmail.shop_id
+          first: staff.first_name || '',
+          last: staff.last_name || '',
+          email: staff.email || authUser.email,
+          role: staff.role || 'staff',
+          shop_id: staff.shop_id
         };
       }
     }
@@ -250,6 +327,9 @@ async function requireAuth() {
     }
     
     console.log('✅ User authenticated:', user.email);
+    
+    // Initialize session shop ID if not already set
+    await initializeSessionShopId();
 
     // For Supabase users, prefer mapping from `shop_staff` (if present) before loading the `users` row
     try {

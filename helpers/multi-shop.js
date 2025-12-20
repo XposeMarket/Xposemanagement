@@ -30,30 +30,60 @@ function getCurrentShopId() {
 
 /**
  * Get all shops the user has access to
+ * Checks BOTH shop_staff (for staff members) AND user_shops (for owners)
  */
 async function getUserShops(userId) {
   const supabase = getSupabaseClient();
   if (!supabase || !userId) return [];
   
   try {
-    const { data, error } = await supabase
+    let allShops = [];
+    
+    // First, check shop_staff table (for staff members)
+    const { data: staffShops, error: staffError } = await supabase
+      .from('shop_staff')
+      .select('shop_id, role, created_at')
+      .eq('auth_id', userId)
+      .order('created_at', { ascending: true });
+    
+    if (staffError) {
+      console.warn('Error fetching staff shops:', staffError);
+    } else if (staffShops && staffShops.length > 0) {
+      allShops = allShops.concat(staffShops.map(s => ({
+        shop_id: s.shop_id,
+        role: s.role,
+        created_at: s.created_at,
+        source: 'staff'
+      })));
+    }
+    
+    // Second, check user_shops table (for owners)
+    const { data: ownerShops, error: ownerError } = await supabase
       .from('user_shops')
-      .select(`
-        shop_id,
-        role,
-        created_at
-      `)
+      .select('shop_id, role, created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: true });
     
-    if (error) {
-      console.error('Error fetching user shops:', error);
-      return [];
+    if (ownerError) {
+      console.warn('Error fetching owner shops:', ownerError);
+    } else if (ownerShops && ownerShops.length > 0) {
+      // Add owner shops, avoiding duplicates
+      ownerShops.forEach(os => {
+        if (!allShops.find(s => s.shop_id === os.shop_id)) {
+          allShops.push({
+            shop_id: os.shop_id,
+            role: os.role,
+            created_at: os.created_at,
+            source: 'owner'
+          });
+        }
+      });
     }
     
-    if (!data || data.length === 0) return [];
+    if (allShops.length === 0) return [];
     
-    const shopIds = data.map(s => s.shop_id);
+    // Fetch shop details for all shops
+    const shopIds = allShops.map(s => s.shop_id);
     const { data: shops, error: shopsError } = await supabase
       .from('shops')
       .select('id, name, type, logo, staff_limit, owner_id')
@@ -64,7 +94,8 @@ async function getUserShops(userId) {
       return [];
     }
     
-    return data.map(userShop => {
+    // Map shop details to user shops
+    return allShops.map(userShop => {
       const shop = shops.find(s => s.id === userShop.shop_id);
       return {
         ...userShop,
@@ -86,18 +117,30 @@ async function shouldShowAdminPage(userId) {
     return { showAdmin: false, reason: 'no_auth', shopCount: 0 };
   }
   try {
-    // Prefer shop_staff for staff users
-    let user = null;
-    let userError = null;
-    const { data: staff, error: staffErr } = await supabase
+    // Check shop_staff table first (for staff members)
+    const { data: staffRecords, error: staffErr } = await supabase
       .from('shop_staff')
       .select('role, shop_id')
-      .eq('auth_id', userId)
-      .single();
-    if (staff) {
-      // Staff: no admin page
-      return { showAdmin: false, reason: 'staff', shopCount: 0 };
+      .eq('auth_id', userId);
+      // REMOVED .single() because user can belong to multiple shops!
+    
+    if (staffRecords && staffRecords.length > 0) {
+      const shopCount = staffRecords.length;
+      
+      // If staff belongs to 2+ shops, they NEED the admin page to switch!
+      if (shopCount >= 2) {
+        console.log('✅ [ADMIN CHECK] Show admin - staff with 2+ shops needs switcher');
+        return { showAdmin: true, reason: 'staff_multi_shop', shopCount };
+      }
+      
+      // If staff belongs to only 1 shop, no admin page needed
+      console.log('❌ [ADMIN CHECK] Hide admin - staff with only 1 shop');
+      return { showAdmin: false, reason: 'staff_single_shop', shopCount };
     }
+    
+    // Not in shop_staff, check users table (for shop owners)
+    let user = null;
+    let userError = null;
     // If not staff, check users table
     const { data: userData, error: userErr } = await supabase
       .from('users')
@@ -253,6 +296,7 @@ async function canCreateShop(userId) {
 
 /**
  * Switch active shop
+ * Works for both shop owners (user_shops) and staff members (shop_staff)
  */
 async function switchShop(shopId) {
   const supabase = getSupabaseClient();
@@ -264,28 +308,48 @@ async function switchShop(shopId) {
   }
   
   try {
-    const { data: access, error: accessError } = await supabase
-      .from('user_shops')
-      .select('shop_id')
-      .eq('user_id', userId)
-      .eq('shop_id', shopId)
-      .single();
+    // Check if user has access to this shop (either as staff or owner)
+    let hasAccess = false;
     
-    if (accessError || !access) {
+    // Check shop_staff first
+    const { data: staffAccess } = await supabase
+      .from('shop_staff')
+      .select('shop_id')
+      .eq('auth_id', userId)
+      .eq('shop_id', shopId)
+      .limit(1);
+    
+    if (staffAccess && staffAccess.length > 0) {
+      hasAccess = true;
+    }
+    
+    // If not found in shop_staff, check user_shops
+    if (!hasAccess) {
+      const { data: ownerAccess } = await supabase
+        .from('user_shops')
+        .select('shop_id')
+        .eq('user_id', userId)
+        .eq('shop_id', shopId)
+        .limit(1);
+      
+      if (ownerAccess && ownerAccess.length > 0) {
+        hasAccess = true;
+      }
+    }
+    
+    if (!hasAccess) {
       console.error('User does not have access to this shop');
       return false;
     }
     
-    const { error: updateError } = await supabase
+    // Try to update users table (will only work if user is in users table)
+    await supabase
       .from('users')
       .update({ shop_id: shopId })
       .eq('id', userId);
+    // Don't fail if this doesn't work (staff members aren't in users table)
     
-    if (updateError) {
-      console.error('Error updating active shop:', updateError);
-      return false;
-    }
-    
+    // Update session storage (this is what actually matters)
     const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
     session.shopId = shopId;
     localStorage.setItem('xm_session', JSON.stringify(session));

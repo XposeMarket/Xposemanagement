@@ -74,12 +74,13 @@ async function checkSubscriptionAccess() {
     }
 
     // Prefer shop_staff for staff users
-    const { data: staff, error: staffErr } = await supabase
+    const { data: staffRecords, error: staffErr } = await supabase
       .from('shop_staff')
       .select('role, subscription_status, subscription_end')
-      .eq('auth_id', user.id)
-      .single();
-    if (staff) {
+      .eq('auth_id', user.id);
+      // REMOVED .single() because user can belong to multiple shops!
+    
+    if (staffRecords && staffRecords.length > 0) {
       // Staff: always allow access (or handle staff-specific logic here)
       return true;
     }
