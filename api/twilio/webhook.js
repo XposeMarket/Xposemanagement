@@ -171,7 +171,8 @@ module.exports = async function handler(req, res) {
 
         // Notification title and message
         const notifTitle = `New SMS: ${preview}`;
-        const notifMsg = `${sender} to ${To}`;
+        // Include sender and the 10-char preview in the notification message
+        const notifMsg = `${sender} — ${preview}`;
 
         // Fire notification (await not required, but can be added if needed)
         createShopNotification({
