@@ -3,7 +3,10 @@
  * Handles incoming messages from Twilio and saves them to Supabase
  */
 
+
 const { createClient } = require('@supabase/supabase-js');
+// Import notification helper (ESM import workaround for CJS)
+const { createShopNotification } = require('../../lib/shop-notifications.js');
 
 module.exports = async function handler(req, res) {
   // Log everything for debugging
@@ -143,10 +146,57 @@ module.exports = async function handler(req, res) {
 
     console.log('💾 Message save result:', { message, messageError });
 
+
     if (messageError) {
       console.error('❌ Error saving message:', messageError);
     } else {
       console.log('✅ Message saved successfully:', message.id);
+
+      // --- Improved Notification Logic ---
+      try {
+        // Format preview (10 chars, add ellipsis if longer)
+        let preview = '';
+        if (Body && Body.length > 10) {
+          preview = Body.substring(0, 10) + '...';
+        } else if (Body) {
+          preview = Body;
+        } else if (media.length > 0) {
+          preview = '[Media message]';
+        } else {
+          preview = '[No content]';
+        }
+
+        // Format sender info (phone, could be improved with contact lookup)
+        const sender = From ? `From: ${From}` : 'Unknown sender';
+
+        // Notification title and message
+        const notifTitle = `New SMS: ${preview}`;
+        const notifMsg = `${sender} to ${To}`;
+
+        // Fire notification (await not required, but can be added if needed)
+        createShopNotification({
+          supabase,
+          shopId,
+          type: 'sms',
+          category: 'messages',
+          title: notifTitle,
+          message: notifMsg,
+          relatedId: message.id,
+          relatedType: 'message',
+          metadata: {
+            threadId: thread.id,
+            from: From,
+            to: To,
+            preview
+          },
+          priority: 'normal',
+          createdBy: null
+        });
+        console.log('🔔 Notification triggered for new SMS');
+      } catch (notifErr) {
+        console.error('❌ Error creating notification:', notifErr);
+      }
+      // --- End Notification Logic ---
     }
 
     // Respond to Twilio with empty TwiML
