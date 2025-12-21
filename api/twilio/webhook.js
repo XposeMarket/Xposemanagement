@@ -33,98 +33,98 @@ module.exports = async function handler(req, res) {
       url: supabaseUrl
     });
 
-    if (!supabaseUrl || !supabaseKey) {
-      console.error('❌ Missing Supabase credentials');
-      return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
-    }
+      try {
+        // Normalize phone for lookups (keep + and digits)
+        const normalizedFrom = From ? (From + '').replace(/[^+\d]/g, '') : From;
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
+        // Resolve customer name from `customers` table (best effort)
+        let customerName = null;
+        try {
+          // Try exact match first
+          const { data: custExact } = await supabase
+            .from('customers')
+            .select('first_name,last_name,phone')
+            .eq('phone', normalizedFrom)
+            .limit(1)
+            .maybeSingle();
 
-    const {
-      MessageSid,
-      From,
-      To,
-      Body,
-      NumMedia
-    } = req.body;
-
-    console.log('📨 Incoming message:', { MessageSid, From, To, Body, NumMedia });
-
-    // Find the shop that owns this Twilio number
-    const { data: twilioNumber, error: numberError } = await supabase
-      .from('shop_twilio_numbers')
-      .select('id, shop_id')
-      .eq('phone_number', To)
-      .single();
-
-    console.log('📱 Found Twilio number:', { twilioNumber, numberError });
-
-    if (numberError || !twilioNumber) {
-      console.error('❌ Twilio number not found:', To, numberError);
-      return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
-    }
-
-    const shopId = twilioNumber.shop_id;
-
-    // Find or create thread for this conversation
-    let thread;
-    const { data: existingThread, error: threadFindError } = await supabase
-      .from('threads')
-      .select('*')
-      .eq('shop_id', shopId)
-      .eq('external_recipient', From)
-      .eq('archived', false)
-      .maybeSingle();
-
-    console.log('🔍 Thread search:', { existingThread, threadFindError });
-
-    if (existingThread) {
-      thread = existingThread;
-      
-      // Update thread's last_message_at
-      const { error: updateError } = await supabase
-        .from('threads')
-        .update({
-          last_message: Body?.substring(0, 100) || 'Media message',
-          last_message_at: new Date().toISOString()
-        })
-        .eq('id', existingThread.id);
-
-      console.log('📝 Updated thread:', updateError);
-        
-    } else {
-      // Create new thread
-      const { data: newThread, error: threadError } = await supabase
-        .from('threads')
-        .insert({
-          shop_id: shopId,
-          external_recipient: From,
-          twilio_number_id: twilioNumber.id,
-          last_message: Body?.substring(0, 100) || 'Media message',
-          last_message_at: new Date().toISOString()
-        })
-        .select()
-        .single();
-
-      console.log('➕ Created thread:', { newThread, threadError });
-
-      if (threadError) {
-        console.error('❌ Error creating thread:', threadError);
-        return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
-      }
-
-      thread = newThread;
-    }
-
-    // Handle media attachments
-    const media = [];
-    if (NumMedia && parseInt(NumMedia) > 0) {
-      for (let i = 0; i < parseInt(NumMedia); i++) {
-        const mediaUrl = req.body[`MediaUrl${i}`];
-        const contentType = req.body[`MediaContentType${i}`];
-        if (mediaUrl) {
-          media.push({ url: mediaUrl, contentType });
+          if (custExact) {
+            customerName = `${custExact.first_name || ''} ${custExact.last_name || ''}`.trim() || custExact.phone;
+          } else {
+            // Try a loose match by phone substring (handles formatting differences)
+            const { data: custLike } = await supabase
+              .from('customers')
+              .select('first_name,last_name,phone')
+              .ilike('phone', `%${normalizedFrom ? normalizedFrom.replace(/^\+/, '') : ''}%`)
+              .limit(1)
+              .maybeSingle();
+            if (custLike) {
+              customerName = `${custLike.first_name || ''} ${custLike.last_name || ''}`.trim() || custLike.phone;
+            }
+          }
+        } catch (e) {
+          console.warn('[Webhook] Customer lookup failed:', e && e.message);
         }
+
+        // Fallback to thread-stored customer name if available
+        if (!customerName) {
+          try {
+            const { data: threadDetails } = await supabase
+              .from('threads')
+              .select('customer_first,customer_last')
+              .eq('id', thread.id)
+              .maybeSingle();
+            if (threadDetails) {
+              const first = threadDetails.customer_first || '';
+              const last = threadDetails.customer_last || '';
+              customerName = `${first} ${last}`.trim() || null;
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        // Format preview (10 chars, add ellipsis if longer)
+        let preview = '';
+        if (Body && Body.length > 10) {
+          preview = Body.substring(0, 10) + '...';
+        } else if (Body) {
+          preview = Body;
+        } else if (media.length > 0) {
+          preview = '[Media message]';
+        } else {
+          preview = '[No content]';
+        }
+
+        const who = customerName ? `${customerName}` : (From || 'Unknown');
+        const notifTitle = `New SMS: ${preview}`;
+        const notifMsg = `${who}${From ? ' (' + From + ')' : ''} sent: "${preview}"`;
+
+        // Fire notification (best-effort)
+        createShopNotification({
+          supabase,
+          shopId,
+          type: 'sms',
+          category: 'messages',
+          title: notifTitle,
+          message: notifMsg,
+          relatedId: message.id,
+          relatedType: 'message',
+          metadata: {
+            threadId: thread.id,
+            from: From,
+            normalized_from: normalizedFrom,
+            to: To,
+            preview,
+            customer_name: customerName || null
+          },
+          priority: 'normal',
+          createdBy: null
+        });
+        console.log('🔔 Notification triggered for new SMS (with customer lookup)');
+      } catch (notifErr) {
+        console.error('❌ Error creating notification:', notifErr);
+      }
       }
     }
 
