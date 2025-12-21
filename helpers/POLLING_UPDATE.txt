@@ -1,0 +1,12 @@
+/**
+ * Set up polling to refresh notifications every 5 seconds
+ */
+function setupPolling() {
+  // Poll every 5 seconds
+  setInterval(async () => {
+    console.log('[Invitations] Polling for new notifications...');
+    await fetchPendingInvitations();
+  }, 5000); // 5 seconds
+  
+  console.log('[Invitations] Polling active (every 5 seconds)');
+}

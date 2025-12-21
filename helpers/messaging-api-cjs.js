@@ -395,6 +395,53 @@ async function receiveWebhook(req, res) {
     } else {
       console.log('✅ Message saved:', savedMessage.id);
     }
+
+    // ✨ Create notification for shop owner about incoming message
+    try {
+      const { createShopNotification } = await import('./shop-notifications.js');
+
+      // Get customer name from thread (fallback to from number)
+      let customerName = 'Customer';
+      try {
+        const { data: threadDetails } = await supabase
+          .from('threads')
+          .select('customer_first, customer_last, customer:customers(first_name, last_name)')
+          .eq('id', thread.id)
+          .single();
+
+        if (threadDetails) {
+          const first = threadDetails.customer_first || (threadDetails.customer && threadDetails.customer.first_name) || '';
+          const last = threadDetails.customer_last || (threadDetails.customer && threadDetails.customer.last_name) || '';
+          customerName = `${first} ${last}`.trim() || normalizedFrom || 'Customer';
+        }
+      } catch (e) {
+        // ignore thread lookup failures, use fallback
+      }
+
+      await createShopNotification({
+        supabase,
+        shopId: shopNumber.shop_id,
+        type: 'message_received',
+        category: 'message',
+        title: 'New Customer Message',
+        message: `${customerName} sent: "${(Body || '').substring(0, 50)}${(Body || '').length > 50 ? '...' : ''}"`,
+        relatedId: thread.id,
+        relatedType: 'thread',
+        metadata: {
+          customer_name: customerName,
+          customer_phone: normalizedFrom,
+          message_preview: (Body || '').substring(0, 100),
+          thread_id: thread.id
+        },
+        priority: 'high',
+        createdBy: null
+      });
+
+      console.log('[Webhook] ✅ Notification created for incoming message');
+    } catch (notifError) {
+      console.error('[Webhook] Error creating notification:', notifError);
+      // Don't fail webhook if notification fails
+    }
     
     // Update thread's last_message
     await supabase

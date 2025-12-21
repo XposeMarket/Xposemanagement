@@ -112,20 +112,16 @@ class PartsCatalogModal {
       : '';
     
     const modalHTML = `
-      <div class="modal" id="partsCatalogModal" style="z-index:20000; position:fixed; top:0; left:0; width:100vw; height:100vh; display:flex; align-items:center; justify-content:center;">
-        <div class="modal-content" style="max-width: 900px; z-index:20001; position:relative;">
-          <div class="modal-header">
+      <div id="partsCatalogModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+        <div class="modal-card" style="max-width: 900px;">
+          <div class="modal-head">
             <h3 style="display: inline-block; margin-right: 1rem;">Find Parts</h3>
-            <span style="font-size: 0.95rem; color: var(--muted); vertical-align: middle;">
-              <strong>Disclaimer:</strong> This is a general parts catalog and does not represent accurate fitment or availability. Please call your supplier for accurate information.
-            </span>
-            <button class="modal-close" id="closeCatalogModal">&times;</button>
+            <button class="modal-close btn-close" id="closeCatalogModal" aria-label="Close">&times;</button>
           </div>
-          
+
           <div class="modal-body">
             ${vehicleInfo}
-            
-            <!-- Important Notice -->
+
             <div class="alert alert-info" style="margin-bottom: 1.5rem; padding: 1rem; background: #e0f2fe; border-left: 4px solid #0284c7; border-radius: 4px;">
               <div style="display: flex; align-items: start; gap: 0.75rem;">
                 <i class="fas fa-info-circle" style="color: #0284c7; margin-top: 2px;"></i>
@@ -139,7 +135,7 @@ class PartsCatalogModal {
             <!-- Category & Search -->
             <div class="form-section">
               <h4>Search Parts</h4>
-              <div class="form-grid" style="grid-template-columns: 1fr 2fr auto;">
+              <div class="form-grid" style="grid-template-columns: 1fr 2fr auto; gap: 8px;">
                 <div class="form-field">
                   <label>Category</label>
                   <select id="catalogCategory" class="form-control">

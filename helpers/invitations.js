@@ -41,8 +41,8 @@ export async function initInvitations() {
     // Fetch and display pending invitations
     await fetchPendingInvitations();
 
-    // Set up realtime subscription for new invitations
-    setupRealtimeSubscription();
+    // Set up polling instead of realtime (every 30 seconds)
+    setupPolling();
   } catch (err) {
     console.error('[Invitations] Init error:', err);
   }
@@ -176,7 +176,7 @@ async function fetchPendingInvitations() {
       
       // Fetch inviter details
       if (inv.invited_by_user_id) {
-        const { data: inviterData } = await supabase
+        const { data: inviterData} = await supabase
           .from('users')
           .select('first_name, last_name, email')
           .eq('id', inv.invited_by_user_id)
@@ -260,31 +260,16 @@ function updateNotificationBadge(count) {
 }
 
 /**
- * Set up realtime subscription for new invitations
+ * Set up polling to refresh notifications every 30 seconds
  */
-function setupRealtimeSubscription() {
-  const supabase = getSupabaseClient();
-  if (!supabase || !currentUserAuthId) return;
+function setupPolling() {
+  // Poll every 12 seconds
+  setInterval(async () => {
+    console.log('[Invitations] Polling...');
+    await fetchPendingInvitations();
+  }, 12000); // 12 seconds
 
-  // Subscribe to changes in shop_invitations for this user
-  const subscription = supabase
-    .channel('invitations-changes')
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'shop_invitations',
-        filter: `invited_auth_id=eq.${currentUserAuthId}`
-      },
-      (payload) => {
-        console.log('[Invitations] Realtime update:', payload);
-        fetchPendingInvitations();
-      }
-    )
-    .subscribe();
-
-  console.log('[Invitations] Realtime subscription active');
+  console.log('[Invitations] Polling active (every 12 seconds)');
 }
 
 /**
@@ -379,22 +364,22 @@ function renderInvitationsList() {
       }
 
       return `
-        <div class="card" style="margin-bottom: 12px; padding: 16px; ${cardStyle}">
-          <div style="display: flex; gap: 12px; align-items: start;">
-            <img src="${shopLogo}" alt="${shopName}" style="width: 48px; height: 48px; border-radius: 8px; object-fit: contain; background: var(--card); border: 1px solid var(--line); padding: 4px;">
+        <div class="card" style="margin-bottom: 8px; padding: 10px; ${cardStyle}">
+          <div style="display: flex; gap: 10px; align-items: start;">
+            <img src="${shopLogo}" alt="${shopName}" style="width: 36px; height: 36px; border-radius: 6px; object-fit: contain; background: var(--card); border: 1px solid var(--line); padding: 3px;">
             <div style="flex: 1;">
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                <h3 style="margin: 0; font-size: 16px;">${shopName}</h3>
+              <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+                <h3 style="margin: 0; font-size: 14px;">${shopName}</h3>
                 ${statusBadge}
               </div>
-              <p style="margin: 0; color: var(--muted); font-size: 14px;">
+              <p style="margin: 0; color: var(--muted); font-size: 13px;">
                 ${inviterName} invited you to join as <strong>${roleDisplay}</strong>
               </p>
-              <p style="margin: 4px 0 0 0; color: var(--muted); font-size: 12px;">Invited on ${dateStr}</p>
+              <p style="margin: 2px 0 0 0; color: var(--muted); font-size: 11px;">Invited on ${dateStr}</p>
             </div>
           </div>
           ${isPending ? `
-          <div style="display: flex; gap: 8px; margin-top: 12px;">
+          <div style="display: flex; gap: 6px; margin-top: 8px;">
             <button class="btn primary" data-action="accept" data-invite-id="${item.id}">Accept</button>
             <button class="btn" data-action="decline" data-invite-id="${item.id}">Decline</button>
             <button class="btn" data-action="dismiss" data-invite-id="${item.id}" style="margin-left: auto;">Dismiss</button>
@@ -422,22 +407,22 @@ function renderInvitationsList() {
       }
 
       return `
-        <div class="card" style="margin-bottom: 12px; padding: 16px; ${cardStyle}">
-          <div style="display: flex; gap: 12px; align-items: start;">
-            <div style="width: 48px; height: 48px; border-radius: 50%; background: ${iconBg}; display: flex; align-items: center; justify-content: center; font-size: 24px;">
+        <div class="card" style="margin-bottom: 8px; padding: 10px; ${cardStyle}">
+          <div style="display: flex; gap: 10px; align-items: start;">
+            <div style="width: 36px; height: 36px; border-radius: 50%; background: ${iconBg}; display: flex; align-items: center; justify-content: center; font-size: 20px;">
               ${icon}
             </div>
             <div style="flex: 1;">
               <div style="display: flex; align-items: center; gap: 4px;">
-                <h3 style="margin: 0 0 4px 0; font-size: 16px;">${item.title}</h3>
+                <h3 style="margin: 0 0 2px 0; font-size: 14px;">${item.title}</h3>
                 ${priorityBadge}
               </div>
-              <p style="margin: 0; color: var(--muted); font-size: 14px;">${item.message}</p>
-              <p style="margin: 4px 0 0 0; color: var(--muted); font-size: 12px;">${dateStr} at ${timeStr}</p>
+              <p style="margin: 0; color: var(--muted); font-size: 13px;">${item.message}</p>
+              <p style="margin: 2px 0 0 0; color: var(--muted); font-size: 11px;">${dateStr} at ${timeStr}</p>
             </div>
           </div>
           ${!isRead ? `
-          <div style="display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end;">
+          <div style="display: flex; gap: 6px; margin-top: 8px; justify-content: flex-end;">
             <button class="btn" data-action="mark-read" data-notif-id="${item.id}">Mark as Read</button>
           </div>
           ` : ''}

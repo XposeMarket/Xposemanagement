@@ -12,6 +12,7 @@
 
 import { getSupabaseClient } from '../helpers/supabase.js';
 import { getUUID } from '../helpers/uuid.js';
+import { createShopNotification } from '../helpers/shop-notifications.js';
 
 // Current appointment being edited
 let currentApptId = null;
@@ -1844,6 +1845,38 @@ async function updateAppointmentStatus(apptId, newStatus) {
   allAppointments[index].updated_at = new Date().toISOString();
 
   await saveAppointments(allAppointments);
+  
+  // ✨ NOTIFICATION: Status changed
+  const appt = allAppointments[index];
+  const shopId = getCurrentShopId();
+  const currentUser = getCurrentUser();
+
+  // Determine priority based on status
+  let priority = 'normal';
+  if (newStatus === 'completed') priority = 'high';
+  if (newStatus === 'in_progress') priority = 'high';
+
+  const customerName = appt.customer || `${appt.customer_first} ${appt.customer_last}`.trim();
+
+  await createShopNotification({
+    supabase: getSupabaseClient(),
+    shopId,
+    type: 'appointment_status_changed',
+    category: 'appointment',
+    title: 'Appointment Status Updated',
+    message: `${customerName}'s appointment status changed to ${newStatus.replace(/_/g, ' ')}`,
+    relatedId: apptId,
+    relatedType: 'appointment',
+    metadata: {
+      customer_name: customerName,
+      new_status: newStatus,
+      vehicle: appt.vehicle || '',
+      service: appt.service || ''
+    },
+    priority,
+    createdBy: currentUser?.id || null
+  });
+  
   renderAppointments();
 
   // Auto-create or update job if status is in_progress or awaiting_parts
@@ -2013,6 +2046,31 @@ async function saveNewAppointment() {
 
   allAppointments.push(newAppt);
   await saveAppointments(allAppointments);
+  
+  // ✨ NOTIFICATION: New appointment created
+  const shopId = getCurrentShopId();
+  const currentUser = getCurrentUser();
+  await createShopNotification({
+    supabase: getSupabaseClient(),
+    shopId,
+    type: 'appointment_created',
+    category: 'appointment',
+    title: 'New Appointment Created',
+    message: `${first} ${last} scheduled ${service || 'service'} for ${vehicle || 'their vehicle'}`,
+    relatedId: newAppt.id,
+    relatedType: 'appointment',
+    metadata: {
+      customer_name: `${first} ${last}`,
+      phone: phone || '',
+      vehicle: vehicle || '',
+      service: service || '',
+      scheduled_date: date || '',
+      scheduled_time: time || ''
+    },
+    priority: 'normal',
+    createdBy: currentUser?.id || null
+  });
+  
   // If there's an invoice for this appointment, add the chosen service to it
   await addServiceToInvoice(newAppt.id, newAppt.service);
   
@@ -2143,6 +2201,27 @@ async function saveEditedAppointment(e) {
 
   await saveAppointments(allAppointments);
 
+  // ✨ NOTIFICATION: Appointment edited
+  const shopId = getCurrentShopId();
+  const currentUser = getCurrentUser();
+  await createShopNotification({
+    supabase: getSupabaseClient(),
+    shopId,
+    type: 'appointment_edited',
+    category: 'appointment',
+    title: 'Appointment Updated',
+    message: `${customer_first} ${customer_last}'s appointment details were modified`,
+    relatedId: currentApptId,
+    relatedType: 'appointment',
+    metadata: {
+      customer_name: `${customer_first} ${customer_last}`,
+      vehicle,
+      service: allAppointments[index].service
+    },
+    priority: 'normal',
+    createdBy: currentUser?.id || null
+  });
+
   // 🆕 Update customer in customers table (with vehicle)
   // NOTE: Do NOT auto-upsert customers when saving/editing an appointment.
   // Customers should only be created/updated when the user explicitly
@@ -2221,16 +2300,19 @@ async function confirmDeleteAppointment() {
   
   const supabase = getSupabaseClient();
   const shopId = getCurrentShopId();
+  let relatedJobs = [];
+  let relatedInvoices = [];
+  
   if (supabase && shopId) {
     try {
       // Find related jobs
-      const { data: relatedJobs } = await supabase
+      const { data: jobs } = await supabase
         .from('jobs')
         .select('id')
         .eq('appointment_id', pendingDeleteApptId);
+      relatedJobs = jobs || [];
       
       // Find related invoices (by appointment_id or job_id)
-      let relatedInvoices = [];
       if (relatedJobs && relatedJobs.length > 0) {
         const jobIds = relatedJobs.map(j => j.id);
         const { data: invs } = await supabase
@@ -2304,6 +2386,35 @@ async function confirmDeleteAppointment() {
     } catch (e) {
       console.error('Error deleting appointment and related records from Supabase:', e);
     }
+  }
+  
+  // ✨ NOTIFICATION: Appointment deleted
+  const appt = allAppointments.find(a => a.id === pendingDeleteApptId);
+  if (appt) {
+    const shopId = getCurrentShopId();
+    const currentUser = getCurrentUser();
+    const customerName = appt.customer || `${appt.customer_first} ${appt.customer_last}`.trim();
+    
+    await createShopNotification({
+      supabase: getSupabaseClient(),
+      shopId,
+      type: 'appointment_deleted',
+      category: 'appointment',
+      title: 'Appointment Deleted',
+      message: `${customerName}'s appointment for ${appt.service || 'service'} was deleted`,
+      relatedId: pendingDeleteApptId,
+      relatedType: 'appointment',
+      metadata: {
+        customer_name: customerName,
+        vehicle: appt.vehicle || '',
+        service: appt.service || '',
+        scheduled_date: appt.preferred_date || '',
+        related_jobs: relatedJobs.length,
+        related_invoices: relatedInvoices.length
+      },
+      priority: 'high',
+      createdBy: currentUser?.id || null
+    });
   }
   
   // Remove from local array

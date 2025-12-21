@@ -13,6 +13,7 @@
 import { getSupabaseClient } from '../helpers/supabase.js';
 import { LS } from '../helpers/constants.js';
 import { saveAppointments } from './appointments.js';
+import { createShopNotification } from '../helpers/shop-notifications.js';
 
 // Current job being edited
 let currentJobId = null;
@@ -51,6 +52,22 @@ function getCurrentUser() {
     return users.find(u => u.email === session.email) || {};
   } catch (e) {
     return {};
+  }
+}
+
+/**
+ * Get current authenticated user's ID
+ */
+async function getCurrentAuthId() {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  
+  try {
+    const { data: authData } = await supabase.auth.getUser();
+    return authData?.user?.id || null;
+  } catch (error) {
+    console.error('[Jobs] Error getting auth ID:', error);
+    return null;
   }
 }
 
@@ -827,6 +844,50 @@ async function updateJobStatus(jobId, newStatus) {
       }
     }
   }
+  // Create notification for status changes (awaiting_parts and completed)
+  if (newStatus === 'awaiting_parts' || newStatus === 'completed') {
+    try {
+      const shopId = getCurrentShopId();
+      const authId = await getCurrentAuthId();
+      const job = allJobs[index];
+      const appt = allAppointments.find(a => a.id === job.appointment_id);
+      
+      const titles = {
+        'awaiting_parts': 'Job Awaiting Parts',
+        'completed': 'Job Completed'
+      };
+      
+      const messages = {
+        'awaiting_parts': `Job for ${appt?.customer || 'customer'}'s ${appt?.vehicle || 'vehicle'} is awaiting parts. Review parts needed and place order.`,
+        'completed': `Job for ${appt?.customer || 'customer'}'s ${appt?.vehicle || 'vehicle'} has been completed and is ready for invoicing.`
+      };
+      
+      await createShopNotification({
+        supabase: getSupabaseClient(),
+        shopId,
+        type: `job_${newStatus}`,
+        category: 'job',
+        title: titles[newStatus],
+        message: messages[newStatus],
+        relatedId: job.id,
+        relatedType: 'job',
+        metadata: {
+          customer_name: appt?.customer || '',
+          vehicle: appt?.vehicle || '',
+          service: appt?.service || '',
+          job_id: job.id,
+          old_status: job.status,
+          new_status: newStatus
+        },
+        priority: newStatus === 'awaiting_parts' ? 'high' : 'normal',
+        createdBy: authId
+        // No recipientUserId = sends to all shop owners
+      });
+    } catch (error) {
+      console.error('[Jobs] Error creating status notification:', error);
+    }
+  }
+  
   await saveJobs(allJobs);
   renderJobs();
   showNotification(`Job status updated to ${newStatus.replace(/_/g, ' ')}`);
@@ -947,6 +1008,36 @@ async function assignJob(jobId, userId) {
   
   const user = allUsers.find(u => u.id === userId);
   showNotification(`Job assigned to ${user.first} ${user.last}`);
+  
+  // Create notification for assigned technician
+  try {
+    const shopId = getCurrentShopId();
+    const authId = await getCurrentAuthId();
+    const job = allJobs[index];
+    const appt = allAppointments.find(a => a.id === job.appointment_id);
+    
+    await createShopNotification({
+      supabase: getSupabaseClient(),
+      shopId,
+      type: 'job_assigned',
+      category: 'job',
+      title: 'New Job Assigned',
+      message: `You have been assigned to work on ${appt?.customer || 'a customer'}'s ${appt?.vehicle || 'vehicle'} - ${appt?.service || 'Service request'}`,
+      relatedId: job.id,
+      relatedType: 'job',
+      metadata: {
+        customer_name: appt?.customer || '',
+        vehicle: appt?.vehicle || '',
+        service: appt?.service || '',
+        job_id: job.id
+      },
+      priority: 'high',
+      createdBy: authId,
+      recipientUserId: userId // Notify the assigned technician
+    });
+  } catch (error) {
+    console.error('[Jobs] Error creating assignment notification:', error);
+  }
 }
 
 /**
