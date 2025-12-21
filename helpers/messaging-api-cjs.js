@@ -424,7 +424,8 @@ async function receiveWebhook(req, res) {
         type: 'message_received',
         category: 'message',
         title: 'New Customer Message',
-        message: `${customerName} sent: "${(Body || '').substring(0, 50)}${(Body || '').length > 50 ? '...' : ''}"`,
+        // Include customer name + phone and a short preview in the visible message
+        message: `${customerName}${normalizedFrom ? ' (' + normalizedFrom + ')' : ''} sent: "${(Body || '').substring(0, 50)}${(Body || '').length > 50 ? '...' : ''}"`,
         relatedId: thread.id,
         relatedType: 'thread',
         metadata: {

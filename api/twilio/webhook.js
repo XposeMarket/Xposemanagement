@@ -36,30 +36,48 @@ module.exports = async function handler(req, res) {
       try {
         // Normalize phone for lookups (keep + and digits)
         const normalizedFrom = From ? (From + '').replace(/[^+\d]/g, '') : From;
+        const digitsOnly = normalizedFrom ? normalizedFrom.replace(/\D/g, '') : '';
+        const last10 = digitsOnly ? digitsOnly.slice(-10) : '';
 
         // Resolve customer name from `customers` table (best effort)
         let customerName = null;
         try {
-          // Try exact match first
-          const { data: custExact } = await supabase
-            .from('customers')
-            .select('first_name,last_name,phone')
-            .eq('phone', normalizedFrom)
-            .limit(1)
-            .maybeSingle();
-
-          if (custExact) {
-            customerName = `${custExact.first_name || ''} ${custExact.last_name || ''}`.trim() || custExact.phone;
-          } else {
-            // Try a loose match by phone substring (handles formatting differences)
-            const { data: custLike } = await supabase
+          // 1) Try exact digits-only match against stored phone (handles E.164 or digits)
+          if (digitsOnly) {
+            const { data: custByDigits } = await supabase
               .from('customers')
               .select('first_name,last_name,phone')
-              .ilike('phone', `%${normalizedFrom ? normalizedFrom.replace(/^\+/, '') : ''}%`)
+              .ilike('phone', `%${digitsOnly}%`)
               .limit(1)
               .maybeSingle();
-            if (custLike) {
-              customerName = `${custLike.first_name || ''} ${custLike.last_name || ''}`.trim() || custLike.phone;
+            if (custByDigits) {
+              customerName = `${custByDigits.first_name || ''} ${custByDigits.last_name || ''}`.trim() || custByDigits.phone;
+            }
+          }
+
+          // 2) If not found, try exact normalizedFrom match (keeps +)
+          if (!customerName && normalizedFrom) {
+            const { data: custExact } = await supabase
+              .from('customers')
+              .select('first_name,last_name,phone')
+              .eq('phone', normalizedFrom)
+              .limit(1)
+              .maybeSingle();
+            if (custExact) {
+              customerName = `${custExact.first_name || ''} ${custExact.last_name || ''}`.trim() || custExact.phone;
+            }
+          }
+
+          // 3) Last-resort: match last 10 digits (common reliable fallback)
+          if (!customerName && last10) {
+            const { data: custLast10 } = await supabase
+              .from('customers')
+              .select('first_name,last_name,phone')
+              .ilike('phone', `%${last10}`)
+              .limit(1)
+              .maybeSingle();
+            if (custLast10) {
+              customerName = `${custLast10.first_name || ''} ${custLast10.last_name || ''}`.trim() || custLast10.phone;
             }
           }
         } catch (e) {
