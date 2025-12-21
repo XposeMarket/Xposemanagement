@@ -1,3 +1,12 @@
+/* Hide mainNav by default on mobile, show only when .active */
+@media (max-width: 900px) {
+  #mainNav {
+    display: none;
+  }
+  #mainNav.active {
+    display: block;
+  }
+}
 /* Mobile-specific settings page panel order and spacing */
 @media (max-width: 700px) {
   .container > .card,

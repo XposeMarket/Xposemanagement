@@ -273,30 +273,6 @@
 </div>
 
 <script src="vendor/supabase.umd.js"></script>
-<script>
-// Basic page initialization (menu, theme, logout)
-document.addEventListener('DOMContentLoaded', () => {
-  const menuToggle = document.getElementById('menuToggle');
-  const mainNav = document.getElementById('mainNav');
-  if (menuToggle && mainNav) {
-    menuToggle.addEventListener('click', () => {
-      mainNav.classList.toggle('active');
-      // toggle active state on the button so CSS animation runs
-      menuToggle.classList.toggle('active');
-    });
-  }
-
-  const logoutBtn = document.getElementById('logoutBtn');
-  if (logoutBtn) {
-    logoutBtn.addEventListener('click', () => {
-      if (confirm('Are you sure you want to logout?')) {
-        localStorage.removeItem('xm_session');
-        window.location.href = 'login.html';
-      }
-    });
-  }
-});
-</script>
 
 <script type="module" src="app.js"></script>
 <script type="module" src="pages/customers.js"></script>
