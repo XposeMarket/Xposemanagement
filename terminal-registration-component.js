@@ -1,5 +1,5 @@
 /**
- * Terminal Registration Component
+ * Terminal Registration Component - UPDATED with Edit Serial & Real Test
  * Add this to your settings page (settings-subscription.js or similar)
  */
 // Local helper: get authenticated user. Uses Supabase if available, otherwise falls back to local session.
@@ -50,173 +50,316 @@ async function loadTerminalSettings() {
   }
 
   try {
-    // Get terminal status from backend
-    const response = await fetch(
+    // Check terminal status
+    const statusResponse = await fetch(
       `https://xpose-stripe-server.vercel.app/api/terminal/status/${shopId}`
     );
-    let data = { status: 'error' };
-    try {
-      if (response.ok) {
-        const ct = (response.headers.get('content-type') || '').toLowerCase();
-        if (ct.includes('application/json')) {
-          data = await response.json();
-        } else {
-          console.warn('Expected JSON from terminal status but got:', ct);
-          data = { status: 'error', error: 'Invalid response from status endpoint' };
-        }
-      } else {
-        data = { status: 'error', error: `HTTP ${response.status}` };
-      }
-    } catch (parseErr) {
-      console.error('Failed to parse terminal status response', parseErr);
-      data = { status: 'error', error: 'Failed to parse response' };
-    }
+    const terminalData = await statusResponse.json();
 
-    renderTerminalSection(data, shopId);
+    renderTerminalSection(terminalData, shopId);
+
   } catch (error) {
     console.error('Error loading terminal settings:', error);
-    renderTerminalSection({ status: 'error' }, shopId);
+    renderTerminalSection({ status: 'error', error: error.message }, shopId);
   }
 }
 
-// Open and reset the terminal test modal
+function showNotification(message, type = 'success') {
+  const notificationEl = document.getElementById('notification');
+  if (!notificationEl) {
+    console.warn('[Terminal] No notification element found, using alert:', message);
+    alert(message);
+    return;
+  }
+
+  notificationEl.textContent = message;
+  notificationEl.className = 'notification';
+
+  if (type === 'error') {
+    notificationEl.style.background = '#ef4444';
+  } else if (type === 'info') {
+    notificationEl.style.background = '#3b82f6';
+  } else {
+    notificationEl.style.background = '#10b981';
+  }
+
+  notificationEl.classList.remove('hidden');
+
+  setTimeout(() => {
+    notificationEl.classList.add('hidden');
+  }, 3000);
+}
+
 function openTerminalTestModal() {
-  const modal = document.getElementById('terminalTestModal');
-  if (!modal) throw new Error('Terminal test modal not found');
+  let modal = document.getElementById('terminalTestModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'terminalTestModal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-content card" style="max-width:480px;text-align:center;padding:32px;">
+        <div class="terminal-test-icon">
+          <svg class="heartbeat-icon" width="64" height="64" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path fill="#667eea" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+          </svg>
+        </div>
+        <h3 style="margin:16px 0 8px 0;">Testing Connection</h3>
+        <p class="terminal-test-msg" style="color:#666;margin-bottom:24px;">Initializing test...</p>
+        <div class="terminal-test-result" style="font-size:1.2rem;font-weight:600;margin:16px 0;min-height:32px;"></div>
+        <button class="btn terminal-test-close" disabled onclick="document.getElementById('terminalTestModal').classList.add('hidden')">Close</button>
+      </div>
+      <style>
+        .heartbeat-icon { animation: heartbeat 1.5s ease-in-out infinite; }
+        @keyframes heartbeat {
+          0%, 100% { transform: scale(1); }
+          25% { transform: scale(1.1); }
+          50% { transform: scale(1); }
+        }
+        #terminalTestModal.testing .heartbeat-icon { animation: heartbeat 0.8s ease-in-out infinite; }
+        .terminal-test-result.success { color: #10b981; }
+        .terminal-test-result.failed { color: #ef4444; }
+      </style>
+    `;
+    document.body.appendChild(modal);
+  }
+  modal.classList.remove('hidden');
+  // Reset content
   const msgEl = modal.querySelector('.terminal-test-msg');
   const resultEl = modal.querySelector('.terminal-test-result');
   const closeBtn = modal.querySelector('.terminal-test-close');
-  if (msgEl) msgEl.textContent = 'Checking Connection...';
-  if (resultEl) { resultEl.textContent = ''; resultEl.className = 'terminal-test-result'; }
+  if (msgEl) msgEl.textContent = 'Initializing test...';
+  if (resultEl) {
+    resultEl.textContent = '';
+    resultEl.className = 'terminal-test-result';
+  }
   if (closeBtn) closeBtn.disabled = true;
-  modal.classList.remove('hidden');
-  // ensure testing class used by animation
-  modal.classList.add('testing');
 }
 
 function renderTerminalSection(terminalData, shopId) {
   const container = document.getElementById('terminal-settings-section');
-  
-  if (!container) {
-    console.error('Terminal settings container not found');
-    return;
-  }
+  if (!container) return;
 
-  if (terminalData.status === 'not_registered') {
-    // Show registration form and panel
+  // Status not_registered: show registration form
+  if (terminalData.status === 'not_registered' || terminalData.status === 'error') {
     container.innerHTML = `
-      <div class="terminal-status-section">
+      <div class="terminal-registration-section">
         <div class="terminal-header">
-          <h3><i class="fas fa-credit-card"></i> Stripe Terminal Setup</h3>
-          <p class="text-muted">Connect your Stripe terminal to accept in-person payments</p>
+          <h3><i class="fas fa-credit-card"></i> Terminal Setup</h3>
+          <p>Connect a Stripe Terminal to accept in-person payments</p>
         </div>
-        <div class="terminal-info-card warning">
-          <div class="terminal-status-badge">
-            <i class="fas fa-exclamation-triangle"></i>
-            <span>Not Registered</span>
-          </div>
-          <div class="terminal-details">
-            <p>No terminal is currently registered for this shop.</p>
-          </div>
+
+        <div id="current-terminal-model" class="terminal-model-card">
+          <!-- Populated by loadTerminalModel() -->
         </div>
-        <div class="terminal-actions">
-          <button class="btn btn-primary" onclick="document.getElementById('terminal-registration-form').classList.toggle('hidden')">
-            <i class="fas fa-plug"></i> Register Terminal
-          </button>
-        </div>
-        <form id="terminal-registration-form" class="registration-form hidden" style="margin-top:24px;">
+
+        <div class="registration-form">
           <div class="form-group">
             <label for="terminal-reg-code">
-              <strong>Registration Code</strong>
-              <small class="text-muted">Found on your terminal's screen</small>
+              Registration Code
+              <small>Enter the code displayed on your terminal</small>
             </label>
             <input 
               type="text" 
               id="terminal-reg-code" 
-              class="form-control"
+              class="form-control" 
               placeholder="XXXXX-XXXXX"
               maxlength="11"
-              style="text-transform: uppercase; font-family: monospace; font-size: 18px;"
+              style="text-transform:uppercase"
             >
             <small class="form-text">
-              The registration code appears on your terminal when it's ready to connect.
-              It looks like: <code>ABCD1-23456</code>
+              Code format: <code>XXXXX-XXXXX</code>
             </small>
           </div>
+
           <button 
-            type="button"
             onclick="registerTerminal('${shopId}')" 
-            class="btn btn-primary btn-lg"
             id="register-terminal-btn"
+            class="btn btn-primary btn-lg"
           >
             <i class="fas fa-plug"></i> Register Terminal
           </button>
+
           <div class="registration-help">
-            <h5><i class="fas fa-question-circle"></i> Need Help?</h5>
+            <h5><i class="fas fa-question-circle"></i> How to Register</h5>
             <ol>
-              <li>Power on your Stripe terminal</li>
-              <li>Wait for it to connect to WiFi/internet</li>
-              <li>The registration code will appear on the screen</li>
-              <li>Enter the code above and click "Register Terminal"</li>
+              <li>Power on your Stripe Terminal</li>
+              <li id="terminal-serial-help">
+                ${terminalData.model === 'reader_m2' || !terminalData.model ? 
+                  'For M2 Reader: <strong>Check the back of the M2 reader for the Serial Number</strong>' : 
+                  'The registration code will appear on the terminal screen'
+                }
+              </li>
+              <li>Enter the code above and click Register</li>
+              <li>Wait for confirmation</li>
             </ol>
           </div>
-        </form>
+        </div>
       </div>
     `;
-    // Load and display terminal model
+    
+    // Load and display current terminal model
     loadTerminalModel(shopId);
-  } else {
-    // Terminal is registered - show status
-    const statusClass = terminalData.status === 'online' ? 'success' : 'warning';
-    const statusIcon = terminalData.status === 'online' ? 'fa-check-circle' : 'fa-exclamation-triangle';
-    const statusText = terminalData.status === 'online' ? 'Online' : 'Offline';
+    return;
+  }
 
-    container.innerHTML = `
-      <div class="terminal-status-section">
-        <div class="terminal-header">
-          <h3><i class="fas fa-credit-card"></i> Terminal Status</h3>
+  // Status registered: show terminal info + test/unregister controls
+  const statusClass = terminalData.status === 'online' ? 'success' : 'warning';
+  const statusIcon = terminalData.status === 'online' ? 'fa-check-circle' : 'fa-exclamation-triangle';
+  const statusText = terminalData.status === 'online' ? 'Online' : 'Offline';
+
+  container.innerHTML = `
+    <div class="terminal-status-section">
+      <div class="terminal-header">
+        <h3><i class="fas fa-credit-card"></i> Terminal Status</h3>
+      </div>
+
+      <div class="terminal-info-card ${statusClass}">
+        <div class="terminal-status-badge">
+          <i class="fas ${statusIcon}"></i>
+          <span>${statusText}</span>
         </div>
 
-        <div class="terminal-info-card ${statusClass}">
-          <div class="terminal-status-badge">
-            <i class="fas ${statusIcon}"></i>
-            <span>${statusText}</span>
-          </div>
-
-          <div class="terminal-details">
-            <p><strong>Model:</strong> ${getTerminalModelName(terminalData.model)}</p>
-            <p><strong>Device:</strong> ${terminalData.device_type || 'Unknown'}</p>
-            <p><strong>Label:</strong> ${terminalData.label || 'N/A'}</p>
-            ${terminalData.action ? `<p><strong>Current Action:</strong> ${terminalData.action}</p>` : ''}
-          </div>
+        <div class="terminal-details">
+          <p><strong>Model:</strong> ${getTerminalModelName(terminalData.model)}</p>
+          <p><strong>Device:</strong> ${terminalData.device_type || 'Unknown'}</p>
+          <p><strong>Label:</strong> ${terminalData.label || 'N/A'}</p>
+          <p style="display:flex;align-items:center;gap:8px;">
+            <strong>Serial:</strong> 
+            <span id="terminal-serial-display">${terminalData.serial || 'N/A'}</span>
+            <button 
+              onclick="openEditSerialModal('${shopId}', '${terminalData.serial || ''}')"
+              class="btn small"
+              style="padding:4px 8px;font-size:12px;"
+              title="Edit Serial Number"
+            >
+              <i class="fas fa-ellipsis-h"></i>
+            </button>
+          </p>
+          ${terminalData.action ? `<p><strong>Current Action:</strong> ${terminalData.action}</p>` : ''}
         </div>
+      </div>
 
-        <div class="terminal-actions">
-          <button 
-            onclick="testTerminal('${shopId}')" 
-            class="btn btn-secondary"
+      <div class="terminal-actions">
+        <button 
+          onclick="testTerminal('${shopId}')" 
+          class="btn btn-secondary"
+        >
+          <i class="fas fa-vial"></i> Test Connection
+        </button>
+      </div>
+      <div class="terminal-remove-panel" style="margin-top:24px;">
+        <button 
+          onclick="unregisterTerminal('${shopId}')" 
+          class="btn btn-danger"
+        >
+          <i class="fas fa-unlink"></i> Remove Terminal
+        </button>
+      </div>
+
+      ${terminalData.status !== 'online' ? `
+        <div class="alert alert-warning">
+          <i class="fas fa-exclamation-triangle"></i>
+          <strong>Terminal Offline</strong><br>
+          Please check that your terminal is powered on and connected to the internet.
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function openEditSerialModal(shopId, currentSerial) {
+  let modal = document.getElementById('editSerialModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'editSerialModal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-content card" style="max-width:420px;">
+        <h3>Edit Terminal Serial Number</h3>
+        <div class="form-group">
+          <label for="edit-serial-input">Serial Number</label>
+          <input 
+            type="text" 
+            id="edit-serial-input" 
+            class="form-control" 
+            placeholder="Enter serial number"
           >
-            <i class="fas fa-vial"></i> Test Connection
+          <small class="form-text">
+            For M2 Reader: Check the back of the device
+          </small>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:16px;">
+          <button 
+            onclick="saveSerialNumber('${shopId}')" 
+            id="save-serial-btn"
+            class="btn btn-primary"
+          >
+            Save
+          </button>
+          <button 
+            onclick="document.getElementById('editSerialModal').classList.add('hidden')" 
+            class="btn"
+          >
+            Cancel
           </button>
         </div>
-        <div class="terminal-remove-panel" style="margin-top:24px;">
-          <button 
-            onclick="unregisterTerminal('${shopId}')" 
-            class="btn btn-danger"
-          >
-            <i class="fas fa-unlink"></i> Remove Terminal
-          </button>
-        </div>
-
-        ${terminalData.status !== 'online' ? `
-          <div class="alert alert-warning">
-            <i class="fas fa-exclamation-triangle"></i>
-            <strong>Terminal Offline</strong><br>
-            Please check that your terminal is powered on and connected to the internet.
-          </div>
-        ` : ''}
       </div>
     `;
+    document.body.appendChild(modal);
+  }
+  
+  // Populate current serial
+  const input = modal.querySelector('#edit-serial-input');
+  if (input) input.value = currentSerial || '';
+  
+  modal.classList.remove('hidden');
+  input.focus();
+}
+
+async function saveSerialNumber(shopId) {
+  const input = document.getElementById('edit-serial-input');
+  const saveBtn = document.getElementById('save-serial-btn');
+  const newSerial = input.value.trim();
+  
+  if (!newSerial) {
+    showNotification('Please enter a serial number', 'error');
+    input.focus();
+    return;
+  }
+  
+  // Disable button
+  saveBtn.disabled = true;
+  saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+  
+  try {
+    const client = (typeof window !== 'undefined' && window._supabaseClient) ? window._supabaseClient : (typeof supabase !== 'undefined' ? supabase : null);
+    if (!client) throw new Error('Supabase client not available');
+
+    const { error } = await client
+      .from('shops')
+      .update({
+        terminal_serial: newSerial,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', shopId);
+
+    if (error) throw error;
+
+    showNotification('Serial number updated successfully!', 'success');
+    document.getElementById('editSerialModal').classList.add('hidden');
+    
+    // Reload terminal settings
+    setTimeout(() => {
+      loadTerminalSettings();
+    }, 500);
+    
+  } catch (error) {
+    console.error('Save serial error:', error);
+    showNotification(`Failed to save: ${error.message}`, 'error');
+    
+    // Re-enable button
+    saveBtn.disabled = false;
+    saveBtn.innerHTML = 'Save';
   }
 }
 
@@ -337,93 +480,97 @@ async function registerTerminal(shopId) {
 }
 
 async function testTerminal(shopId) {
-  // Open test modal and run a 10s polling test with animated heartbeat
-  try {
-    openTerminalTestModal();
-  } catch (e) { console.warn('Could not open test modal', e); }
-
-  const messages = [
-    'Checking Connection...',
-    'Please Stand by...',
-    "We're still checking",
-    'Did you ensure the terminal is powered on?',
-    'Should be just a moment',
-    'Hold on tight!',
-    'So...nice weather huh?',
-    'Make sure the device youre holding matches the registered device',
-    'Loading....',
-    'Running tests :testing device connection',
-    'Checking registered device'
-  ];
+  // Open test modal and run REAL polling test
+  openTerminalTestModal();
 
   const statusUrl = `https://xpose-stripe-server.vercel.app/api/terminal/status/${shopId}`;
   const start = Date.now();
   const maxMs = 10000; // 10 seconds
-  let msgIdx = 0;
+  
   const modal = document.getElementById('terminalTestModal');
   const msgEl = modal && modal.querySelector('.terminal-test-msg');
   const resultEl = modal && modal.querySelector('.terminal-test-result');
   const closeBtn = modal && modal.querySelector('.terminal-test-close');
 
-  // start message cycling
+  const messages = [
+    'Checking connection...',
+    'Contacting terminal...',
+    'Verifying status...',
+    'Ensure terminal is powered on...',
+    'Checking network...',
+    'Almost there...',
+    'Testing connection...'
+  ];
+
+  // Cycle messages
+  let msgIdx = 0;
   const msgTimer = setInterval(() => {
     if (msgEl) {
-      // pick a random message each tick
-      const rand = messages[Math.floor(Math.random() * messages.length)];
-      msgEl.textContent = rand;
+      msgEl.textContent = messages[msgIdx % messages.length];
+      msgIdx++;
     }
-  }, 2000);
+  }, 1500);
 
-  // start heartbeat animation class
+  // Start heartbeat animation
   if (modal) modal.classList.add('testing');
 
   let succeeded = false;
 
-  // poll every 1s until timeout or success
+  // Real polling function
   const poll = async () => {
     try {
       const resp = await fetch(statusUrl);
+      
       if (!resp.ok) {
-        console.warn('Poll status HTTP', resp.status);
+        console.warn('Status check HTTP', resp.status);
       } else {
-        const ct = (resp.headers.get('content-type') || '').toLowerCase();
-        if (ct.includes('application/json')) {
-          const data = await resp.json();
-          if (data && data.status === 'online') {
-            succeeded = true;
-            finish(true);
-            return;
-          }
+        const data = await resp.json();
+        
+        // Check if terminal is online
+        if (data && data.status === 'online') {
+          succeeded = true;
+          finish(true);
+          return;
         } else {
-          console.warn('Poll non-JSON response, content-type:', ct);
+          console.log('Terminal status:', data.status);
         }
       }
     } catch (err) {
       console.warn('Poll error', err);
     }
 
+    // Check timeout
     if (Date.now() - start >= maxMs) {
       finish(false);
       return;
     }
 
+    // Poll again in 1 second
     setTimeout(poll, 1000);
   };
 
   function finish(ok) {
     clearInterval(msgTimer);
     if (modal) modal.classList.remove('testing');
+    
     if (resultEl) {
       resultEl.textContent = ok ? 'Connected ✅' : 'Failed ❌';
       resultEl.className = 'terminal-test-result ' + (ok ? 'success' : 'failed');
     }
-    if (msgEl) msgEl.textContent = ok ? "Terminal is online and ready!" : "Could not reach terminal. Please check the device.";
+    
+    if (msgEl) {
+      msgEl.textContent = ok 
+        ? "Terminal is online and ready!" 
+        : "Could not reach terminal. Please check the device is powered on and connected.";
+    }
+    
     if (closeBtn) closeBtn.disabled = false;
-    // reload to reflect updated status (optional)
+    
+    // Reload settings to reflect updated status
     setTimeout(() => { loadTerminalSettings(); }, 1200);
   }
 
-  // start polling
+  // Start polling
   poll();
 }
 
@@ -441,7 +588,7 @@ async function unregisterTerminal(shopId) {
     if (!confirmed) return;
   }
 
-    try {
+  try {
     const client = (typeof window !== 'undefined' && window._supabaseClient) ? window._supabaseClient : (typeof supabase !== 'undefined' ? supabase : null);
     if (!client) throw new Error('Supabase client not available');
 
@@ -466,8 +613,6 @@ async function unregisterTerminal(shopId) {
 
 // Add to your settings page initialization
 document.addEventListener('DOMContentLoaded', () => {
-  // ... your other initialization code
-  
   // Load terminal settings if section exists
   if (document.getElementById('terminal-settings-section')) {
     loadTerminalSettings();

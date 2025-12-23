@@ -451,14 +451,13 @@ function setupInvoices() {
     document.getElementById('subTotal').textContent = subtotalVal.toFixed(2);
     document.getElementById('grandTotal').textContent = totalVal.toFixed(2);
 
-    // Platform fee calculation: Stripe processing (2.7% + $0.05) + Xpose platform fee (2.3%)
-    // Percentage total = 2.7% + 2.3% = 5.0%
-    const stripePercent = 0.027;
-    const xposePercent = 0.023;
-    const fixedPerTxn = 0.05;
-    const platformPercent = stripePercent + xposePercent; // 0.05
-    const platformFee = (subtotalVal * platformPercent) + fixedPerTxn;
-    // Net total after platform fee (fee is subtracted from grand total)
+    // Combined platform fee: Shows total processing fees (Stripe 2.7% + Xpose 2.3% = 5%)
+    // Calculated on subtotal only (not on tax portion)
+    const combinedFeePercent = 0.05; // 5% total
+    const fixedFee = 0.05;
+    const platformFee = (subtotalVal * combinedFeePercent) + fixedFee;
+    
+    // Shop receives: Grand Total - Platform Fee
     const netTotal = totalVal - platformFee;
     const netTotalEl = document.getElementById('netTotal');
     if (netTotalEl) netTotalEl.textContent = netTotal.toFixed(2);

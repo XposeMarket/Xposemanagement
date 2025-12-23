@@ -115,9 +115,11 @@ module.exports = async (req, res) => {
 
     console.log(`🖥️ [Terminal Payment] Using terminal: ${shop.terminal_id}`);
 
-    // 4. Calculate platform fee (5% + $0.05)
-    const platformFeePercent = 0.05; // 5%
-    const platformFeeCents = Math.round(amountCents * platformFeePercent) + 5; // +$0.05
+    // 4. Calculate platform fee (2.3% + $0.05) - YOUR revenue only
+    // Note: Display shows 5% total (Stripe 2.7% + Xpose 2.3%) but we only take 2.3%
+    const platformFeePercent = 0.023; // 2.3% (Xpose portion)
+    const subtotalCents = Math.round(subtotal * 100);
+    const platformFeeCents = Math.round(subtotalCents * platformFeePercent) + 5; // +$0.05
 
     console.log(`💸 [Terminal Payment] Platform fee: $${(platformFeeCents / 100).toFixed(2)}`);
 

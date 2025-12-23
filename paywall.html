@@ -467,7 +467,7 @@
           body: JSON.stringify({
             priceId: priceId,
             customerEmail: getUserEmail(),
-            terminalType: terminal
+            terminalModel: terminal // <-- FIXED: match backend param
           }),
         });
         if (!response.ok) {
