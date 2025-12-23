@@ -371,6 +371,10 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
   // Handle the event
   try {
     switch (event.type) {
+      case 'payment_intent.succeeded':
+        await handleTerminalPayment(event.data.object);
+        break;
+        
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
         await handleSubscriptionUpdate(event.data.object);
@@ -404,6 +408,52 @@ app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res)
 });
 
 // Webhook handlers
+async function handleTerminalPayment(paymentIntent) {
+  console.log('💳 Handling terminal payment:', paymentIntent.id);
+  
+  const invoiceId = paymentIntent.metadata?.invoiceId;
+  
+  if (!invoiceId) {
+    console.warn('⚠️ No invoice ID in payment intent metadata');
+    return;
+  }
+  
+  console.log('📄 Updating invoice:', invoiceId);
+  
+  // Update Supabase
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
+  
+  if (!supabaseUrl || !supabaseKey) {
+    console.warn('⚠️ Supabase credentials not configured - skipping database update');
+    return;
+  }
+  
+  try {
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    // Mark invoice as paid
+    const { error } = await supabase
+      .from('invoices')
+      .update({
+        status: 'paid',
+        paid_date: new Date().toISOString(),
+        payment_intent_id: paymentIntent.id,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', invoiceId);
+    
+    if (error) {
+      console.error('❌ Error updating invoice:', error);
+    } else {
+      console.log('✅ Invoice marked as paid:', invoiceId);
+    }
+  } catch (error) {
+    console.error('❌ Error in handleTerminalPayment:', error);
+  }
+}
+
 async function handleSubscriptionUpdate(subscription) {
   console.log('🔄 Handling subscription update:', subscription.id);
   
