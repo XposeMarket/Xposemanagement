@@ -1487,6 +1487,12 @@ function setupInvoices() {
         console.error('[Invoices] Error updating invoice in invoices table:', upsertError);
       } else {
         console.log(`[Invoices] ✅ Invoice ${inv.id} marked as PAID in invoices table`);
+        // Create in-app notifications for shop owners that invoice was paid
+        try {
+          await createInvoiceNotification(inv, 'paid');
+        } catch (nErr) {
+          console.error('[Invoices] Notification error (paid):', nErr);
+        }
       }
     } else {
       const data = JSON.parse(localStorage.getItem('xm_data') || '{}');
@@ -1569,6 +1575,12 @@ function setupInvoices() {
         console.error('[Invoices] Error updating invoice in invoices table:', upsertError);
       } else {
         console.log(`[Invoices] ✅ Invoice ${inv.id} marked as UNPAID in invoices table`);
+        // Notify owners that invoice status changed to open/unpaid
+        try {
+          await createInvoiceNotification(inv, 'open');
+        } catch (nErr) {
+          console.error('[Invoices] Notification error (open):', nErr);
+        }
       }
     } else {
       const data = JSON.parse(localStorage.getItem('xm_data') || '{}');
@@ -1598,6 +1610,53 @@ function setupInvoices() {
   }
 
   // Make it global
+  // Create notification entries in Supabase for invoice status changes
+  async function createInvoiceNotification(inv, action) {
+    try {
+      if (!supabase) return;
+      // action: 'paid' | 'open' etc.
+      const { data: owners, error: ownerErr } = await supabase
+        .from('user_shops')
+        .select('user_id')
+        .eq('shop_id', shopId)
+        .eq('role', 'owner');
+
+      if (ownerErr) {
+        console.error('[Notifications] Could not fetch owners:', ownerErr);
+        return;
+      }
+      if (!owners || owners.length === 0) return;
+
+      const title = action === 'paid' ? 'Invoice Paid' : 'Invoice Updated';
+      const message = action === 'paid'
+        ? `Invoice #${inv.number || inv.id} was marked as PAID.`
+        : `Invoice #${inv.number || inv.id} status changed to ${action}.`;
+
+      // Only set `related_id` if it looks like a UUID; otherwise keep it null and include invoice id/number in metadata
+      const looksLikeUUID = (val) => typeof val === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(val);
+      const notifications = owners.map(o => ({
+        user_id: o.user_id,
+        shop_id: shopId,
+        type: 'invoice',
+        category: action === 'paid' ? 'financial' : 'invoice',
+        title,
+        message,
+        related_id: looksLikeUUID(inv.id) ? inv.id : null,
+        related_type: 'invoice',
+        metadata: { invoice_id: inv.id, invoice_number: inv.number || null, status: action },
+        priority: 'normal',
+        created_by: (window.xm_session && window.xm_session.user_id) || null,
+        is_read: false,
+        created_at: new Date().toISOString()
+      }));
+
+      const { error: insertErr } = await supabase.from('notifications').insert(notifications);
+      if (insertErr) console.error('[Notifications] Insert error:', insertErr);
+      else console.log(`[Notifications] Created ${notifications.length} notification(s) for invoice ${inv.id}`);
+    } catch (err) {
+      console.error('[Notifications] Exception creating notifications:', err);
+    }
+  }
   window.closeRemoveInvModal = closeRemoveInvModal;
 
   // Handle remove invoice
