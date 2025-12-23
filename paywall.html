@@ -254,113 +254,6 @@
     </div>
     <div class="trial-note">All plans come with a 14-day free trial. Cancel anytime free of charge.</div>
   </main>
-  <!-- Terminal Hardware Selection -->
-  <section class="terminal-selection-section" style="max-width:1100px;margin:28px auto;padding:20px;">
-    <h3 style="margin:0 0 6px 0;color:#222;font-size:1.35rem;font-weight:700;">Choose Your Terminal Hardware</h3>
-    <p class="text-muted" style="margin:6px 0 16px;color:#6b7280;">Select the payment terminal that best fits your shop</p>
-    <div class="terminal-options" style="display:flex;gap:16px;flex-wrap:wrap;">
-      <div class="terminal-option" data-terminal="reader_m2" style="flex:1 1 300px;padding:16px;border:1px solid #e6eefc;border-radius:10px;background:#fff;">
-        <div class="terminal-option-header" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-          <i class="fas fa-tablet-alt"></i>
-          <h4 style="margin:0;font-size:1.08rem;">Stripe Reader M2</h4>
-          <span class="price-badge free" style="margin-left:auto;background:#e6ffef;color:#027a48;padding:4px 8px;border-radius:8px;font-weight:700;">Included FREE</span>
-        </div>
-        <p style="margin:6px 0;color:#555;">Countertop terminal, no screen. Perfect for basic card payments.</p>
-        <ul class="terminal-features" style="margin:0 0 12px 18px;color:#666;">
-          <li>Tap, dip & swipe</li>
-          <li>Bluetooth connectivity</li>
-          <li>Compact design</li>
-        </ul>
-        <button class="btn btn-select" onclick="selectTerminal('reader_m2')" style="background:#f3f6ff;border:1px solid #dbe9ff;padding:8px 12px;border-radius:8px;cursor:pointer;">Select</button>
-      </div>
-
-      <div class="terminal-option" data-terminal="wisepos_e" style="flex:1 1 300px;padding:16px;border:1px solid #e6eefc;border-radius:10px;background:#fff;">
-        <div class="terminal-option-header" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-          <i class="fas fa-mobile-alt"></i>
-          <h4 style="margin:0;font-size:1.08rem;">BBPOS WisePOS E</h4>
-          <span class="price-badge" style="margin-left:auto;background:#fff7ed;color:#b45309;padding:4px 8px;border-radius:8px;font-weight:700;">+$30/month</span>
-        </div>
-        <p style="margin:6px 0;color:#555;">Handheld terminal with touchscreen and receipt printer.</p>
-        <ul class="terminal-features" style="margin:0 0 12px 18px;color:#666;">
-          <li>Touchscreen display</li>
-          <li>Built-in printer</li>
-          <li>Portable & wireless</li>
-        </ul>
-        <button class="btn btn-select" onclick="selectTerminal('wisepos_e')" style="background:#fff;border:1px solid #dbe9ff;padding:8px 12px;border-radius:8px;cursor:pointer;">Select</button>
-      </div>
-
-      <div class="terminal-option recommended" data-terminal="reader_s700" style="flex:1 1 300px;padding:16px;border:1px solid #e6eefc;border-radius:10px;background:#fff;position:relative;">
-        <div class="recommended-badge" style="position:absolute;right:12px;top:12px;background:#fffbeb;color:#b45309;padding:4px 8px;border-radius:8px;font-weight:700;font-size:0.85rem;">Most Popular</div>
-        <div class="terminal-option-header" style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-          <i class="fas fa-desktop"></i>
-          <h4 style="margin:0;font-size:1.08rem;">Stripe Reader S700</h4>
-          <span class="price-badge premium" style="margin-left:auto;background:#fff0f6;color:#9b1238;padding:4px 8px;border-radius:8px;font-weight:700;">+$50/month</span>
-        </div>
-        <p style="margin:6px 0;color:#555;">Premium terminal with large display and advanced features.</p>
-        <ul class="terminal-features" style="margin:0 0 12px 18px;color:#666;">
-          <li>Large color display</li>
-          <li>Customer-facing screen</li>
-          <li>Professional grade</li>
-        </ul>
-        <button class="btn btn-select btn-primary" onclick="selectTerminal('reader_s700')" style="background:#2a7cff;color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;">Select</button>
-      </div>
-    </div>
-  </section>
-  <!-- Terminal selection modal -->
-  <div id="terminalModal" class="modal-overlay hidden">
-    <div class="modal-content card" style="max-width:1100px; width:95%; margin:6vh auto; padding:20px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
-        <h3 style="margin:0">Choose Your Terminal for <span id="terminalModalPlan"></span></h3>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <button id="terminalModalConfirm" class="btn btn-primary">Confirm & Checkout</button>
-          <button id="terminalModalClose" class="btn">Close</button>
-        </div>
-      </div>
-      <p style="color:#666;margin-top:8px;">All subscriptions include a Stripe Reader M2 by default — choose a different terminal to add its monthly fee.</p>
-      <div id="terminalModalOptions" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:14px;align-items:stretch;">
-        <div class="terminal-option selected" data-terminal="reader_m2" style="padding:16px;border-radius:10px;background:#fff;text-align:center;display:flex;flex-direction:column;justify-content:space-between;">
-          <img src="assets/Stripe Reader M2.png" alt="Reader M2" style="max-width:140px;margin-bottom:8px;">
-          <h4 style="margin:6px 0">Stripe Reader M2</h4>
-          <div style="color:#059669;font-weight:700;margin-bottom:8px;">Included FREE</div>
-          <p style="color:#666;font-size:0.95rem;">Countertop terminal, no screen.</p>
-          <div style="margin-top:10px"><button class="btn" onclick="selectTerminal('reader_m2')">Select</button></div>
-        </div>
-
-        <div class="terminal-option" data-terminal="wisepos_e" style="padding:16px;border-radius:10px;background:#fff;text-align:center;display:flex;flex-direction:column;justify-content:space-between;">
-          <img src="assets/BBPOS WisePOS E1.png" alt="WisePOS E" style="max-width:140px;margin-bottom:8px;">
-          <h4 style="margin:6px 0">BBPOS WisePOS E</h4>
-          <div style="color:#b45309;font-weight:700;margin-bottom:8px;">+$30/month</div>
-          <p style="color:#666;font-size:0.95rem;">Handheld terminal with touchscreen and printer.</p>
-          <div style="margin-top:10px"><button class="btn" onclick="selectTerminal('wisepos_e')">Select</button></div>
-        </div>
-
-        <div class="terminal-option" data-terminal="reader_s700" style="padding:16px;border-radius:10px;background:#fff;text-align:center;display:flex;flex-direction:column;justify-content:space-between;">
-          <img src="assets/Stripe Reader S7001.png" alt="Reader S700" style="max-width:140px;margin-bottom:8px;">
-          <h4 style="margin:6px 0">Stripe Reader S700</h4>
-          <div style="color:#9b1238;font-weight:700;margin-bottom:8px;">+$50/month</div>
-          <p style="color:#666;font-size:0.95rem;">Premium terminal with customer-facing display.</p>
-          <div style="margin-top:10px"><button class="btn" onclick="selectTerminal('reader_s700')">Select</button></div>
-        </div>
-      </div>
-
-      
-      <style>
-        .modal-overlay { position:fixed; left:0; right:0; top:0; bottom:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:1200; }
-        .modal-overlay.hidden { display:none; }
-        .terminal-option { border:1px solid #e6eefc; }
-        .terminal-option.selected {
-          border:3px solid #2a7cff;
-          background: #fff;
-          box-shadow: 0 2px 12px rgba(42,124,255,0.10);
-        }
-        #terminalModalOptions img { max-width:160px; height:auto; display:block; margin:0 auto 8px; }
-        #terminalModalOptions .terminal-option { min-height:260px; }
-        @media (max-width:900px) {
-          #terminalModalOptions { grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
-        }
-      </style>
-    </div>
-  </div>
   <footer class="footer" style="background:#f6f8ff;padding:32px 0 16px 0;text-align:center;color:#7f5fff;font-size:1.08rem;">
     <span>© 2025 Xpose Management</span>
     <div style="margin-top:18px;font-size:1.08rem;">
@@ -394,95 +287,68 @@
       }
     }
 
-    // Terminal selection state and helper
-    let selectedTerminal = 'reader_m2'; // Default to free option
-
-    function selectTerminal(terminalModel) {
-      selectedTerminal = terminalModel;
-      // Only update selection in the modal
-      document.querySelectorAll('#terminalModal .terminal-option').forEach(option => {
-        option.classList.remove('selected');
-      });
-      const el = document.querySelector(`#terminalModal [data-terminal="${terminalModel}"]`);
-      if (el) el.classList.add('selected');
-    }
-
-    // Handle plan button clicks: open terminal selection modal
-    let pendingPriceId = null;
-    let pendingPlanLabel = null;
-
-    function openTerminalModal(priceId, planLabel) {
-      pendingPriceId = priceId;
-      pendingPlanLabel = planLabel;
-      // default terminal selection
-      selectedTerminal = 'reader_m2';
-      // mark selection in modal
-      document.querySelectorAll('#terminalModal .terminal-option').forEach(o => o.classList.remove('selected'));
-      const el = document.querySelector('#terminalModal [data-terminal="reader_m2"]');
-      if (el) el.classList.add('selected');
-      document.getElementById('terminalModalPlan').textContent = planLabel || '';
-      document.getElementById('terminalModal').classList.remove('hidden');
-    }
-
+    // Handle plan button clicks
     document.querySelectorAll('.plan-btn').forEach((btn, index) => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', async () => {
+        // Determine which plan was clicked
         let priceId;
-        let planLabel;
-        if (index === 0) { priceId = PRICE_IDS.single; planLabel = 'Single'; }
-        else if (index === 1) { priceId = PRICE_IDS.local; planLabel = 'Local'; }
-        else if (index === 2) { priceId = PRICE_IDS.multi; planLabel = 'Multi'; }
+        if (index === 0) priceId = PRICE_IDS.single;
+        else if (index === 1) priceId = PRICE_IDS.local;
+        else if (index === 2) priceId = PRICE_IDS.multi;
 
         if (!priceId || priceId.includes('REPLACE')) {
           alert('Stripe is not configured yet. Please add your Price IDs to paywall.html');
           return;
         }
 
-        openTerminalModal(priceId, planLabel);
+        // Disable button and show loading
+        btn.disabled = true;
+        btn.textContent = 'Loading...';
+
+        try {
+          // Call backend to create checkout session
+          const STRIPE_API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? 'http://localhost:3001'
+            : 'https://xpose-stripe-server.vercel.app';
+          
+          const response = await fetch(`${STRIPE_API_URL}/create-checkout-session`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              priceId: priceId,
+              customerEmail: getUserEmail()
+            }),
+          });
+
+          // If the network request succeeded but returned a non-2xx, capture body for debugging
+          if (!response.ok) {
+            let bodyText = null;
+            try { bodyText = await response.text(); } catch (e) { bodyText = '<unreadable>'; }
+            console.error('Checkout error response:', response.status, response.statusText, bodyText);
+            throw new Error(`Server responded ${response.status}: ${bodyText}`);
+          }
+
+          const data = await response.json();
+
+          if (data && data.url) {
+            // Redirect to Stripe Checkout
+            window.location.href = data.url;
+          } else {
+            console.error('Invalid checkout payload from server:', data);
+            throw new Error((data && data.error) || 'Failed to create checkout session (no url returned)');
+          }
+        } catch (error) {
+          console.error('Checkout exception:', error);
+          // Show more detailed message to help debugging on mobile
+          const msg = (error && error.message) ? error.message : 'Failed to start checkout. Please try again.';
+          alert('Failed to start checkout: ' + msg);
+          btn.disabled = false;
+          btn.textContent = btn.textContent.replace('Loading...', 'Start ' + ['Single', 'Local', 'Multi'][index]);
+        }
       });
     });
-
-    // Modal confirm (start checkout)
-    async function handleSubscribe() {
-      const confirmBtn = document.getElementById('terminalModalConfirm');
-      confirmBtn.disabled = true;
-      confirmBtn.textContent = 'Processing...';
-
-      try {
-        const STRIPE_API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-          ? 'http://localhost:3001'
-          : 'https://xpose-stripe-server.vercel.app';
-
-        const response = await fetch(`${STRIPE_API_URL}/create-checkout-session`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            priceId: pendingPriceId,
-            customerEmail: getUserEmail(),
-            terminalModel: selectedTerminal
-          })
-        });
-
-        if (!response.ok) {
-          const txt = await response.text().catch(() => '');
-          throw new Error('Server error: ' + (txt || response.status));
-        }
-
-        const data = await response.json();
-        if (data && data.url) {
-          window.location.href = data.url;
-        } else {
-          throw new Error('Invalid response from server');
-        }
-      } catch (err) {
-        console.error('Checkout error', err);
-        alert('Failed to start checkout: ' + (err.message || '')); 
-        confirmBtn.disabled = false;
-        confirmBtn.textContent = 'Confirm & Checkout';
-      }
-    }
-
-    document.getElementById('terminalModalConfirm')?.addEventListener('click', handleSubscribe);
-    document.getElementById('terminalModalClose')?.addEventListener('click', () => document.getElementById('terminalModal').classList.add('hidden'));
   </script>
 </body>
 </html>
