@@ -31,6 +31,28 @@
             <option>Other</option>
           </select>
         </div>
+        <div style="grid-column:1/-1;display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+          <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label for="csStreet">Street Address</label>
+              <input id="csStreet" autocomplete="street-address">
+            </div>
+            <div>
+              <label for="csZipcode">Zipcode</label>
+              <input id="csZipcode" autocomplete="postal-code">
+            </div>
+          </div>
+          <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label for="csCity">City</label>
+              <input id="csCity" autocomplete="address-level2">
+            </div>
+            <div>
+              <label for="csState">State</label>
+              <input id="csState" maxlength="2" style="text-transform:uppercase" autocomplete="address-level1">
+            </div>
+          </div>
+        </div>
         <div style="grid-column:1/-1">
           <label for="csLogo">Shop Logo (optional)</label>
           <input id="csLogo" type="file" accept="image/*">
@@ -54,10 +76,6 @@
         <div>
           <label for="csPass">Password</label>
           <input id="csPass" type="password" minlength="6">
-        </div>
-        <div>
-          <label for="csZipcode">Zipcode</label>
-          <input id="csZipcode">
         </div>
         <div style="display:flex;gap:8px;align-items:flex-start;justify-content:center;margin-top:18px">
           <button class="btn primary" type="submit">Create Shop</button>

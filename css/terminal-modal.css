@@ -1,0 +1,206 @@
+/* Terminal Payment Modal Styles */
+/* Scoped to only apply within the terminal modal */
+
+#terminal-payment-modal.modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  min-height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 99999;
+  justify-content: center;
+  align-items: center;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+#terminal-payment-modal .terminal-modal {
+  background: white;
+  border-radius: 12px;
+  max-width: 480px;
+  max-height: 550px;
+  width: 90%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+#terminal-payment-modal .terminal-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 24px;
+  text-align: center;
+}
+
+#terminal-payment-modal .terminal-header h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+#terminal-payment-modal .terminal-header i {
+  margin-right: 8px;
+}
+
+#terminal-payment-modal .terminal-body {
+  padding: 32px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+#terminal-payment-modal .invoice-summary {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 24px;
+}
+
+#terminal-payment-modal .invoice-summary p {
+  margin: 8px 0;
+  font-size: 14px;
+  color: #495057;
+}
+
+#terminal-payment-modal .invoice-summary p:last-child {
+  margin-bottom: 0;
+}
+
+#terminal-payment-modal .terminal-amount {
+  font-size: 18px !important;
+  font-weight: 600 !important;
+  color: #212529 !important;
+  margin-top: 12px !important;
+}
+
+#terminal-payment-modal .terminal-amount span {
+  color: #667eea;
+}
+
+#terminal-payment-modal .terminal-status {
+  text-align: center;
+  padding: 24px 0;
+}
+
+#terminal-payment-modal .status-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  min-height: 64px;
+}
+
+#terminal-payment-modal .status-icon i {
+  color: #667eea;
+}
+
+#terminal-payment-modal .status-icon i.text-success {
+  color: #28a745 !important;
+}
+
+#terminal-payment-modal .status-icon i.text-danger {
+  color: #dc3545 !important;
+}
+
+#terminal-payment-modal .status-icon i.text-warning {
+  color: #ffc107 !important;
+}
+
+#terminal-payment-modal .terminal-status p {
+  font-size: 16px;
+  color: #495057;
+  margin: 16px 0;
+  min-height: 24px;
+}
+
+#terminal-payment-modal .progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 16px;
+}
+
+#terminal-payment-modal .progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+#terminal-payment-modal .terminal-footer {
+  padding: 16px 24px;
+  background: #f8f9fa;
+  text-align: center;
+  border-top: 1px solid #dee2e6;
+}
+
+#terminal-payment-modal .terminal-footer .btn {
+  min-width: 120px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #6c757d;
+  color: white;
+}
+
+#terminal-payment-modal .terminal-footer .btn:hover {
+  background: #5a6268;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  #terminal-payment-modal .terminal-modal {
+    width: 95%;
+    max-width: none;
+  }
+
+  #terminal-payment-modal .terminal-header h2 {
+    font-size: 20px;
+  }
+
+  #terminal-payment-modal .status-icon {
+    font-size: 48px;
+  }
+
+  #terminal-payment-modal .terminal-body {
+    padding: 24px 16px;
+  }
+}
+
+/* Animation for spinner */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+#terminal-payment-modal .fa-spin {
+  animation: spin 1s linear infinite;
+}

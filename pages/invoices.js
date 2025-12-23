@@ -39,11 +39,11 @@ window.openInvoiceActionsModal = function(inv) {
     markUnpaidBtn.onclick = () => { modal.classList.add('hidden'); window.dispatchEvent(new CustomEvent('xm:invoiceAction', {detail:{action:'markUnpaid', invoice: inv}})); };
     btns.appendChild(markUnpaidBtn);
   } else {
-    const markPaidBtn = document.createElement('button');
-    markPaidBtn.className = 'btn';
-    markPaidBtn.textContent = 'Mark Paid';
-    markPaidBtn.onclick = () => { modal.classList.add('hidden'); window.dispatchEvent(new CustomEvent('xm:invoiceAction', {detail:{action:'markPaid', invoice: inv}})); };
-    btns.appendChild(markPaidBtn);
+    const checkoutBtn = document.createElement('button');
+    checkoutBtn.className = 'btn';
+    checkoutBtn.textContent = 'Checkout';
+    checkoutBtn.onclick = () => { modal.classList.add('hidden'); window.dispatchEvent(new CustomEvent('xm:invoiceAction', {detail:{action:'checkout', invoice: inv}})); };
+    btns.appendChild(checkoutBtn);
   }
   const removeBtn = document.createElement('button');
   removeBtn.className = 'btn danger';
@@ -105,6 +105,9 @@ function setupInvoices() {
           break;
         case 'edit':
           openInvoiceModal(inv, true);
+          break;
+        case 'checkout':
+          showTerminalPaymentModal(inv);
           break;
         case 'markPaid':
           await markInvoicePaid(inv);
@@ -227,7 +230,7 @@ function setupInvoices() {
           <td style="text-align:right">
             <div class="appt-actions-grid" style="display:inline-grid;">
               <button class="btn small" data-id="${inv.id}" data-action="view">View</button>
-              <button class="btn small" data-id="${inv.id}" data-action="markPaid">Mark Paid</button>
+              <button class="btn small" data-id="${inv.id}" data-action="checkout">Checkout</button>
               <button class="btn small info" data-id="${inv.id}" data-action="edit">Edit</button>
               <button class="btn small danger" data-id="${inv.id}" data-action="remove" aria-label="Remove invoice"><svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg></button>
             </div>
@@ -439,8 +442,26 @@ function setupInvoices() {
     if (addLaborBtn) addLaborBtn.onclick = () => { itemTypeModal.classList.add('hidden'); inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'labor' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
     if (addServiceBtn) addServiceBtn.onclick = () => { itemTypeModal.classList.add('hidden'); inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'service' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
     if (cancelItemBtn) cancelItemBtn.onclick = () => { itemTypeModal.classList.add('hidden'); };
-    document.getElementById('subTotal').textContent = calcTotal(inv).toFixed(2);
-    document.getElementById('grandTotal').textContent = calcTotal(inv).toFixed(2);
+    // Compute subtotal (pre-tax, pre-discount) for platform fee calculation
+    const subtotalVal = (inv.items || []).reduce((sum, itm) => sum + ((Number(itm.qty) || 0) * (Number(itm.price) || 0)), 0);
+    const taxVal = subtotalVal * ((inv.tax_rate || 0) / 100);
+    const discountVal = subtotalVal * ((inv.discount || 0) / 100);
+    const totalVal = subtotalVal + taxVal - discountVal;
+
+    document.getElementById('subTotal').textContent = subtotalVal.toFixed(2);
+    document.getElementById('grandTotal').textContent = totalVal.toFixed(2);
+
+    // Platform fee calculation: Stripe processing (2.7% + $0.05) + Xpose platform fee (2.3%)
+    // Percentage total = 2.7% + 2.3% = 5.0%
+    const stripePercent = 0.027;
+    const xposePercent = 0.023;
+    const fixedPerTxn = 0.05;
+    const platformPercent = stripePercent + xposePercent; // 0.05
+    const platformFee = (subtotalVal * platformPercent) + fixedPerTxn;
+    // Net total after platform fee (fee is subtracted from grand total)
+    const netTotal = totalVal - platformFee;
+    const netTotalEl = document.getElementById('netTotal');
+    if (netTotalEl) netTotalEl.textContent = netTotal.toFixed(2);
     // Save button
     document.getElementById('saveInv').onclick = () => {
       console.log('[InvoiceModal] Save button clicked', inv);
@@ -1679,6 +1700,159 @@ function setupInvoices() {
     }, 3000);
   }
 
+  // Terminal Payment Modal
+  function showTerminalPaymentModal(inv) {
+    // Get customer name
+    let customerName = 'Unknown Customer';
+    if (inv.customer_first || inv.customer_last) {
+      customerName = `${inv.customer_first || ''} ${inv.customer_last || ''}`.trim();
+    } else if (inv.customer && !/^[0-9a-f-]{36}$/i.test(inv.customer)) {
+      customerName = inv.customer;
+    }
+
+    // Calculate totals
+    const subtotal = (inv.items || []).reduce((sum, itm) => sum + (itm.qty * itm.price), 0);
+    const tax = subtotal * ((inv.tax_rate || 0) / 100);
+    const discount = subtotal * ((inv.discount || 0) / 100);
+    const total = subtotal + tax - discount;
+
+    // Create modal if it doesn't exist
+    let modal = document.getElementById('terminal-payment-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'terminal-payment-modal';
+      modal.className = 'modal';
+      modal.style.display = 'none';
+      document.body.appendChild(modal);
+    }
+
+    // Build invoice summary with same style as invoice.html
+    const itemsHTML = (inv.items || []).map(item => `
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;">
+        <div>
+          <div style="font-weight:500;">${item.name || 'Item'}</div>
+          <div style="font-size:12px;color:#666;">Qty: ${item.qty || 1} × ${(item.price || 0).toFixed(2)}</div>
+        </div>
+        <div style="font-weight:600;">${((item.qty || 1) * (item.price || 0)).toFixed(2)}</div>
+      </div>
+    `).join('');
+
+    modal.innerHTML = `
+      <div class="terminal-modal">
+        <div class="terminal-header">
+          <h2><i class="fas fa-credit-card"></i> Terminal Checkout</h2>
+        </div>
+        <div class="terminal-body">
+          <div class="invoice-summary">
+            <p><strong>Invoice #${inv.number || inv.id}</strong></p>
+            <p>Customer: ${customerName}</p>
+            <div style="margin:16px 0;">${itemsHTML}</div>
+            <div style="display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:2px solid #ddd;">
+              <div>Subtotal:</div>
+              <div>${subtotal.toFixed(2)}</div>
+            </div>
+            ${tax > 0 ? `
+            <div style="display:flex;justify-content:space-between;margin-top:4px;">
+              <div>Tax (${inv.tax_rate || 0}%):</div>
+              <div>${tax.toFixed(2)}</div>
+            </div>
+            ` : ''}
+            ${discount > 0 ? `
+            <div style="display:flex;justify-content:space-between;margin-top:4px;">
+              <div>Discount (${inv.discount || 0}%):</div>
+              <div>-${discount.toFixed(2)}</div>
+            </div>
+            ` : ''}
+            <p class="terminal-amount">Total: <span>${total.toFixed(2)}</span></p>
+          </div>
+          <div class="terminal-status">
+            <div class="status-icon">
+              <i class="fas fa-spinner fa-spin"></i>
+            </div>
+            <p>Initializing terminal...</p>
+          </div>
+        </div>
+        <div class="terminal-footer">
+          <button class="btn" onclick="document.getElementById('terminal-payment-modal').style.display='none'">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    modal.style.display = 'flex';
+
+    // Process real terminal payment via server + poll for result
+    processTerminalPayment(inv, modal).catch(err => {
+      console.error('Terminal payment failed:', err);
+      const statusIcon = modal.querySelector('.status-icon');
+      const statusText = modal.querySelector('.terminal-status p');
+      if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-times-circle" style="color:#ef4444"></i>';
+      if (statusText) statusText.textContent = 'Payment failed. ' + (err && err.message ? err.message : '');
+    });
+  }
+
+  // Create a terminal payment on the server and poll invoice status
+  async function processTerminalPayment(inv, modal) {
+    if (!inv || !inv.id) throw new Error('Invalid invoice');
+    const API_BASE = window.API_URL || 'https://xpose-stripe-server.vercel.app/api';
+    const shop = getCurrentShopId();
+    const statusIcon = modal.querySelector('.status-icon');
+    const statusText = modal.querySelector('.terminal-status p');
+
+    if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    if (statusText) statusText.textContent = 'Sending to terminal...';
+
+    // Create payment on server which will trigger terminal processing
+    let paymentIntentId = null;
+    try {
+      const resp = await fetch(API_BASE + '/terminal/create-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceId: inv.id, shopId: shop })
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data && data.error ? data.error : 'Failed to create terminal payment');
+      paymentIntentId = data && data.paymentIntent;
+    } catch (err) {
+      throw new Error('Could not initiate terminal payment: ' + (err.message || err));
+    }
+
+    // Poll Supabase invoices table for this invoice to be marked 'paid'
+    if (statusText) statusText.textContent = 'Waiting for terminal...';
+
+    const maxAttempts = 30; // ~30 * 2s = 60s
+    const intervalMs = 2000;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      // Allow user to cancel the modal which will break out
+      if (!modal || modal.style.display === 'none') throw new Error('Payment cancelled');
+
+      try {
+        const { data: invoiceRow, error } = await supabase
+          .from('invoices')
+          .select('status')
+          .eq('id', inv.id)
+          .single();
+        if (!error && invoiceRow && (invoiceRow.status || '').toString().toLowerCase() === 'paid') {
+          if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
+          if (statusText) statusText.textContent = 'Payment successful!';
+          // Small delay so user sees success then close and refresh
+          setTimeout(async () => {
+            try { modal.style.display = 'none'; } catch(e){}
+            await markInvoicePaid(inv);
+          }, 1200);
+          return;
+        }
+      } catch (pollErr) {
+        console.warn('Polling invoice status failed:', pollErr);
+      }
+
+      // wait
+      await new Promise(r => setTimeout(r, intervalMs));
+    }
+
+    // If we reach here, timeout
+    throw new Error('Timed out waiting for terminal confirmation');
+  }
+
   // Wire up actions
   document.getElementById('invTable').onclick = e => {
     const btn = e.target.closest('button[data-action]');
@@ -1697,6 +1871,7 @@ function setupInvoices() {
         openInvoiceModal(inv);
       }
     }
+    if (btn.dataset.action === 'checkout') showTerminalPaymentModal(inv);
     if (btn.dataset.action === 'markPaid') openConfirmPayModal(inv, 'paid');
     if (btn.dataset.action === 'remove') openRemoveInvModal(inv);
   };

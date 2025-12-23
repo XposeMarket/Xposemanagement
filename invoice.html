@@ -9,7 +9,10 @@
       <a href="appointments.html" class="">Appointments</a>
       <a href="jobs.html" class="">Jobs</a>
       <a href="messages.html" class="">Messages</a>
+      <a href="customers.html" class="">Customers</a>
       <a href="invoices.html" class="">Invoices</a>
+      <a href="inventory.html" class="">Inventory</a>
+      <a href="revenue.html" class="">Revenue</a>
       <a href="settings.html" class="">Settings</a>
       <a href="profile.html" class="">Profile</a>
     </nav>
@@ -35,7 +38,7 @@
 <h1>Invoice <span id="invNo"></span></h1>
 <div><b>Customer:</b> <span id="invCustomer">-</span></div><div><b>Vehicle:</b> <span id="invVehicle">-</span></div><p class="notice" id="invMeta" style="margin-top:6px"></p>
 <div style="margin-top:16px; padding:12px; border:1px solid var(--line); border-radius:4px; background:var(--card);">
-  <b>From:</b><br><span id="invShopName"></span><br><span id="invShopPhone"></span><br><span id="invShopEmail"></span>
+  <span id="invShopName"></span><br><span id="invShopAddress"></span><br><span id="invShopPhone"></span><br><span id="invShopEmail"></span>
 </div>
 <div style="margin-top:16px; padding:12px; border:1px solid var(--line); border-radius:4px; background:var(--card);">
   <table class="table" id="invItems"><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody id="invItemsBody"></tbody></table>
@@ -315,6 +318,14 @@ import { getShopData } from './helpers/storage.js';
   // Render labels in bold, escape values to avoid HTML injection
   function esc(v){ return String(v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
   shopNameEl.innerHTML = `<strong>Name:</strong> ${esc(displayName)}`;
+  // Compose full address line
+  const shopAddressEl = document.getElementById('invShopAddress');
+  let addressParts = [];
+  if (s && s.street) addressParts.push(s.street);
+  if (s && s.city) addressParts.push(s.city);
+  if (s && s.state) addressParts.push(s.state);
+  if (s && s.zipcode) addressParts.push(s.zipcode);
+  shopAddressEl.innerHTML = addressParts.length ? `<strong>Address:</strong> ${esc(addressParts.join(', '))}` : '';
   shopPhoneEl.innerHTML = `<strong>Number:</strong> ${esc(displayPhone)}`;
   shopEmailEl.innerHTML = `<strong>Email:</strong> ${esc(displayEmail)}`;
 

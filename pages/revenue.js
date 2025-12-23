@@ -1,7 +1,10 @@
 // pages/revenue.js
 // Revenue page logic: weekly overview, staff earnings, job assignments
 
+
 import { getSupabaseClient } from '../helpers/supabase.js';
+import { calcInvTotal } from '../helpers/invoices.js';
+
 
 // Utility: format currency
 function formatCurrency(val) {
@@ -181,9 +184,14 @@ async function setupRevenuePage() {
           const jobsWithDetails = staffJobs.map(j => {
             const appt = appointments.find(a => a.id === j.appointment_id) || {};
             const inv = invoices.find(ii => (ii.job_id && ii.job_id === j.id) || (ii.appointment_id && ii.appointment_id === j.appointment_id)) || null;
-            const items = inv ? (inv.items || []) : [];
-            const totalRevenue = items.reduce((s, it) => s + ((Number(it.qty||0) * Number(it.price||0))||0), 0);
-            const partsCost = items.reduce((s, it) => s + ((Number(it.qty||0) * Number(it.cost_price || it.cost || 0))||0), 0);
+            let totalRevenue = 0;
+            let partsCost = 0;
+            let items = [];
+            if (inv) {
+              totalRevenue = calcInvTotal(inv); // includes tax
+              items = inv.items || [];
+              partsCost = items.reduce((s, it) => s + ((Number(it.qty||0) * Number(it.cost_price || it.cost || 0))||0), 0);
+            }
             const dateRaw = appt?.preferred_date || appt?.preferred_time || j.created_at || j.updated_at || null;
             const isoDate = isoFromRaw(dateRaw) || (j.created_at ? isoFromRaw(j.created_at) : null) || 'unknown';
             const display = (function(d) { if (!d || d === 'unknown') return 'Unknown'; try { return new Date(d + 'T00:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'}); } catch(e) { return d; } })(isoDate);
@@ -564,9 +572,10 @@ async function setupRevenuePage() {
         let totalRevenue = null;
         let partsCost = null;
         let staffRevenue = null;
+        let items = [];
         if (inv) {
-          const items = inv.items || [];
-          totalRevenue = items.reduce((sum, it) => sum + ((Number(it.qty || 0) * Number(it.price || 0)) || 0), 0);
+          totalRevenue = calcInvTotal(inv); // includes tax
+          items = inv.items || [];
           partsCost = items.reduce((sum, it) => sum + ((Number(it.qty || 0) * Number(it.cost_price || it.cost || 0)) || 0), 0);
           // Staff revenue: items without cost_price assumed to be labor/services
           staffRevenue = items.reduce((sum, it) => {
@@ -588,11 +597,11 @@ async function setupRevenuePage() {
               <span style="margin-right:16px;">Status: <strong>${j.status || 'N/A'}</strong></span>
               <div style="display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,auto);gap:4px 12px;align-items:center;">
                 <div style="font-size:0.95em;">Total Revenue:</div>
-                <strong data-total="${j.id}" style="font-size:0.95em;">...</strong>
+                <strong data-total="${j.id}" style="font-size:0.95em;">${Number.isFinite(totalRevenue) ? formatCurrency(totalRevenue) : '...'}</strong>
                 <div style="font-size:0.95em;">Parts Cost:</div>
-                <strong data-parts="${j.id}" style="font-size:0.95em;">...</strong>
+                <strong data-parts="${j.id}" style="font-size:0.95em;">${Number.isFinite(partsCost) ? formatCurrency(partsCost) : '...'}</strong>
                 <div style="font-size:0.95em;">Staff Revenue:</div>
-                <strong data-staff="${j.id}" style="font-size:0.95em;">...</strong>
+                <strong data-staff="${j.id}" style="font-size:0.95em;">${Number.isFinite(staffRevenue) ? formatCurrency(staffRevenue) : '...'}</strong>
                 <div style="font-size:0.95em;">Net:</div>
                 <strong data-net="${j.id}" style="font-size:0.95em;">...</strong>
               </div>
@@ -619,12 +628,20 @@ async function setupRevenuePage() {
         const totalRevenue = items.reduce((s, it) => s + ((Number(it.qty||0) * Number(it.price||0))||0), 0);
         const partsCost = items.reduce((s, it) => s + ((Number(it.qty||0) * Number(it.cost_price || it.cost || 0))||0), 0);
 
-        // Find staff hourly rate
+        // Always show labor value, even if unassigned
         let staffRate = 0;
-        const assigned = jobObj && (jobObj.assigned_to || jobObj.assigned); // handle possible field names
+        // Try to get staff rate from assigned staff, else fallback to default (or 0)
+        const assigned = jobObj && (jobObj.assigned_to || jobObj.assigned);
         if (assigned) {
           const staff = staffList.find(s => s.id === assigned || s.auth_id === assigned) || [];
           staffRate = Number(staff.hourly_rate || staff.rate || 0);
+        }
+        // If no assigned staff, but there is labor, use the first labor item's rate if available
+        if (!assigned && items && items.length) {
+          const laborItem = items.find(it => (it.type || '').toLowerCase() === 'labor' && Number(it.price || it.unit_price || it.amount || it.total || it.rate || 0) > 0);
+          if (laborItem) {
+            staffRate = Number(laborItem.price || laborItem.unit_price || laborItem.amount || laborItem.total || laborItem.rate || 0);
+          }
         }
 
         // Fetch job labor entries from server endpoint
@@ -681,18 +698,27 @@ async function setupRevenuePage() {
     // Calculate weekly totals after all job labor fetches complete
     const jobTotalsPromises = jobListFiltered.map(async (j) => {
     const inv = invoices.find(ii => (ii.job_id && ii.job_id === j.id) || (ii.appointment_id && ii.appointment_id === j.appointment_id));
-    const items = inv ? (inv.items || []) : [];
-    try {
-      console.debug('[revenue] job invoice', j.id, 'inv_found:', !!inv, 'items_len:', items.length);
-      console.debug('[revenue] job invoice items JSON', j.id, JSON.stringify(items, null, 2));
-    } catch (e) { /* ignore stringify errors */ }
-      const totalRevenue = items.reduce((s, it) => s + ((Number(it.qty||0) * Number(it.price||0))||0), 0);
-      const partsCost = items.reduce((s, it) => s + ((Number(it.qty||0) * Number(it.cost_price || it.cost || 0))||0), 0);
+    let totalRevenue = 0;
+    let partsCost = 0;
+    let items = [];
+    if (inv) {
+      totalRevenue = calcInvTotal(inv); // includes tax
+      items = inv.items || [];
+      partsCost = items.reduce((s, it) => s + ((Number(it.qty||0) * Number(it.cost_price || it.cost || 0))||0), 0);
+    }
+      // Always show labor value, even if unassigned
       let staffRate = 0;
       const assigned = j.assigned_to || j.assigned;
       if (assigned) {
         const staff = staffList.find(s => s.id === assigned || s.auth_id === assigned) || [];
         staffRate = Number(staff.hourly_rate || staff.rate || 0);
+      }
+      // If no assigned staff, but there is labor, use the first labor item's rate if available
+      if (!assigned && items && items.length) {
+        const laborItem = items.find(it => (it.type || '').toLowerCase() === 'labor' && Number(it.price || it.unit_price || it.amount || it.total || it.rate || 0) > 0);
+        if (laborItem) {
+          staffRate = Number(laborItem.price || laborItem.unit_price || laborItem.amount || laborItem.total || laborItem.rate || 0);
+        }
       }
       let totalHours = 0;
       let laborFound = false;
@@ -737,7 +763,18 @@ async function setupRevenuePage() {
     const weekTotalRevenue = jobTotals.reduce((sum, jt) => sum + jt.totalRevenue, 0);
     const weekPartsCost = jobTotals.reduce((sum, jt) => sum + jt.partsCost, 0);
     const weekStaffCost = jobTotals.reduce((sum, jt) => sum + jt.staffCost, 0);
-    const weekNetRevenue = weekTotalRevenue - weekPartsCost - weekStaffCost;
+    // Subtract tax from net profit in weekly overview
+    let weekTax = 0;
+    for (const jt of jobTotals) {
+      const inv = invoices.find(ii => (ii.job_id && ii.job_id === jt.jobId) || (ii.appointment_id && ii.appointment_id === jobListFiltered.find(j => j.id === jt.jobId)?.appointment_id));
+      if (inv) {
+        const items = inv.items || [];
+        const subtotal = items.reduce((sum, itm) => sum + ((Number(itm.qty) || 0) * (Number(itm.price) || 0)), 0);
+        weekTax += subtotal * ((inv.tax_rate || 0) / 100);
+      }
+    }
+    const weekNetRevenue = weekTotalRevenue - weekPartsCost - weekStaffCost - weekTax;
+
     document.getElementById('revenue-totals').innerHTML = `
       <div>Total Revenue: <strong>${formatCurrency(weekTotalRevenue)}</strong></div>
       <div>Parts Cost: <strong>${formatCurrency(weekPartsCost)}</strong></div>
@@ -745,14 +782,41 @@ async function setupRevenuePage() {
       <div>Net Revenue: <strong>${formatCurrency(weekNetRevenue)}</strong></div>
     `;
 
+
+
+    // Calculate all-time gross (grand total) and all-time net after platform fees
+    let allTimeGrossTotal = 0;
+    let allTimeNetAfterPlatformFees = 0;
+    for (const inv of invoices) {
+      if (inv) {
+        allTimeGrossTotal += typeof window.calcInvTotal === 'function' ? window.calcInvTotal(inv) : calcInvTotal(inv);
+        if (typeof window.calcNetTotal === 'function') {
+          allTimeNetAfterPlatformFees += window.calcNetTotal(inv);
+        }
+      }
+    }
+    // Update Stripe Express panel with all-time gross and all-time net after platform fees
+    const stripeTotalRevenue = document.getElementById('stripe-total-revenue');
+    if (stripeTotalRevenue) {
+      stripeTotalRevenue.textContent = formatCurrency(allTimeGrossTotal);
+    }
+    const stripeAvailablePayout = document.getElementById('stripe-available-payout');
+    if (stripeAvailablePayout) {
+      stripeAvailablePayout.textContent = formatCurrency(allTimeNetAfterPlatformFees);
+    }
+    const stripeCurrentBalance = document.getElementById('stripe-current-balance');
+    if (stripeCurrentBalance) {
+      stripeCurrentBalance.textContent = formatCurrency(allTimeNetAfterPlatformFees);
+    }
+
+    // (No longer update available for payout weekly; now always all-time net)
+
     // Compute per-staff weekly totals and update staff panel placeholders
     try {
       const staffTotals = {};
       jobTotals.forEach(jt => {
-        if (!jt.assigned) return;
-        // Find staff record
-        const staff = staffList.find(s => s.id === jt.assigned || s.auth_id === jt.assigned);
-        const staffKey = staff ? (staff.id || staff.auth_id) : jt.assigned;
+        // Always sum total labor, even if unassigned
+        const staffKey = jt.assigned || 'unassigned';
         if (!staffTotals[staffKey]) staffTotals[staffKey] = { hours: 0, earned: 0 };
         staffTotals[staffKey].hours += Number(jt.totalHours || 0);
         staffTotals[staffKey].earned += Number(jt.staffCost || 0);

@@ -1,29 +1,54 @@
-
 <!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Upgrade Subscription | Xpose Management</title>
+  <title>Xpose Management - Pricing</title>
   <link rel="stylesheet" href="styles.css">
   <style>
+    /* ...existing styles... */
+    @media (max-width: 700px) {
+      .terminal-modal-options {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 80px !important;
+        max-height: 60vh !important;
+        overflow-y: auto !important;
+        padding-right: 4px !important;
+      }
+      .terminal-modal-options .terminal-option {
+        margin-bottom: 64px !important;
+        box-shadow: 0 2px 12px 0 rgba(0,0,0,0.07) !important;
+      }
+      .modal-content.card {
+        padding: 10px !important;
+        max-width: 98vw !important;
+      }
+      .terminal-modal-options img {
+        max-width: 90vw !important;
+      }
+    }
+  </style>
+  <style>
     body {
-      background: linear-gradient(120deg, #f6f8ff 0%, #eaf3ff 100%);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       margin: 0;
-      font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
-      color: #222;
+      padding: 0;
+      line-height: 1.6;
     }
     .header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 40px 0 40px;
-      background: #fff;
-      position: sticky;
-      top: 0;
       z-index: 100;
       backdrop-filter: blur(8px);
       box-shadow: 0 2px 8px rgba(42,124,255,0.04);
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
     .header-logo {
       display: flex;
@@ -72,6 +97,7 @@
       max-width: 1100px;
       margin: 48px auto 0 auto;
       padding: 0 16px;
+      padding-top: 100px; /* Account for fixed header */
     }
     .pricing-title {
       font-size: 2.5rem;
@@ -200,6 +226,7 @@
       margin-top: 32px;
     }
   </style>
+
 </head>
 <body>
   <header class="header">
@@ -254,6 +281,93 @@
     </div>
     <div class="trial-note">All plans come with a 14-day free trial. Cancel anytime free of charge.</div>
   </main>
+
+
+  <!-- Terminal selection modal -->
+  <div id="terminalModal" class="modal-overlay hidden">
+    <div class="modal-content card" style="max-width:1100px; width:95%; margin:6vh auto; padding:20px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+        <h3 style="margin:0">Choose Your Terminal for <span id="terminalModalPlan"></span></h3>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="terminalModalConfirm" class="btn btn-primary">Confirm & Checkout</button>
+          <button id="terminalModalClose" class="btn" aria-label="Close modal">×</button>
+        </div>
+      </div>
+      <p style="color:#666;margin-top:8px;">All subscriptions include a Stripe Reader M2 by default — choose a different terminal to add its monthly fee.</p>
+      <div id="terminalModalOptions" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:14px;align-items:stretch;">
+        <div class="terminal-option selected" data-terminal="reader_m2" style="padding:16px;border-radius:10px;background:#fff;text-align:center;display:flex;flex-direction:column;justify-content:space-between;">
+          <img src="assets/Stripe Reader M2.png" alt="Reader M2" style="max-width:140px;margin-bottom:8px;">
+          <h4 style="margin:6px 0">Stripe Reader M2</h4>
+          <div style="color:#059669;font-weight:700;margin-bottom:8px;">Included FREE</div>
+          <p style="color:#666;font-size:0.95rem;">Countertop terminal, no screen.</p>
+          <div style="margin-top:10px"><button class="btn" onclick="selectTerminal('reader_m2')">Select</button></div>
+        </div>
+
+        <div class="terminal-option" data-terminal="wisepos_e" style="padding:16px;border-radius:10px;background:#fff;text-align:center;display:flex;flex-direction:column;justify-content:space-between;">
+          <img src="assets/BBPOS WisePOS E1.png" alt="WisePOS E" style="max-width:140px;margin-bottom:8px;">
+          <h4 style="margin:6px 0">BBPOS WisePOS E</h4>
+          <div style="color:#b45309;font-weight:700;margin-bottom:8px;">+$30/month</div>
+          <p style="color:#666;font-size:0.95rem;">Handheld terminal with touchscreen.</p>
+          <div style="margin-top:10px"><button class="btn" onclick="selectTerminal('wisepos_e')">Select</button></div>
+        </div>
+
+        <div class="terminal-option" data-terminal="reader_s700" style="padding:16px;border-radius:10px;background:#fff;text-align:center;display:flex;flex-direction:column;justify-content:space-between;">
+          <img src="assets/Stripe Reader S7001.png" alt="Reader S700" style="max-width:140px;margin-bottom:8px;">
+          <h4 style="margin:6px 0;display:flex;align-items:center;justify-content:center;gap:8px;">
+            Stripe Reader S700
+            <span style="background:#eaf3ff;color:#2a7cff;font-size:0.95rem;padding:2px 10px;border-radius:12px;font-weight:600;">Most Popular</span>
+          </h4>
+          <div style="color:#9b1238;font-weight:700;margin-bottom:8px;">+$50/month</div>
+          <p style="color:#666;font-size:0.95rem;">Premium terminal with customer-facing display.</p>
+          <div style="margin-top:10px"><button class="btn" onclick="selectTerminal('reader_s700')">Select</button></div>
+        </div>
+      </div>
+
+      
+      <style>
+        .modal-overlay { position:fixed; left:0; right:0; top:0; bottom:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:1200; padding: 20px; }
+        .modal-overlay.hidden { display:none; }
+        .modal-content { max-height: 86vh; overflow-y: auto; box-sizing: border-box; }
+        .terminal-option { border:1px solid #e6eefc; border-radius:10px; }
+        .terminal-option.selected {
+          border:3px solid #2a7cff;
+          background: #fff;
+          box-shadow: 0 2px 12px rgba(42,124,255,0.10);
+        }
+        #terminalModalOptions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: stretch; }
+        #terminalModalOptions img { max-width:160px; height:auto; display:block; margin:0 auto 8px; }
+        #terminalModalOptions .terminal-option { min-height:260px; display:flex; flex-direction:column; justify-content:space-between; gap:10px; padding:14px; box-sizing:border-box; align-items:flex-start; }
+        #terminalModalOptions .terminal-option h4 { margin: 6px 0; }
+        #terminalModalOptions .terminal-option p { margin: 6px 0 12px 0; color: #666; }
+        /* Style the select buttons inside modal to match site buttons */
+        #terminalModalOptions .btn,
+        #terminalModal .btn {
+          background: #2a7cff;
+          color: #fff;
+          border: none;
+          border-radius: 7px;
+          padding: 10px 18px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        #terminalModal .btn:hover { background: #195bb5; }
+
+        /* Responsive: stack options on small screens, increase spacing and make images smaller */
+        @media (max-width:900px) {
+          #terminalModalOptions { grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; }
+        }
+        @media (max-width:700px) {
+          /* Force stacked panels: one per row */
+          #terminalModalOptions { grid-template-columns: 1fr !important; gap:22px !important; }
+          #terminalModalOptions img { max-width:120px; }
+          .modal-content { width: 100%; margin: 0 8px; }
+          .terminal-option { padding: 16px; }
+          /* Make the select button full-width and larger for touch */
+          #terminalModalOptions .btn { width: 100%; padding: 12px 14px; font-size: 1rem; }
+        }
+      </style>
+    </div>
+  </div>
   <footer class="footer" style="background:#f6f8ff;padding:32px 0 16px 0;text-align:center;color:#7f5fff;font-size:1.08rem;">
     <span>© 2025 Xpose Management</span>
     <div style="margin-top:18px;font-size:1.08rem;">
@@ -277,7 +391,6 @@
       try {
         const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
         const email = session.email || null;
-        // Only return email if it's properly formatted (has @ and domain)
         if (email && email.includes('@') && email.includes('.')) {
           return email;
         }
@@ -287,68 +400,95 @@
       }
     }
 
-    // Handle plan button clicks
+    // Modal state
+    let selectedPlan = null;
+    let selectedTerminal = 'reader_m2';
+
+    // Select terminal option
+    window.selectTerminal = function(terminal) {
+      selectedTerminal = terminal;
+      document.querySelectorAll('.terminal-option').forEach(opt => {
+        opt.classList.remove('selected');
+        if (opt.dataset.terminal === terminal) opt.classList.add('selected');
+      });
+    };
+
+    // Show modal for plan selection
+    function showTerminalModal(planName) {
+      selectedPlan = planName;
+      selectedTerminal = 'reader_m2';
+      document.getElementById('terminalModalPlan').textContent = planName.charAt(0).toUpperCase() + planName.slice(1);
+      document.getElementById('terminalModal').classList.remove('hidden');
+      selectTerminal('reader_m2');
+    }
+
+    // Hide modal
+    document.getElementById('terminalModalClose').onclick = function() {
+      document.getElementById('terminalModal').classList.add('hidden');
+    };
+
+    // Plan button click handler
     document.querySelectorAll('.plan-btn').forEach((btn, index) => {
-      btn.addEventListener('click', async () => {
-        // Determine which plan was clicked
-        let priceId;
-        if (index === 0) priceId = PRICE_IDS.single;
-        else if (index === 1) priceId = PRICE_IDS.local;
-        else if (index === 2) priceId = PRICE_IDS.multi;
-
-        if (!priceId || priceId.includes('REPLACE')) {
-          alert('Stripe is not configured yet. Please add your Price IDs to paywall.html');
-          return;
-        }
-
-        // Disable button and show loading
-        btn.disabled = true;
-        btn.textContent = 'Loading...';
-
-        try {
-          // Call backend to create checkout session
-          const STRIPE_API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-            ? 'http://localhost:3001'
-            : 'https://xpose-stripe-server.vercel.app';
-          
-          const response = await fetch(`${STRIPE_API_URL}/create-checkout-session`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              priceId: priceId,
-              customerEmail: getUserEmail()
-            }),
-          });
-
-          // If the network request succeeded but returned a non-2xx, capture body for debugging
-          if (!response.ok) {
-            let bodyText = null;
-            try { bodyText = await response.text(); } catch (e) { bodyText = '<unreadable>'; }
-            console.error('Checkout error response:', response.status, response.statusText, bodyText);
-            throw new Error(`Server responded ${response.status}: ${bodyText}`);
-          }
-
-          const data = await response.json();
-
-          if (data && data.url) {
-            // Redirect to Stripe Checkout
-            window.location.href = data.url;
-          } else {
-            console.error('Invalid checkout payload from server:', data);
-            throw new Error((data && data.error) || 'Failed to create checkout session (no url returned)');
-          }
-        } catch (error) {
-          console.error('Checkout exception:', error);
-          // Show more detailed message to help debugging on mobile
-          const msg = (error && error.message) ? error.message : 'Failed to start checkout. Please try again.';
-          alert('Failed to start checkout: ' + msg);
-          btn.disabled = false;
-          btn.textContent = btn.textContent.replace('Loading...', 'Start ' + ['Single', 'Local', 'Multi'][index]);
-        }
+      btn.addEventListener('click', () => {
+        let planName;
+        if (index === 0) planName = 'single';
+        else if (index === 1) planName = 'local';
+        else if (index === 2) planName = 'multi';
+        showTerminalModal(planName);
       });
     });
+
+    // Confirm & Checkout from modal
+    document.getElementById('terminalModalConfirm').onclick = async function() {
+      const plan = selectedPlan;
+      const terminal = selectedTerminal;
+      if (!plan || !terminal) {
+        alert('Please select a plan and terminal.');
+        return;
+      }
+      const priceId = PRICE_IDS[plan];
+      if (!priceId || priceId.includes('REPLACE')) {
+        alert('Stripe is not configured yet. Please add your Price IDs to paywall.html');
+        return;
+      }
+      document.getElementById('terminalModalConfirm').disabled = true;
+      document.getElementById('terminalModalConfirm').textContent = 'Loading...';
+      try {
+        const STRIPE_API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+          ? 'http://localhost:3001'
+          : 'https://xpose-stripe-server.vercel.app';
+        const response = await fetch(`${STRIPE_API_URL}/create-checkout-session`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            priceId: priceId,
+            customerEmail: getUserEmail(),
+            terminalType: terminal
+          }),
+        });
+        if (!response.ok) {
+          let bodyText = null;
+          try { bodyText = await response.text(); } catch (e) { bodyText = '<unreadable>'; }
+          console.error('Checkout error response:', response.status, response.statusText, bodyText);
+          throw new Error(`Server responded ${response.status}: ${bodyText}`);
+        }
+        const data = await response.json();
+        if (data && data.url) {
+          window.location.href = data.url;
+        } else {
+          console.error('Invalid checkout payload from server:', data);
+          throw new Error((data && data.error) || 'Failed to create checkout session (no url returned)');
+        }
+      } catch (error) {
+        console.error('Checkout exception:', error);
+        const msg = (error && error.message) ? error.message : 'Failed to start checkout. Please try again.';
+        alert('Failed to start checkout: ' + msg);
+        document.getElementById('terminalModalConfirm').disabled = false;
+        document.getElementById('terminalModalConfirm').textContent = 'Confirm & Checkout';
+      }
+    };
   </script>
 </body>
 </html>

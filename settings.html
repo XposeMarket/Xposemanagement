@@ -11,7 +11,9 @@ function showNotification(message, type = 'success') {
   }, 3000);
 }
 </script>
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Settings</title><link rel="stylesheet" href="styles.css"></head><body>
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Settings</title><link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="/css/terminal-settings-styles.css">
+</head><body>
 <header class="top">
   <div class="container row top row">
     <a class="brand" href="dashboard.html" aria-label="Home">
@@ -53,6 +55,15 @@ function showNotification(message, type = 'success') {
       </div>
     </div>
   </div>
+  </div>
+
+  <!-- Terminal Settings Section -->
+  <section class="settings-section" style="margin-bottom:16px;">
+    <div id="terminal-settings-section">
+      <!-- Content will be loaded dynamically -->
+      <div class="muted">Terminal settings loading...</div>
+    </div>
+  </section>
 
   <!-- Shop Info + Services: side-by-side on desktop, stacked on mobile -->
   <div class="grid cols-2" style="gap:16px; margin-bottom:16px;">
@@ -60,7 +71,32 @@ function showNotification(message, type = 'success') {
   <div class="card" style="position:relative; overflow:visible;">
     <h3>Shop Info</h3>
     <img id="shopLogoPreview" src="" alt="Logo preview" style="position:absolute; top:8px; right:8px; width:64px; height:auto; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,0.12); display:none; object-fit:contain; background:var(--card); padding:4px; border:1px solid var(--line);" />
-    <label>Shop Name</label><input id="shopName"><label>Phone</label><input id="shopPhone"><label>Email</label><input id="shopEmail"><label>Zipcode</label><input id="shopZipcode"><label>Shop Logo</label><input id="shopLogoFile" type="file" accept="image/*"><button id="saveShop" class="btn info" style="margin-top:10px">Save</button><p id="shopSaved" class="notice"></p>
+    <label>Shop Name</label><input id="shopName">
+    <label>Phone</label><input id="shopPhone">
+    <label>Email</label><input id="shopEmail">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div>
+        <label for="shopStreet">Street Address</label>
+        <input id="shopStreet" autocomplete="street-address">
+      </div>
+      <div>
+        <label for="shopZipcode">Zipcode</label>
+        <input id="shopZipcode" autocomplete="postal-code">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div>
+        <label for="shopCity">City</label>
+        <input id="shopCity" autocomplete="address-level2">
+      </div>
+      <div>
+        <label for="shopState">State</label>
+        <input id="shopState" maxlength="2" style="text-transform:uppercase" autocomplete="address-level1">
+      </div>
+    </div>
+    <label>Shop Logo</label><input id="shopLogoFile" type="file" accept="image/*">
+    <button id="saveShop" class="btn info" style="margin-top:10px">Save</button>
+    <p id="shopSaved" class="notice"></p>
   </div>
 
   <!-- Services and Labor Panel -->
@@ -172,6 +208,38 @@ function showNotification(message, type = 'success') {
       <button id="confirmCancel" class="btn">Cancel</button>
       <button id="confirmOk" class="btn danger">Remove</button>
     </div>
+  </div>
+</div>
+<!-- Terminal Test Modal -->
+<div id="terminalTestModal" class="modal-overlay hidden">
+  <div class="modal-content card" style="max-width:520px; margin:12vh auto; padding:20px; position:relative;">
+    <h3 style="margin-top:0;">Checking Terminal Connection</h3>
+    <div style="display:flex;gap:12px;align-items:flex-start;">
+      <div style="flex:1">
+        <div class="terminal-test-graph" aria-hidden="true" style="height:90px; background:#0b1220; border-radius:6px; overflow:hidden; position:relative;">
+          <svg class="heartbeat-svg" viewBox="0 0 200 50" preserveAspectRatio="none" style="width:200%;height:100%;position:absolute;right:-100%;top:0;">
+            <polyline class="heartbeat-line" points="0,25 20,25 26,15 30,35 40,25 60,25 72,5 76,45 84,25 100,25 120,25 140,10 150,30 170,25 200,25" fill="none" stroke="#10b981" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
+          </svg>
+        </div>
+        <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center;">
+          <div class="terminal-test-msg" style="color:#334; font-weight:600;">Starting...</div>
+          <div class="terminal-test-result" style="font-weight:700;">&nbsp;</div>
+        </div>
+        <div style="margin-top:12px; color:#666; font-size:0.95rem;">This will check the platform's ability to reach your registered terminal. Takes ~10s.</div>
+      </div>
+    </div>
+    <div style="margin-top:16px; text-align:right;">
+      <button class="terminal-test-close btn" disabled onclick="document.getElementById('terminalTestModal').classList.add('hidden')">Close</button>
+    </div>
+    <style>
+      /* heartbeat animation: translate svg from right to left while testing */
+      #terminalTestModal.testing .heartbeat-svg { animation: heartbeat-scroll 1s linear infinite; }
+      @keyframes heartbeat-scroll { from { transform: translateX(0%);} to { transform: translateX(-50%);} }
+      .terminal-test-result.success { color: #10b981; }
+      .terminal-test-result.failed { color: #ef4444; }
+      .modal-overlay { position: fixed; left:0; right:0; top:0; bottom:0; background: rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; z-index:1200; }
+      .modal-overlay.hidden { display:none; }
+    </style>
   </div>
 </div>
   <!-- Role Selection Modal -->
@@ -808,7 +876,7 @@ document.addEventListener('DOMContentLoaded', function(){
       });
 
       // In-page confirm helper (returns Promise<boolean>) using the page's confirm modal
-      function showConfirm(message, okText = 'OK', cancelText = 'Cancel') {
+      window.showConfirm = function showConfirm(message, okText = 'OK', cancelText = 'Cancel') {
         return new Promise((resolve) => {
           const modal = document.getElementById('confirmModal');
           const msgEl = document.getElementById('confirmMessage');
@@ -905,14 +973,16 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 </script>
 
-  <!-- ...existing code... -->
-<script type="module">
-import { loadSubscriptionBanner } from './pages/settings-subscription.js';
+  <!-- Terminal registration component -->
+  <script src="terminal-registration-component.js"></script>
+  <script src="settings.js"></script>
+  <script type="module">
+  import { loadSubscriptionBanner } from './pages/settings-subscription.js';
 
-// Load subscription info when page loads
-document.addEventListener('DOMContentLoaded', () => {
-  loadSubscriptionBanner();
-});
-</script>
+  document.addEventListener('DOMContentLoaded', () => {
+    loadSubscriptionBanner();
+    // terminal-registration-component.js will auto-load the panel if #terminal-settings-section exists
+  });
+  </script>
 
 </body></html>

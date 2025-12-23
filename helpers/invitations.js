@@ -294,11 +294,14 @@ function createInvitationsModal() {
   const modal = document.createElement('div');
   modal.id = 'invitationsModal';
   modal.className = 'modal-overlay hidden';
-  modal.innerHTML = `
+    modal.innerHTML = `
     <div class="modal-content card" style="max-width: 600px; margin: 0 auto; max-height: 90vh; display: flex; flex-direction: column;">
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid var(--line);">
         <h2 style="margin: 0;">Notifications</h2>
-        <button id="closeInvitationsModal" class="btn" aria-label="Close">✕</button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button id="markAllInvitationsRead" class="btn" style="font-size:13px;">Mark all read</button>
+          <button id="closeInvitationsModal" class="btn" aria-label="Close">✕</button>
+        </div>
       </div>
       <div id="invitationsListContainer" style="max-height: 400px; overflow-y: auto; padding: 16px;">
         <div class="muted">Loading notifications...</div>
@@ -315,6 +318,21 @@ function createInvitationsModal() {
   modal.addEventListener('click', (e) => {
     if (e.target === modal) {
       modal.classList.add('hidden');
+    }
+  });
+
+  // Mark all read handler
+  modal.querySelector('#markAllInvitationsRead').addEventListener('click', async () => {
+    try {
+      // Find unread notifications from the pendingInvitations list
+      const unread = pendingInvitations.filter(i => i.itemType === 'notification' && !i.is_read);
+      for (const n of unread) {
+        // reuse existing function to mark each as read
+        await markNotificationAsRead(n.id);
+      }
+    } catch (err) {
+      console.error('[Invitations] Error marking all notifications read:', err);
+      alert('Failed to mark all notifications as read. Please try again.');
     }
   });
 

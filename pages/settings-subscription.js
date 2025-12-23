@@ -169,5 +169,23 @@ async function loadSubscriptionBanner() {
     console.error('❌ Error loading subscription:', error);
   }
 }
+// Initialize terminal settings region on the settings page.
+// If a page-level script exposes `initTerminalRegistration`, prefer that.
+async function initTerminalSettings() {
+  if (typeof window === 'undefined') return;
+  const el = document.getElementById('terminal-settings-section');
+  if (!el) return;
+  el.innerHTML = '<div class="muted">Loading terminal settings...</div>';
+  if (window && typeof window.initTerminalRegistration === 'function') {
+    try {
+      await window.initTerminalRegistration(el);
+      return;
+    } catch (e) {
+      console.warn('terminal registration init failed', e);
+    }
+  }
+  // Fallback content
+  el.innerHTML = '<div class="notice">Terminal settings are not available. Ensure /js/terminal-registration.js is present.</div>';
+}
 
-export { loadSubscriptionBanner };
+export { loadSubscriptionBanner, initTerminalSettings };

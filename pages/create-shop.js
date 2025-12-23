@@ -58,6 +58,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const shopName = sessionStorage.getItem('create_shop_name');
         const shopType = sessionStorage.getItem('create_shop_type');
         const zipcode = sessionStorage.getItem('create_shop_zipcode');
+        const street = sessionStorage.getItem('create_shop_street') || '';
+        const city = sessionStorage.getItem('create_shop_city') || '';
+        const state = sessionStorage.getItem('create_shop_state') || '';
         
         if (!shopName) {
           err.textContent = 'OAuth error: Shop name not found. Please fill out the form and try again.';
@@ -72,6 +75,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         const shopInsert = { 
           name: shopName, 
           type: shopType || 'Mechanic', 
+          zipcode: zipcode || '',
+          street: street,
+          city: city,
+          state: state,
           join_code, 
           staff_limit: 3,
           owner_id: session.user && session.user.id ? session.user.id : null // Link shop to owner
@@ -134,6 +141,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         sessionStorage.removeItem('create_shop_name');
         sessionStorage.removeItem('create_shop_type');
         sessionStorage.removeItem('create_shop_zipcode');
+        sessionStorage.removeItem('create_shop_street');
+        sessionStorage.removeItem('create_shop_city');
+        sessionStorage.removeItem('create_shop_state');
         
         err.textContent = 'Shop created successfully with Google! Redirecting...';
         err.style.color = 'green';
@@ -251,6 +261,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const email = document.getElementById('csEmail').value.trim();
     const pass = document.getElementById('csPass').value.trim();
     const zipcode = document.getElementById('csZipcode').value.trim();
+  const street = document.getElementById('csStreet')?.value.trim() || '';
+  const city = document.getElementById('csCity')?.value.trim() || '';
+  const state = document.getElementById('csState')?.value.trim() || '';
 
     // ============================================================================
     // VALIDATION - Validate all inputs before processing
@@ -310,6 +323,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sanitizedLast = lastValidation.sanitized;
     const sanitizedEmail = emailValidation.sanitized;
     const sanitizedZipcode = zipcodeValidation.sanitized;
+  const sanitizedStreet = street; // Add further validation if needed
+  const sanitizedCity = city;
+  const sanitizedState = state;
 
     let shopLogo = '';
     if (shopLogoFile) {
@@ -333,6 +349,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           type: shopType, 
           email: sanitizedEmail,
           zipcode: sanitizedZipcode,
+          street: sanitizedStreet,
+          city: sanitizedCity,
+          state: sanitizedState,
           join_code, 
           staff_limit: 3 
         };
@@ -527,6 +546,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const shopName = document.getElementById('csName')?.value?.trim();
       const shopType = document.getElementById('csType')?.value?.trim();
       const zipcode = document.getElementById('csZipcode')?.value?.trim();
+        const street = document.getElementById('csStreet')?.value?.trim() || '';
+        const city = document.getElementById('csCity')?.value?.trim() || '';
+        const state = document.getElementById('csState')?.value?.trim() || '';
       
       if (!shopName) {
         err.textContent = 'Please enter a shop name first.';
@@ -538,6 +560,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       sessionStorage.setItem('create_shop_name', shopName);
       sessionStorage.setItem('create_shop_type', shopType || 'Mechanic');
       if (zipcode) sessionStorage.setItem('create_shop_zipcode', zipcode);
+        if (street) sessionStorage.setItem('create_shop_street', street);
+        if (city) sessionStorage.setItem('create_shop_city', city);
+        if (state) sessionStorage.setItem('create_shop_state', state);
       
       try {
         console.log('🔐 Initiating Google OAuth shop creation...');

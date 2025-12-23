@@ -1,0 +1,316 @@
+/* Terminal Settings Section Styles */
+
+.terminal-registration-section,
+.terminal-status-section {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 24px;
+}
+
+.terminal-header {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #e9ecef;
+}
+
+.terminal-header h3 {
+  margin: 0 0 8px 0;
+  color: #212529;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.terminal-header i {
+  color: #667eea;
+  margin-right: 8px;
+}
+
+.terminal-header p {
+  margin: 0;
+  color: #6c757d;
+  font-size: 14px;
+}
+
+/* Terminal Models Info */
+.terminal-models-info {
+  margin-bottom: 32px;
+}
+
+.terminal-models-info h4 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #495057;
+  margin-bottom: 16px;
+}
+
+.terminal-model-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 8px;
+  padding: 20px;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.model-icon {
+  font-size: 48px;
+  opacity: 0.9;
+}
+
+.model-info h5 {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.model-info p {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.model-price {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.model-price-free {
+  background: rgba(40, 167, 69, 0.9);
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-block;
+}
+
+/* Registration Form */
+.registration-form {
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.form-group {
+  margin-bottom: 24px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: #495057;
+  font-weight: 500;
+}
+
+.form-group label small {
+  display: block;
+  font-weight: 400;
+  color: #6c757d;
+  margin-top: 4px;
+}
+
+.form-control {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 16px;
+  border: 2px solid #dee2e6;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-text {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px;
+  color: #6c757d;
+}
+
+.form-text code {
+  background: #f8f9fa;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+}
+
+.btn-lg {
+  padding: 14px 32px;
+  font-size: 16px;
+  width: 100%;
+  margin-bottom: 24px;
+}
+
+/* Registration Help */
+.registration-help {
+  background: #f8f9fa;
+  border-left: 4px solid #667eea;
+  padding: 20px;
+  border-radius: 8px;
+  margin-top: 32px;
+}
+
+.registration-help h5 {
+  margin: 0 0 16px 0;
+  color: #495057;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.registration-help ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.registration-help li {
+  margin-bottom: 8px;
+  color: #495057;
+  line-height: 1.6;
+}
+
+/* Terminal Status Display */
+.terminal-info-card {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+  border-left: 4px solid #6c757d;
+}
+
+.terminal-info-card.success {
+  border-left-color: #28a745;
+  background: #f0f9f4;
+}
+
+.terminal-info-card.warning {
+  border-left-color: #ffc107;
+  background: #fffbf0;
+}
+
+.terminal-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  margin-bottom: 16px;
+  font-weight: 600;
+}
+
+.terminal-info-card.success .terminal-status-badge {
+  color: #28a745;
+}
+
+.terminal-info-card.warning .terminal-status-badge {
+  color: #ffc107;
+}
+
+.terminal-status-badge i {
+  font-size: 18px;
+}
+
+.terminal-details p {
+  margin: 8px 0;
+  color: #495057;
+  font-size: 14px;
+}
+
+.terminal-details strong {
+  color: #212529;
+  margin-right: 8px;
+}
+
+/* Terminal Actions */
+.terminal-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.terminal-actions .btn {
+  flex: 1;
+  min-width: 150px;
+}
+
+/* Alert */
+.alert {
+  padding: 16px;
+  border-radius: 8px;
+  margin-top: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.alert i {
+  font-size: 20px;
+  margin-top: 2px;
+}
+
+.alert-warning {
+  background: #fff3cd;
+  border: 1px solid #ffeaa7;
+  color: #856404;
+}
+
+.alert-warning i {
+  color: #ffc107;
+}
+
+.alert strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .terminal-registration-section,
+  .terminal-status-section {
+    padding: 16px;
+  }
+
+  .terminal-model-card {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .model-icon {
+    font-size: 40px;
+  }
+
+  .registration-form {
+    max-width: 100%;
+  }
+
+  .terminal-actions {
+    flex-direction: column;
+  }
+
+  .terminal-actions .btn {
+    width: 100%;
+  }
+}
+
+/* Button disabled state */
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.btn:disabled:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}

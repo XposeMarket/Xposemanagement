@@ -114,6 +114,9 @@ function setupSettings() {
     document.getElementById('shopPhone').value = shopData.phone || '';
     document.getElementById('shopEmail').value = shopData.email || '';
     document.getElementById('shopZipcode').value = shopData.zipcode || '';
+    document.getElementById('shopStreet').value = shopData.street || '';
+    document.getElementById('shopCity').value = shopData.city || '';
+    document.getElementById('shopState').value = shopData.state || '';
     // Populate logo preview if present
     try{
       const logoEl = document.getElementById('shopLogoPreview');
@@ -194,6 +197,9 @@ function setupSettings() {
     const shopPhone = document.getElementById('shopPhone').value.trim();
     const shopEmail = document.getElementById('shopEmail').value.trim();
     const shopZipcode = document.getElementById('shopZipcode').value.trim();
+    const shopStreet = document.getElementById('shopStreet').value.trim();
+    const shopCity = document.getElementById('shopCity').value.trim();
+    const shopState = document.getElementById('shopState').value.trim();
     const shopLogoFile = document.getElementById('shopLogoFile')?.files?.[0];
     
     let shopLogo = shopData?.logo || '';
@@ -220,6 +226,9 @@ function setupSettings() {
           phone: shopPhone,
           email: shopEmail,
           zipcode: shopZipcode,
+          street: shopStreet,
+          city: shopCity,
+          state: shopState,
           logo: shopLogo,
           updated_at: new Date().toISOString()
         };
@@ -259,9 +268,11 @@ function setupSettings() {
             ...shops[shopIndex],
             name: shopName,
             phone: shopPhone,
-            // only set fields that exist in the local store object
             ...(shopEmail ? { email: shopEmail } : {}),
             ...(shopZipcode ? { zipcode: shopZipcode } : {}),
+            ...(shopStreet ? { street: shopStreet } : {}),
+            ...(shopCity ? { city: shopCity } : {}),
+            ...(shopState ? { state: shopState } : {}),
             logo: shopLogo
           };
           localStorage.setItem('xm_shops', JSON.stringify(shops));

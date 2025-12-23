@@ -48,6 +48,28 @@
     </div>
   </header>
   <main class="container" style="padding:16px 0">
+    <!-- Stripe Express Integration Panel -->
+    <section id="stripe-express-panel" class="card" style="margin-bottom:24px; background: #f6fafd; border: 2px solid #6cace4;">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;">
+        <div style="flex: 2 1 320px; min-width: 220px;">
+          <h2 style="margin: 0 0 8px 0; color: #2176bd;">Stripe Express Payouts</h2>
+          <div style="margin-bottom: 8px; color: #444;">Manage your shop's payouts, balances, and bank connection.</div>
+          <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div>Total Revenue: <strong id="stripe-total-revenue">$0.00</strong></div>
+            <div>Current Balance: <strong id="stripe-current-balance">$0.00</strong></div>
+            <div>Available for Payout: <strong id="stripe-available-payout">$0.00</strong></div>
+            <div>Last Payout: <strong id="stripe-last-payout">$0.00</strong></div>
+            <div>Bank Status: <span id="stripe-bank-status" style="font-weight: bold; color: #888;">Not Connected</span></div>
+            <div>Auto-Withdrawals: <span id="stripe-auto-withdraw" style="font-weight: bold; color: #888;">Off</span></div>
+          </div>
+        </div>
+        <div style="flex: 1 1 180px; min-width: 160px; display: flex; flex-direction: column; gap: 10px; align-items: flex-end;">
+          <button id="stripe-request-payout" class="btn" style="background: #2176bd; color: #fff;">Request Payout</button>
+          <button id="stripe-connect-bank" class="btn" style="background: #fff; color: #2176bd; border: 1px solid #2176bd;">Connect Bank Info</button>
+          <button id="stripe-toggle-auto-withdraw" class="btn small" style="background: #eaf6fb; color: #2176bd;">Enable Auto-Withdrawals</button>
+        </div>
+      </div>
+    </section>
     <section id="revenue-summary" class="card" style="margin-bottom:24px;">
       <h2>Weekly Revenue Overview</h2>
       <div id="week-selector" style="margin-bottom:16px;"></div>
@@ -68,6 +90,8 @@
   <!-- App runtime (shared header/navigation handlers) -->
   <script type="module" src="app.js"></script>
   <script src="multi-tenant.js"></script>
+  <script src="pages/revenue-platform-fee.js"></script>
+  <script src="revenue-stripe.js"></script>
   <script type="module" src="pages/revenue.js"></script>
 </body>
 </html>
