@@ -1771,8 +1771,9 @@ function setupInvoices() {
             <p>Initializing terminal...</p>
           </div>
         </div>
-        <div class="terminal-footer">
+        <div class="terminal-footer" style="display:flex;gap:8px;align-items:center;">
           <button class="btn" onclick="document.getElementById('terminal-payment-modal').style.display='none'">Cancel</button>
+          <button id="manualCheckoutBtn" class="btn btn-secondary" style="background:#fff;color:#2a7cff;border:1px solid #e0e7ff;">Manual Checkout</button>
         </div>
       </div>
     `;
@@ -1785,7 +1786,77 @@ function setupInvoices() {
       const statusIcon = modal.querySelector('.status-icon');
       const statusText = modal.querySelector('.terminal-status p');
       if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-times-circle" style="color:#ef4444"></i>';
-      if (statusText) statusText.textContent = 'Payment failed. ' + (err && err.message ? err.message : '');
+
+      // Friendly user-facing message (hide technical details)
+      let friendly = 'Payment failed. The terminal service is currently unavailable.';
+      // If it's likely a network/server HTML response (starts with '<'), give a hint about service
+      const raw = (err && err.message) ? err.message.toString() : '';
+      // Detect HTML/garbage responses (e.g. server returned an HTML error page)
+      if (raw && new RegExp('unexpected token.*<', 'i').test(raw)) {
+        friendly = 'Payment failed. The terminal service returned an unexpected response. Please try again or use Manual Checkout.';
+      }
+      if (statusText) statusText.textContent = friendly;
+
+      // Expose manual checkout button (already in footer) to allow bypassing terminal
+      const manualBtn = document.getElementById('manualCheckoutBtn');
+      if (manualBtn) {
+        manualBtn.style.display = 'inline-block';
+        manualBtn.onclick = async () => {
+          // Create a themed inline confirmation inside the modal instead of a browser confirm()
+          // Remove existing confirm if present
+          let existing = modal.querySelector('.manual-confirm');
+          if (existing) existing.remove();
+
+          const conf = document.createElement('div');
+          conf.className = 'manual-confirm';
+          conf.style.cssText = 'margin-top:12px;padding:12px;border-radius:8px;background:#f8fafc;border:1px solid #e6eefc;display:flex;gap:8px;align-items:center;justify-content:space-between;';
+
+          const txt = document.createElement('div');
+          txt.textContent = 'Mark this invoice as PAID?';
+          txt.style.cssText = 'font-weight:600;color:#111;';
+
+          const controls = document.createElement('div');
+          controls.style.cssText = 'display:flex;gap:8px;';
+
+          const btnCancel = document.createElement('button');
+          btnCancel.className = 'btn';
+          btnCancel.textContent = 'Cancel';
+          btnCancel.onclick = () => { try { conf.remove(); } catch(e){} };
+
+          const btnConfirm = document.createElement('button');
+          btnConfirm.className = 'btn btn-primary';
+          btnConfirm.textContent = 'Mark Paid';
+          btnConfirm.onclick = async () => {
+            try {
+              // show spinner/state
+              if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+              if (statusText) statusText.textContent = 'Marking invoice as paid...';
+              // disable buttons while processing
+              btnConfirm.disabled = true;
+              btnCancel.disabled = true;
+              await markInvoicePaid(inv);
+              if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-check-circle" style="color:#059669"></i>';
+              if (statusText) statusText.textContent = 'Marked as paid (manual).';
+              setTimeout(() => { try { modal.style.display = 'none'; } catch(e){} }, 900);
+            } catch (mErr) {
+              console.error('Manual checkout failed:', mErr);
+              // show friendly error inside modal
+              if (statusText) statusText.textContent = 'Could not mark invoice as paid. Please try again.';
+              btnConfirm.disabled = false;
+              btnCancel.disabled = false;
+            }
+          };
+
+          controls.appendChild(btnCancel);
+          controls.appendChild(btnConfirm);
+          conf.appendChild(txt);
+          conf.appendChild(controls);
+          // insert before footer or at end of modal content
+          const footer = modal.querySelector('.terminal-footer');
+          if (footer) footer.parentNode.insertBefore(conf, footer);
+          else modal.appendChild(conf);
+        };
+      }
     });
   }
 
