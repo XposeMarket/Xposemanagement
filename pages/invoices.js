@@ -1628,9 +1628,14 @@ function setupInvoices() {
       if (!owners || owners.length === 0) return;
 
       const title = action === 'paid' ? 'Invoice Paid' : 'Invoice Updated';
+      // Prefer customer name when available, otherwise fall back to invoice number/id
+      const customerName = (inv.customer_first || inv.customer_last)
+        ? `${(inv.customer_first || '').trim()} ${(inv.customer_last || '').trim()}`.trim()
+        : (inv.customer_name || inv.customer || null);
+      const idDisplay = customerName || (inv.number ? `#${inv.number}` : inv.id);
       const message = action === 'paid'
-        ? `Invoice #${inv.number || inv.id} was marked as PAID.`
-        : `Invoice #${inv.number || inv.id} status changed to ${action}.`;
+        ? `${idDisplay} was marked as PAID.`
+        : `${idDisplay} status changed to ${action}.`;
 
       // Only set `related_id` if it looks like a UUID; otherwise keep it null and include invoice id/number in metadata
       const looksLikeUUID = (val) => typeof val === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(val);
