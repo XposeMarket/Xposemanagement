@@ -144,6 +144,13 @@ app.get('/', (req, res) => {
   });
 });
 
+// Terminal Price IDs
+const TERMINAL_PRICES = {
+  'reader_m2': null, // Free - included
+  'wisepos_e': 'price_1ShJaI4K55W1qqBC08Lw0L9c', // $30/month
+  'reader_s700': 'price_1ShJai4K55W1qqBCzAyUq8if' // $50/month
+};
+
 // Create checkout session
 app.post('/create-checkout-session', async (req, res) => {
   try {
@@ -151,9 +158,9 @@ app.post('/create-checkout-session', async (req, res) => {
       console.error('Attempted checkout but Stripe client is not configured');
       return res.status(500).json({ error: 'Stripe not configured' });
     }
-    const { priceId, customerEmail } = req.body;
+      const { priceId, customerEmail, terminalModel, terminalType } = req.body;
 
-    console.log('📝 Checkout request received:', { priceId, hasCustomerEmail: !!customerEmail });
+    console.log('📝 Checkout request received:', { priceId, hasCustomerEmail: !!customerEmail, terminalType });
     console.log('🔎 Request origin/header:', { origin: req.headers.origin, host: req.headers.host });
 
     if (!priceId) {
@@ -165,20 +172,37 @@ app.post('/create-checkout-session', async (req, res) => {
     const origin = req.headers.origin || envFrontend || 'https://xpose-stripe-server.vercel.app';
     console.log('🔄 Creating Stripe checkout session... using origin:', origin, ' (raw req.headers.origin=', req.headers.origin, ', envFrontend=', envFrontend, ')');
 
+    // Build line items array
+    const lineItems = [
+      {
+        price: priceId, // Subscription plan
+        quantity: 1,
+        }
+    ];
+
+    // Add terminal hardware if not M2 (M2 is free/included)
+      // Accept `terminalModel` from newer frontends, fall back to legacy `terminalType`.
+      const terminal = terminalModel || terminalType || 'reader_m2';
+    if (terminal !== 'reader_m2' && TERMINAL_PRICES[terminal]) {
+      console.log(`➕ Adding terminal: ${terminal} with price ${TERMINAL_PRICES[terminal]}`);
+      lineItems.push({
+        price: TERMINAL_PRICES[terminal],
+        quantity: 1
+      });
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       payment_method_types: ['card'],
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
+      line_items: lineItems,
       customer_email: customerEmail || undefined,
       // Set explicit locale to avoid language file errors
       // 14-day trial
       subscription_data: {
         trial_period_days: 14,
+        metadata: {
+          terminal_type: terminal
+        }
       },
       // Enable Apple Pay and Google Pay
       payment_method_options: {
@@ -191,10 +215,13 @@ app.post('/create-checkout-session', async (req, res) => {
       // Redirect to create-shop page after successful payment (not dashboard)
       success_url: `${origin}/create-shop.html?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/paywall.html`,
+      metadata: {
+        terminal_type: terminal
+      }
     });
 
     res.json({ url: session.url });
-    console.log('✅ Checkout session created successfully:', session.id, 'url:', session.url);
+    console.log('✅ Checkout session created successfully:', session.id, 'url:', session.url, 'terminal:', terminal);
   } catch (error) {
     console.error('❌ Stripe error:', error && error.message);
     console.error('Full error object:', error);
