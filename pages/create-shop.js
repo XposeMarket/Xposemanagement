@@ -379,7 +379,161 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (supabase) {
         console.log('🏪 Creating shop via Supabase...');
         
-        // Create shop with all fields
+        // Create user in Supabase Auth FIRST to get auth ID
+        console.log('👤 Creating admin user in Supabase Auth...');
+        const { data: signData, error: signErr } = await supabase.auth.signUp({
+          email: sanitizedEmail,
+          password: pass,
+          options: { 
+            data: { 
+              first: sanitizedFirst, 
+              last: sanitizedLast, 
+              zipcode: sanitizedZipcode, 
+              role: 'admin'
+            } 
+          }
+        });
+        
+        if (signErr) {
+          const msg = (signErr.message || '').toLowerCase();
+          // If the user already exists, sign them in instead
+          if (msg.includes('user already registered') || msg.includes('already registered') || msg.includes('already exists')) {
+            console.warn('⚠️ User already registered, signing in...');
+            const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email: sanitizedEmail, password: pass });
+            
+            if (signInErr) {
+              console.error('❌ Sign-in after existing user failed:', signInErr);
+              throw signInErr || new Error('Sign-in failed after existing user.');
+            }
+            
+            console.log('✅ Signed in existing user:', signInData);
+            
+            // Use existing user's auth_id
+            const auth_id = signInData.user.id;
+            if (!auth_id || typeof auth_id !== 'string' || auth_id.length < 16) {
+              throw new Error('Invalid auth_id after sign-in.');
+            }
+            
+            // Now create shop with owner_id
+            const join_code = Math.random().toString(36).slice(2,8).toUpperCase();
+            const shopInsert = { 
+              name: sanitizedShopName, 
+              type: shopType, 
+              email: sanitizedEmail,
+              zipcode: sanitizedZipcode,
+              street: sanitizedStreet,
+              city: sanitizedCity,
+              state: sanitizedState,
+              join_code, 
+              staff_limit: 3,
+              owner_id: auth_id
+            };
+            console.log('🛠️ Shop insert object:', shopInsert);
+            const { data: shopData, error: shopErr } = await supabase
+              .from('shops')
+              .insert([shopInsert])
+              .select()
+              .single();
+            console.log('🛠️ Supabase shop response:', { shopData, shopErr });
+            
+            if (shopErr || !shopData) {
+              console.error('❌ Shop creation failed:', shopErr);
+              throw shopErr || new Error('Could not create shop.');
+            }
+            
+            console.log('✅ Shop created:', shopData);
+            const shopId = shopData.id;
+            
+            // Create Stripe Express Account
+            console.log('🏦 Creating Stripe Express account...');
+            try {
+              const STRIPE_API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                ? 'http://localhost:3001'
+                : 'https://xpose-stripe-server.vercel.app';
+
+              const accountResponse = await fetch(`${STRIPE_API_URL}/api/connect/create-account`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  shopId: shopId,
+                  email: sanitizedEmail,
+                  businessName: sanitizedShopName,
+                  country: 'US',
+                  address: {
+                    street: sanitizedStreet || '123 Main St',
+                    city: sanitizedCity || 'Frederick',
+                    state: sanitizedState || 'MD',
+                    zipcode: sanitizedZipcode || '21701'
+                  }
+                })
+              });
+
+              if (!accountResponse.ok) {
+                const errorData = await accountResponse.json();
+                console.error('❌ Express account creation failed:', errorData);
+              } else {
+                const accountData = await accountResponse.json();
+                console.log('✅ Stripe Express account created:', accountData.accountId);
+              }
+            } catch (accountError) {
+              console.error('❌ Stripe account creation error:', accountError);
+            }
+            
+            await createUserRecord(supabase, auth_id, sanitizedEmail, sanitizedFirst, sanitizedLast, sanitizedZipcode, 'admin', shopId);
+            await assignOwner(supabase, auth_id, shopId);
+            await saveSubscriptionInfo(supabase, auth_id);
+            
+            // Initialize shop data
+            console.log('📊 Initializing shop data...');
+            const { error: dataErr } = await supabase.from('data').insert([{
+              shop_id: shopId,
+              settings: {},
+              appointments: [],
+              jobs: [],
+              threads: [],
+              invoices: []
+            }]);
+            
+            if (dataErr) {
+              console.warn('⚠️ Failed to initialize shop data:', dataErr);
+            } else {
+              console.log('✅ Shop data initialized');
+            }
+            
+            localStorage.setItem('xm_session', JSON.stringify({ 
+              email: sanitizedEmail, 
+              shopId: shopId, 
+              at: Date.now() 
+            }));
+            
+            err.textContent = 'Shop created and signed in! Redirecting to dashboard...';
+            supabaseSuccess = true;
+            setTimeout(() => location.href = 'dashboard.html', 2000);
+            return;
+          }
+          
+          console.error('❌ User creation failed:', signErr);
+          throw signErr || new Error('User creation failed.');
+        }
+        
+        if (!signData || !signData.user) {
+          console.error('❌ User creation returned no user:', signData);
+          throw new Error('User creation failed: no user returned.');
+        }
+        
+        console.log('✅ User created in Auth:', signData.user);
+        const auth_id = signData.user.id;
+        if (!auth_id || typeof auth_id !== 'string' || auth_id.length < 16) {
+          throw new Error('User creation failed: auth_id missing or invalid.');
+        }
+        
+        // CRITICAL: Ensure the session is set on the client so RLS works
+        if (signData.session) {
+          await supabase.auth.setSession(signData.session);
+          console.log('✅ Session set on Supabase client');
+        }
+        
+        // NOW create shop with owner_id
         const join_code = Math.random().toString(36).slice(2,8).toUpperCase();
         const shopInsert = { 
           name: sanitizedShopName, 
@@ -390,7 +544,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           city: sanitizedCity,
           state: sanitizedState,
           join_code, 
-          staff_limit: 3 
+          staff_limit: 3,
+          owner_id: auth_id
         };
         console.log('🛠️ Shop insert object:', shopInsert);
         const { data: shopData, error: shopErr } = await supabase
@@ -447,85 +602,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         // END STRIPE EXPRESS ACCOUNT CREATION
         
-        // Create user in Supabase Auth with shop_id in metadata
-        console.log('👤 Creating admin user in Supabase Auth...');
-        const { data: signData, error: signErr } = await supabase.auth.signUp({
-          email: sanitizedEmail,
-          password: pass,
-          options: { 
-            data: { 
-              first: sanitizedFirst, 
-              last: sanitizedLast, 
-              zipcode: sanitizedZipcode, 
-              role: 'admin',
-              shop_id: shopId
-            } 
-          }
-        });
-        
-        if (signErr) {
-          const msg = (signErr.message || '').toLowerCase();
-          // If the user already exists, sign them in instead
-          if (msg.includes('user already registered') || msg.includes('already registered') || msg.includes('already exists')) {
-            console.warn('⚠️ User already registered, signing in...');
-            const { data: signInData, error: signInErr } = await supabase.auth.signInWithPassword({ email, password: pass });
-            
-            if (signInErr) {
-              console.error('❌ Sign-in after existing user failed:', signInErr);
-              throw signInErr || new Error('Sign-in failed after existing user.');
-            }
-            
-            console.log('✅ Signed in existing user:', signInData);
-            
-            // Create/update user record in users table
-            const auth_id = signInData.user.id;
-            if (auth_id && typeof auth_id === 'string' && auth_id.length >= 16) {
-              await createUserRecord(supabase, auth_id, sanitizedEmail, sanitizedFirst, sanitizedLast, sanitizedZipcode, 'admin', shopId);
-              // Assign ownership according to plan
-              await assignOwner(supabase, auth_id, shopId);
-              // Save Stripe subscription info if available
-              await saveSubscriptionInfo(supabase, auth_id);
-            } else {
-              console.error('❌ Invalid auth_id after sign-in:', auth_id);
-              throw new Error('Invalid auth_id after sign-in.');
-            }
-            
-            // Save session locally
-            localStorage.setItem('xm_session', JSON.stringify({ 
-              email, 
-              shopId: shopId, 
-              at: Date.now() 
-            }));
-            
-            err.textContent = 'Shop created and signed in! Redirecting to dashboard...';
-            supabaseSuccess = true;
-            setTimeout(() => location.href = 'dashboard.html', 2000);
-            return;
-          }
-          
-          console.error('❌ User creation failed:', signErr);
-          throw signErr || new Error('User creation failed.');
-        }
-        
-        if (!signData || !signData.user) {
-          console.error('❌ User creation returned no user:', signData);
-          throw new Error('User creation failed: no user returned.');
-        }
-        
-        console.log('✅ User created in Auth:', signData.user);
-        
-        // Create user record in custom users table
-        const auth_id = signData.user.id;
-        if (auth_id && typeof auth_id === 'string' && auth_id.length >= 16) {
-          await createUserRecord(supabase, auth_id, sanitizedEmail, sanitizedFirst, sanitizedLast, sanitizedZipcode, 'admin', shopId);
-          // Assign ownership according to plan
-          await assignOwner(supabase, auth_id, shopId);
-          // Save Stripe subscription info if available
-          await saveSubscriptionInfo(supabase, auth_id);
-        } else {
-          console.error('❌ Invalid auth_id after signup:', auth_id);
-          throw new Error('User creation failed: auth_id missing or invalid.');
-        }
+        // Create user record in custom users table (user already created in auth at top)
+        await createUserRecord(supabase, auth_id, sanitizedEmail, sanitizedFirst, sanitizedLast, sanitizedZipcode, 'admin', shopId);
+        // Assign ownership according to plan
+        await assignOwner(supabase, auth_id, shopId);
+        // Save Stripe subscription info if available
+        await saveSubscriptionInfo(supabase, auth_id);
         
         // Initialize empty data record for the shop
         console.log('📊 Initializing shop data...');
