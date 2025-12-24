@@ -539,6 +539,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error('❌ Session verification failed! Expected:', auth_id, 'Got:', user?.id);
             throw new Error('Session not properly set');
           }
+          
+          // WORKAROUND: Small delay to ensure session propagates to DB client
+          await new Promise(resolve => setTimeout(resolve, 500));
+          console.log('⏱️ Waited for session propagation');
         }
         
         // NOW create shop with owner_id
