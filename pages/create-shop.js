@@ -99,6 +99,37 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('✅ Shop created:', shopData);
         const shopId = shopData.id;
         
+        // ⭐ CREATE STRIPE EXPRESS ACCOUNT FOR THE SHOP
+        console.log('🏦 Creating Stripe Express account...');
+        try {
+          const STRIPE_API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? 'http://localhost:3001'
+            : 'https://xpose-stripe-server.vercel.app';
+
+          const accountResponse = await fetch(`${STRIPE_API_URL}/api/connect/create-account`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              shopId: shopId,
+              email: session.user.email,
+              businessName: shopName,
+              country: 'US'
+            })
+          });
+
+          if (!accountResponse.ok) {
+            const errorData = await accountResponse.json();
+            console.error('❌ Express account creation failed:', errorData);
+          } else {
+            const accountData = await accountResponse.json();
+            console.log('✅ Stripe Express account created:', accountData.accountId);
+          }
+        } catch (accountError) {
+          console.error('❌ Stripe account creation error:', accountError);
+          // Don't fail shop creation if Stripe account fails
+        }
+        // END STRIPE EXPRESS ACCOUNT CREATION
+        
         // Create user record in users table
         const userId = session.user.id;
         const email = session.user.email;
@@ -370,6 +401,39 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         console.log('✅ Shop created:', shopData);
         const shopId = shopData.id;
+        
+        // ⭐ CREATE STRIPE EXPRESS ACCOUNT FOR THE SHOP
+        console.log('🏦 Creating Stripe Express account...');
+        try {
+          const STRIPE_API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? 'http://localhost:3001'
+            : 'https://xpose-stripe-server.vercel.app';
+
+          const accountResponse = await fetch(`${STRIPE_API_URL}/api/connect/create-account`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              shopId: shopId,
+              email: sanitizedEmail,
+              businessName: sanitizedShopName,
+              country: 'US'
+            })
+          });
+
+          if (!accountResponse.ok) {
+            const errorData = await accountResponse.json();
+            console.error('❌ Express account creation failed:', errorData);
+            throw new Error(errorData.error || 'Failed to create Stripe account');
+          }
+
+          const accountData = await accountResponse.json();
+          console.log('✅ Stripe Express account created:', accountData.accountId);
+        } catch (accountError) {
+          console.error('❌ Stripe account creation error:', accountError);
+          // Don't fail shop creation if Stripe account fails
+          // User can complete onboarding later in settings
+        }
+        // END STRIPE EXPRESS ACCOUNT CREATION
         
         // Create user in Supabase Auth with shop_id in metadata
         console.log('👤 Creating admin user in Supabase Auth...');

@@ -368,6 +368,428 @@ app.post('/get-session-subscription', async (req, res) => {
   }
 });
 
+// ===========================
+// STRIPE CONNECT ENDPOINTS
+// ===========================
+
+// Create Express account for new shop
+app.post('/api/connect/create-account', async (req, res) => {
+  const { shopId, email, businessName, country = 'US' } = req.body;
+  
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe not configured' });
+  }
+  
+  if (!shopId || !email) {
+    return res.status(400).json({ error: 'Shop ID and email required' });
+  }
+
+  try {
+    console.log('🏦 Creating Express account for shop:', shopId);
+
+    // Create Express account
+    const account = await stripe.accounts.create({
+      type: 'express',
+      country: country,
+      email: email,
+      capabilities: {
+        card_payments: { requested: true },
+        transfers: { requested: true },
+      },
+      business_type: 'individual',
+      business_profile: {
+        name: businessName || 'Auto Shop',
+        product_description: 'Automotive repair and maintenance services',
+      },
+      settings: {
+        payouts: {
+          schedule: {
+            interval: 'manual',
+          },
+        },
+      },
+    });
+
+    console.log('✅ Express account created:', account.id);
+
+    // Create Stripe Terminal Location for this account
+    const location = await stripe.terminal.locations.create(
+      {
+        display_name: businessName || 'Main Location',
+        address: {
+          line1: '123 Main St',
+          city: 'City',
+          state: 'State',
+          postal_code: '12345',
+          country: country,
+        },
+      },
+      {
+        stripeAccount: account.id,
+      }
+    );
+
+    console.log('✅ Terminal location created:', location.id);
+
+    // Update shop in Supabase
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (supabaseUrl && supabaseKey) {
+      const { createClient } = require('@supabase/supabase-js');
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      const { error: updateError } = await supabase
+        .from('shops')
+        .update({
+          stripe_account_id: account.id,
+          terminal_location_id: location.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', shopId);
+
+      if (updateError) {
+        console.error('❌ Failed to update shop:', updateError);
+        throw updateError;
+      }
+
+      console.log('✅ Shop updated with Stripe account');
+    }
+
+    res.json({
+      success: true,
+      accountId: account.id,
+      locationId: location.id,
+    });
+  } catch (error) {
+    console.error('❌ Express account creation failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create account link for onboarding
+app.post('/api/connect/create-account-link', async (req, res) => {
+  const { accountId } = req.body;
+
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe not configured' });
+  }
+
+  if (!accountId) {
+    return res.status(400).json({ error: 'Account ID required' });
+  }
+
+  try {
+    const envFrontend = normalizeOrigin(process.env.FRONTEND_URL);
+    const origin = req.headers.origin || envFrontend || 'https://www.xpose.management';
+
+    const accountLink = await stripe.accountLinks.create({
+      account: accountId,
+      refresh_url: `${origin}/settings.html?refresh=true`,
+      return_url: `${origin}/settings.html?onboarding=complete`,
+      type: 'account_onboarding',
+    });
+
+    res.json({
+      success: true,
+      url: accountLink.url,
+    });
+  } catch (error) {
+    console.error('❌ Account link creation failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get account status
+app.post('/api/connect/account-status', async (req, res) => {
+  const { accountId } = req.body;
+
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe not configured' });
+  }
+
+  if (!accountId) {
+    return res.status(400).json({ error: 'Account ID required' });
+  }
+
+  try {
+    const account = await stripe.accounts.retrieve(accountId);
+
+    res.json({
+      success: true,
+      chargesEnabled: account.charges_enabled,
+      payoutsEnabled: account.payouts_enabled,
+      detailsSubmitted: account.details_submitted,
+      requiresInfo: account.requirements?.currently_due || [],
+    });
+  } catch (error) {
+    console.error('❌ Account status check failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===========================
+// STRIPE TERMINAL ENDPOINTS
+// ===========================
+
+// Create terminal payment intent
+app.post('/api/terminal/create-payment', async (req, res) => {
+  const { invoiceId, shopId } = req.body;
+
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe not configured' });
+  }
+
+  if (!invoiceId || !shopId) {
+    return res.status(400).json({ error: 'Invoice ID and Shop ID required' });
+  }
+
+  try {
+    console.log('💳 Creating terminal payment for invoice:', invoiceId);
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Fetch shop
+    const { data: shop, error: shopError } = await supabase
+      .from('shops')
+      .select('stripe_account_id, terminal_id')
+      .eq('id', shopId)
+      .single();
+
+    if (shopError || !shop) {
+      return res.status(404).json({ error: 'Shop not found' });
+    }
+
+    if (!shop.stripe_account_id) {
+      return res.status(400).json({ error: 'Shop has no Stripe account. Please complete onboarding in Settings.' });
+    }
+
+    if (!shop.terminal_id) {
+      return res.status(400).json({ error: 'No terminal registered for this shop. Please register a terminal in Settings.' });
+    }
+
+    // Fetch invoice
+    const { data: invoice, error: invoiceError } = await supabase
+      .from('invoices')
+      .select('total, customer_id, customers(name, email)')
+      .eq('id', invoiceId)
+      .single();
+
+    if (invoiceError || !invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    // Calculate amount (with platform fee)
+    const grossAmount = Math.round(invoice.total * 100);
+    const platformFee = Math.round(grossAmount * 0.023);
+
+    // Create PaymentIntent on Connected Account
+    const paymentIntent = await stripe.paymentIntents.create(
+      {
+        amount: grossAmount,
+        currency: 'usd',
+        payment_method_types: ['card_present'],
+        capture_method: 'automatic',
+        application_fee_amount: platformFee,
+        metadata: {
+          invoiceId: invoiceId,
+          shopId: shopId,
+          customerName: invoice.customers?.name || 'Unknown',
+        },
+      },
+      {
+        stripeAccount: shop.stripe_account_id,
+      }
+    );
+
+    console.log('✅ PaymentIntent created:', paymentIntent.id);
+
+    // Process payment on terminal
+    await stripe.terminal.readers.processPaymentIntent(
+      shop.terminal_id,
+      {
+        payment_intent: paymentIntent.id,
+      },
+      {
+        stripeAccount: shop.stripe_account_id,
+      }
+    );
+
+    console.log('✅ Payment sent to terminal');
+
+    res.json({
+      success: true,
+      paymentIntent: paymentIntent.id,
+      amount: grossAmount,
+    });
+  } catch (error) {
+    console.error('❌ Terminal payment creation failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Register terminal reader
+app.post('/api/terminal/register', async (req, res) => {
+  const { shopId, registrationCode } = req.body;
+
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe not configured' });
+  }
+
+  if (!shopId || !registrationCode) {
+    return res.status(400).json({ error: 'Shop ID and registration code required' });
+  }
+
+  try {
+    console.log('🔧 Registering terminal for shop:', shopId);
+
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get shop
+    const { data: shop, error: shopError } = await supabase
+      .from('shops')
+      .select('stripe_account_id, terminal_location_id, name')
+      .eq('id', shopId)
+      .single();
+
+    if (shopError || !shop) {
+      return res.status(404).json({ error: 'Shop not found' });
+    }
+
+    if (!shop.stripe_account_id) {
+      return res.status(400).json({ error: 'Shop has no Stripe account' });
+    }
+
+    if (!shop.terminal_location_id) {
+      return res.status(400).json({ error: 'Shop has no terminal location' });
+    }
+
+    // Register reader
+    const reader = await stripe.terminal.readers.create(
+      {
+        registration_code: registrationCode,
+        location: shop.terminal_location_id,
+        label: `${shop.name} Terminal`,
+      },
+      {
+        stripeAccount: shop.stripe_account_id,
+      }
+    );
+
+    console.log('✅ Terminal registered:', reader.id);
+
+    // Update shop
+    const { error: updateError } = await supabase
+      .from('shops')
+      .update({
+        terminal_id: reader.id,
+        terminal_serial: reader.serial_number,
+        terminal_status: reader.status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', shopId);
+
+    if (updateError) {
+      console.error('❌ Failed to update shop:', updateError);
+      throw updateError;
+    }
+
+    console.log('✅ Shop updated with terminal');
+
+    res.json({
+      success: true,
+      terminal: {
+        id: reader.id,
+        label: reader.label,
+        status: reader.status,
+        deviceType: reader.device_type,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Terminal registration failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get terminal status
+app.post('/api/terminal/status', async (req, res) => {
+  const { shopId } = req.body;
+
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe not configured' });
+  }
+
+  if (!shopId) {
+    return res.status(400).json({ error: 'Shop ID required' });
+  }
+
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get shop
+    const { data: shop, error: shopError } = await supabase
+      .from('shops')
+      .select('stripe_account_id, terminal_id, terminal_status, terminal_model')
+      .eq('id', shopId)
+      .single();
+
+    if (shopError || !shop) {
+      return res.status(404).json({ error: 'Shop not found' });
+    }
+
+    if (!shop.terminal_id) {
+      return res.json({ hasTerminal: false });
+    }
+
+    // Get reader status from Stripe
+    const reader = await stripe.terminal.readers.retrieve(
+      shop.terminal_id,
+      {},
+      {
+        stripeAccount: shop.stripe_account_id,
+      }
+    );
+
+    res.json({
+      hasTerminal: true,
+      terminal: {
+        id: reader.id,
+        label: reader.label,
+        status: reader.status,
+        deviceType: reader.device_type,
+        model: shop.terminal_model,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Terminal status check failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Webhook endpoint for Stripe events
 // IMPORTANT: This needs raw body for signature verification
 app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {

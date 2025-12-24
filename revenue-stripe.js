@@ -1,424 +1,224 @@
 // revenue-stripe.js
-// Loads Stripe balance and wires payout/bank actions for the revenue page.
-const REVENUE_API_URL = window.API_URL || 'https://xpose-stripe-server.vercel.app/api';
+// Handles Stripe Connect bank integration on Revenue page
 
-// Local banner-style notification helper (keeps UI consistent with other pages)
-function showNotification(message, type = 'success') {
-  let container = document.getElementById('revenue_notification_banner_container');
-  if (!container) {
-    container = document.createElement('div');
-    container.id = 'revenue_notification_banner_container';
-    container.style.position = 'fixed';
-    container.style.left = '0';
-    container.style.right = '0';
-    container.style.top = '0';
-    container.style.zIndex = '2147483646';
-    container.style.display = 'flex';
-    container.style.justifyContent = 'center';
-    container.style.pointerEvents = 'none';
-    const header = document.querySelector('header');
-    if (header && header.parentNode) header.parentNode.insertBefore(container, header);
-    else document.body.insertBefore(container, document.body.firstChild);
+document.addEventListener('DOMContentLoaded', async () => {
+  const connectBankBtn = document.getElementById('stripe-connect-bank');
+  const requestPayoutBtn = document.getElementById('stripe-request-payout');
+  const toggleAutoWithdrawBtn = document.getElementById('stripe-toggle-auto-withdraw');
+
+  if (!connectBankBtn) return;
+
+  // Get current shop ID
+  function getCurrentShopId() {
+    try {
+      const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+      return session.shopId || null;
+    } catch (e) {
+      return null;
+    }
   }
 
-  const banner = document.createElement('div');
-  banner.style.pointerEvents = 'auto';
-  banner.style.margin = '8px';
-  banner.style.minWidth = '280px';
-  banner.style.maxWidth = '980px';
-  banner.style.padding = '12px 18px';
-  banner.style.borderRadius = '8px';
-  banner.style.boxShadow = '0 8px 30px rgba(2,6,23,0.15)';
-  banner.style.fontWeight = '600';
-  banner.style.fontSize = '14px';
-  banner.style.color = '#fff';
-  if (type === 'error') banner.style.background = '#ef4444';
-  else if (type === 'info') banner.style.background = '#3b82f6';
-  else { banner.style.background = '#10b981'; banner.style.color = '#064e3b'; }
-  banner.textContent = message;
-  container.appendChild(banner);
-  banner.style.opacity = '0';
-  banner.style.transform = 'translateY(-6px)';
-  requestAnimationFrame(() => { banner.style.transition = 'all 220ms ease'; banner.style.opacity = '1'; banner.style.transform = 'translateY(0)'; });
-  setTimeout(() => { try { banner.style.opacity = '0'; banner.style.transform = 'translateY(-6px)'; } catch(e){}; setTimeout(()=>{ try{ banner.remove(); }catch(e){} },240); }, 4000);
-}
+  // Get API URL based on environment
+  const STRIPE_API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3001'
+    : 'https://xpose-stripe-server.vercel.app';
 
-function getAuthToken() {
-  try {
-    const s = JSON.parse(localStorage.getItem('xm_session') || '{}');
-    return (s && (s.access_token || s.token)) || null;
-  } catch (e) { return null; }
-}
-
-async function getShopIdFromSessionOrSupabase() {
-  try {
-    if (window._supabaseClient) {
-      const { data } = await window._supabaseClient.auth.getUser();
-      const user = (data && data.user) || null;
-      if (user) return user.current_shop_id || user.default_shop_id || null;
+  // ============================================================================
+  // CONNECT BANK INFO BUTTON - Your Flow!
+  // ============================================================================
+  connectBankBtn.addEventListener('click', async () => {
+    const shopId = getCurrentShopId();
+    if (!shopId) {
+      alert('Could not determine current shop');
+      return;
     }
-  } catch (e) { /* ignore */ }
 
-  try {
-    const s = JSON.parse(localStorage.getItem('xm_session') || '{}');
-    return (s && (s.shopId || s.current_shop_id || s.default_shop_id)) || null;
-  } catch (e) { return null; }
-}
+    connectBankBtn.disabled = true;
+    connectBankBtn.textContent = 'Loading...';
 
-function centsToMoney(cents) {
-  if (cents == null) return '$0.00';
-  return `$${(cents/100).toFixed(2)}`;
-}
+    try {
+      // Import Supabase client
+      const { getSupabaseClient } = await import('./helpers/supabase.js');
+      const supabase = getSupabaseClient();
 
-async function loadStripeBalance() {
-  const shopId = await getShopIdFromSessionOrSupabase();
-  const elTotal = document.getElementById('stripe-total-revenue');
-  const elCurr = document.getElementById('stripe-current-balance');
-  const elAvail = document.getElementById('stripe-available-payout');
-  const elLast = document.getElementById('stripe-last-payout');
-  const elBank = document.getElementById('stripe-bank-status');
-  const elAuto = document.getElementById('stripe-auto-withdraw');
-
-  try {
-    const url = shopId ? REVENUE_API_URL + '/stripe-balance/' + shopId : REVENUE_API_URL + '/stripe-balance';
-    const headers = { 'Content-Type': 'application/json' };
-    const token = getAuthToken(); if (token) headers['Authorization'] = 'Bearer ' + token;
-
-    const resp = await fetch(url, { headers });
-    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-    const data = await resp.json();
-
-    // Expecting amounts in cents or numbers. Use fallback properties for compatibility.
-    const total = (data && (data.totalRevenue || data.total_revenue || data.total)) || 0;
-    const current = (data && (data.currentBalance || data.current_balance || data.current)) || 0;
-    const available = (data && (data.availableBalance || data.available_balance || data.available)) || 0;
-    const last = (data && (data.lastPayout || data.last_payout || data.last)) || 0;
-    const bankStatus = (data && (data.bankStatus || data.bank_status)) || ((data && data.bank_connected) ? 'Connected' : 'Not Connected');
-    const autoOn = !!(data && (data.autoWithdrawEnabled || data.auto_withdraw || data.auto_withdraw_enabled));
-
-    if (elTotal) elTotal.textContent = centsToMoney(total);
-    if (elCurr) elCurr.textContent = centsToMoney(current);
-    if (elAvail) elAvail.textContent = centsToMoney(available);
-    if (elLast) elLast.textContent = centsToMoney(last);
-    if (elBank) elBank.textContent = bankStatus;
-    if (elAuto) elAuto.textContent = autoOn ? 'On' : 'Off';
-
-  } catch (err) {
-    console.warn('loadStripeBalance error', err);
-    if (document.getElementById('stripe-total-revenue')) document.getElementById('stripe-total-revenue').textContent = '$0.00';
-    // Show friendly banner to user
-    showNotification('Could not load Stripe balance. The Stripe service may be unavailable.', 'error');
-  }
-}
-
-async function requestPayout() {
-  const shopId = await getShopIdFromSessionOrSupabase();
-  // Show a centered modal that includes the available balance
-  const availEl = document.getElementById('stripe-available-payout');
-  const availText = (availEl && availEl.textContent) ? availEl.textContent.trim() : '';
-
-  const modalOverlay = document.createElement('div');
-  modalOverlay.style.position = 'fixed';
-  modalOverlay.style.left = '0';
-  modalOverlay.style.top = '0';
-  modalOverlay.style.width = '100vw';
-  modalOverlay.style.height = '100vh';
-  modalOverlay.style.display = 'flex';
-  modalOverlay.style.alignItems = 'center';
-  modalOverlay.style.justifyContent = 'center';
-  modalOverlay.style.zIndex = '2147483647';
-  modalOverlay.style.background = 'rgba(0,0,0,0.45)';
-
-  const modal = document.createElement('div');
-  modal.style.background = '#fff';
-  modal.style.padding = '20px';
-  modal.style.borderRadius = '8px';
-  modal.style.minWidth = '320px';
-  modal.style.maxWidth = '520px';
-  modal.style.boxShadow = '0 12px 40px rgba(2,6,23,0.2)';
-  modal.style.textAlign = 'center';
-
-  const title = document.createElement('div');
-  title.style.fontSize = '18px';
-  title.style.fontWeight = '700';
-  title.style.marginBottom = '8px';
-  title.textContent = 'Request payout from available balance now?';
-
-  const balance = document.createElement('div');
-  balance.style.fontSize = '16px';
-  balance.style.margin = '6px 0 14px 0';
-  balance.style.color = '#111827';
-  balance.textContent = availText ? `Available Balance: ${availText}` : 'Available Balance: N/A';
-
-  const btnRow = document.createElement('div');
-  btnRow.style.display = 'flex';
-  btnRow.style.justifyContent = 'center';
-  btnRow.style.gap = '12px';
-
-  const btnCancel = document.createElement('button');
-  btnCancel.textContent = 'Cancel';
-  btnCancel.className = 'btn';
-  btnCancel.style.background = '#fff';
-  btnCancel.style.border = '1px solid #d1d5db';
-  btnCancel.style.color = '#111827';
-  btnCancel.style.padding = '8px 14px';
-  btnCancel.style.borderRadius = '6px';
-
-  const btnConfirm = document.createElement('button');
-  btnConfirm.textContent = 'Request Payout';
-  btnConfirm.className = 'btn';
-  btnConfirm.style.background = '#2176bd';
-  btnConfirm.style.color = '#fff';
-  btnConfirm.style.padding = '8px 14px';
-  btnConfirm.style.borderRadius = '6px';
-
-  btnRow.appendChild(btnCancel);
-  btnRow.appendChild(btnConfirm);
-  modal.appendChild(title);
-  modal.appendChild(balance);
-  modal.appendChild(btnRow);
-  modalOverlay.appendChild(modal);
-  document.body.appendChild(modalOverlay);
-
-  const confirmed = await new Promise(resolve => {
-    btnCancel.addEventListener('click', () => resolve(false));
-    btnConfirm.addEventListener('click', () => resolve(true));
-    modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) resolve(false); });
-    const onKey = (e) => { if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); resolve(false); } };
-    document.addEventListener('keydown', onKey);
-  });
-
-  try { modalOverlay.remove(); } catch (e) {}
-  if (!confirmed) return;
-  try {
-    const url = shopId ? `${REVENUE_API_URL}/stripe-request-payout/${shopId}` : `${REVENUE_API_URL}/stripe-request-payout`;
-    const headers = { 'Content-Type': 'application/json' };
-    const token = getAuthToken(); if (token) headers['Authorization'] = `Bearer ${token}`;
-    const resp = await fetch(url, { method: 'POST', headers });
-    if (!resp.ok) {
-      const txt = await resp.text().catch(()=>'');
-      throw new Error(txt || `HTTP ${resp.status}`);
-    }
-    const data = await resp.json();
-    alert('Payout requested. ' + (data.message || 'Check Stripe dashboard for status.'));
-    await loadStripeBalance();
-  } catch (err) {
-    console.error('requestPayout error', err);
-    showNotification('Error opening Banking System.', 'error');
-  }
-}
-
-async function connectBank() {
-  const shopId = await getShopIdFromSessionOrSupabase();
-  try {
-    const url = shopId ? `${REVENUE_API_URL}/stripe-connect/${shopId}` : `${REVENUE_API_URL}/stripe-connect`;
-    const headers = { 'Content-Type': 'application/json' };
-    const token = getAuthToken(); if (token) headers['Authorization'] = `Bearer ${token}`;
-    const resp = await fetch(url, { method: 'POST', headers });
-    if (!resp.ok) {
-      const txt = await resp.text().catch(()=>'');
-      throw new Error(txt || `HTTP ${resp.status}`);
-    }
-    const data = await resp.json();
-    if (data && data.url) {
-      // Redirect to Stripe onboarding / link page
-      window.location.href = data.url;
-    } else {
-      showNotification('Could not get connect URL from server.', 'error');
-    }
-  } catch (err) {
-    console.error('connectBank error', err);
-    showNotification('Failed to start bank linking', 'error');
-  }
-}
-
-async function toggleAutoWithdraw() {
-  const shopId = await getShopIdFromSessionOrSupabase();
-  const elAuto = document.getElementById('stripe-auto-withdraw');
-  const currentlyOn = elAuto && elAuto.textContent && elAuto.textContent.toLowerCase().includes('on');
-  const action = currentlyOn ? 'disable' : 'enable';
-  // Build modal for enabling/disabling auto-withdraw. When enabling, present frequency options.
-  const modalOverlay = document.createElement('div');
-  modalOverlay.style.position = 'fixed';
-  modalOverlay.style.left = '0';
-  modalOverlay.style.top = '0';
-  modalOverlay.style.width = '100vw';
-  modalOverlay.style.height = '100vh';
-  modalOverlay.style.display = 'flex';
-  modalOverlay.style.alignItems = 'center';
-  modalOverlay.style.justifyContent = 'center';
-  modalOverlay.style.zIndex = '2147483647';
-  modalOverlay.style.background = 'rgba(0,0,0,0.45)';
-
-  const modal = document.createElement('div');
-  modal.style.background = '#fff';
-  modal.style.padding = '22px';
-  modal.style.borderRadius = '8px';
-  modal.style.minWidth = '320px';
-  modal.style.maxWidth = '560px';
-  modal.style.boxShadow = '0 12px 40px rgba(2,6,23,0.2)';
-  modal.style.textAlign = 'center';
-
-  const title = document.createElement('div');
-  title.style.fontSize = '18px';
-  title.style.fontWeight = '700';
-  title.style.marginBottom = '8px';
-  title.textContent = `${action === 'enable' ? 'Enable' : 'Disable'} auto withdrawals?`;
-
-  modal.appendChild(title);
-
-  let selectedFrequency = 'weekly';
-  if (action === 'enable') {
-    const info = document.createElement('div');
-    info.style.marginBottom = '8px';
-    info.style.color = '#111827';
-    info.textContent = 'Choose withdrawal frequency:';
-    modal.appendChild(info);
-
-    // Render pill-style buttons stacked vertically. Monthly is shown centered at the bottom.
-    const primaryOptions = [
-      { v: 'daily', label: 'Daily' },
-      { v: 'every_other_day', label: 'Every Other Day' },
-      { v: 'weekly', label: 'Weekly (Friday)' },
-      { v: 'bi_weekly', label: 'Bi Weekly' }
-    ];
-
-    const primaryWrap = document.createElement('div');
-    primaryWrap.style.display = 'flex';
-    primaryWrap.style.flexDirection = 'column';
-    primaryWrap.style.gap = '8px';
-    primaryWrap.style.marginBottom = '10px';
-    primaryWrap.style.alignItems = 'center';
-
-    const makePill = (opt) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.textContent = opt.label;
-      btn.dataset.value = opt.v;
-      btn.style.padding = '8px 14px';
-      btn.style.borderRadius = '999px';
-      btn.style.border = '1px solid #d1d5db';
-      btn.style.background = '#fff';
-      btn.style.color = '#111827';
-      btn.style.cursor = 'pointer';
-      btn.style.minWidth = '180px';
-      btn.style.boxShadow = '0 6px 18px rgba(2,6,23,0.06)';
-
-      if (opt.v === selectedFrequency) {
-        btn.style.background = '#2176bd';
-        btn.style.color = '#fff';
-        btn.style.borderColor = '#1e4f7a';
+      if (!supabase) {
+        throw new Error('Supabase not available');
       }
 
-        btn.addEventListener('click', () => {
-          selectedFrequency = opt.v;
-          // update visuals across all pills inside modal
-          const siblings = modal.querySelectorAll('button[data-value]');
-          siblings.forEach(s => {
-            s.style.background = '#fff';
-            s.style.color = '#111827';
-            s.style.borderColor = '#d1d5db';
-          });
-          btn.style.background = '#2176bd';
-          btn.style.color = '#fff';
-          btn.style.borderColor = '#1e4f7a';
+      console.log('🏦 [CONNECT] Fetching shop details...');
+
+      // Get shop details from database
+      const { data: shop, error: shopError } = await supabase
+        .from('shops')
+        .select('stripe_account_id, name, email')
+        .eq('id', shopId)
+        .single();
+
+      if (shopError || !shop) {
+        throw new Error('Could not fetch shop details');
+      }
+
+      console.log('🏦 [CONNECT] Shop:', { id: shopId, hasAccount: !!shop.stripe_account_id });
+
+      // ⭐ YOUR FLOW: Check if account exists
+      if (!shop.stripe_account_id) {
+        console.log('🏦 [CONNECT] No Stripe account found, creating one...');
+
+        // CREATE EXPRESS ACCOUNT FIRST
+        const createResponse = await fetch(`${STRIPE_API_URL}/api/connect/create-account`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            shopId: shopId,
+            email: shop.email || 'shop@example.com',
+            businessName: shop.name || 'Auto Shop',
+            country: 'US'
+          })
         });
 
-      return btn;
-    };
+        if (!createResponse.ok) {
+          const errorData = await createResponse.json();
+          throw new Error(errorData.error || 'Failed to create Stripe account');
+        }
 
-    primaryOptions.forEach(opt => {
-      primaryWrap.appendChild(makePill(opt));
-    });
-    modal.appendChild(primaryWrap);
+        const createData = await createResponse.json();
+        console.log('✅ [CONNECT] Express account created:', createData.accountId);
 
-    // Monthly pill centered at the bottom
-    const monthlyWrap = document.createElement('div');
-    monthlyWrap.style.display = 'flex';
-    monthlyWrap.style.justifyContent = 'center';
-    monthlyWrap.style.marginTop = '6px';
-    monthlyWrap.style.marginBottom = '18px';
+        // Update local reference (database already updated by backend)
+        shop.stripe_account_id = createData.accountId;
+      }
 
-    const monthlyBtn = makePill({ v: 'monthly', label: 'Monthly' });
-    monthlyBtn.style.minWidth = '200px';
-    monthlyWrap.appendChild(monthlyBtn);
-    modal.appendChild(monthlyWrap);
-  }
+      console.log('🏦 [CONNECT] Getting onboarding link for account:', shop.stripe_account_id);
 
-  const btnRow = document.createElement('div');
-  btnRow.style.display = 'flex';
-  btnRow.style.justifyContent = 'center';
-  btnRow.style.gap = '12px';
+      // CREATE ACCOUNT LINK (onboarding)
+      const linkResponse = await fetch(`${STRIPE_API_URL}/api/connect/create-account-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: shop.stripe_account_id
+        })
+      });
 
-  const btnCancel = document.createElement('button');
-  btnCancel.textContent = 'Cancel';
-  btnCancel.className = 'btn';
-  btnCancel.style.background = '#fff';
-  btnCancel.style.border = '1px solid #d1d5db';
-  btnCancel.style.color = '#111827';
-  btnCancel.style.padding = '8px 14px';
-  btnCancel.style.borderRadius = '6px';
+      if (!linkResponse.ok) {
+        const errorData = await linkResponse.json();
+        throw new Error(errorData.error || 'Failed to create onboarding link');
+      }
 
-  const btnConfirm = document.createElement('button');
-  btnConfirm.textContent = action === 'enable' ? 'Enable' : 'Disable';
-  btnConfirm.className = 'btn';
-  btnConfirm.style.background = action === 'enable' ? '#10b981' : '#ef4444';
-  btnConfirm.style.color = '#fff';
-  btnConfirm.style.padding = '8px 14px';
-  btnConfirm.style.borderRadius = '6px';
+      const linkData = await linkResponse.json();
+      console.log('✅ [CONNECT] Onboarding link created:', linkData.url);
 
-  btnRow.appendChild(btnCancel);
-  btnRow.appendChild(btnConfirm);
-  modal.appendChild(btnRow);
-  modalOverlay.appendChild(modal);
-  document.body.appendChild(modalOverlay);
+      // REDIRECT TO STRIPE ONBOARDING
+      window.location.href = linkData.url;
 
-  const confirmed = await new Promise(resolve => {
-    btnCancel.addEventListener('click', () => resolve({ ok: false }));
-    btnConfirm.addEventListener('click', () => resolve({ ok: true }));
-    modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) resolve({ ok: false }); });
-    const onKey = (e) => { if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); resolve({ ok: false }); } };
-    document.addEventListener('keydown', onKey);
+    } catch (error) {
+      console.error('❌ [CONNECT] Error:', error);
+      alert('Failed to connect bank: ' + error.message);
+      connectBankBtn.disabled = false;
+      connectBankBtn.textContent = 'Connect Bank Info';
+    }
   });
 
-  try { modalOverlay.remove(); } catch (e) {}
-  if (!confirmed.ok) return;
+  // ============================================================================
+  // CHECK ONBOARDING STATUS ON PAGE LOAD
+  // ============================================================================
+  async function checkOnboardingStatus() {
+    const shopId = getCurrentShopId();
+    if (!shopId) return;
 
-  try {
-    const url = shopId ? `${REVENUE_API_URL}/stripe-auto-withdraw/${shopId}` : `${REVENUE_API_URL}/stripe-auto-withdraw`;
-    const headers = { 'Content-Type': 'application/json' };
-    const token = getAuthToken(); if (token) headers['Authorization'] = `Bearer ${token}`;
-    const body = action === 'enable' ? JSON.stringify({ action, frequency: selectedFrequency }) : JSON.stringify({ action });
-    const resp = await fetch(url, { method: 'POST', headers, body });
-    if (!resp.ok) {
-      const txt = await resp.text().catch(()=>'');
-      throw new Error(txt || `HTTP ${resp.status}`);
+    try {
+      const { getSupabaseClient } = await import('./helpers/supabase.js');
+      const supabase = getSupabaseClient();
+
+      if (!supabase) return;
+
+      // Get shop's Stripe account ID
+      const { data: shop, error: shopError } = await supabase
+        .from('shops')
+        .select('stripe_account_id')
+        .eq('id', shopId)
+        .single();
+
+      if (shopError || !shop || !shop.stripe_account_id) {
+        // No account yet - show default state
+        document.getElementById('stripe-bank-status').textContent = 'Not Connected';
+        document.getElementById('stripe-bank-status').style.color = '#888';
+        return;
+      }
+
+      // Check account status with Stripe
+      const statusResponse = await fetch(`${STRIPE_API_URL}/api/connect/account-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: shop.stripe_account_id
+        })
+      });
+
+      if (!statusResponse.ok) {
+        console.error('Failed to check account status');
+        return;
+      }
+
+      const statusData = await statusResponse.json();
+      console.log('📊 [STATUS] Account status:', statusData);
+
+      // Update UI based on status
+      const bankStatusEl = document.getElementById('stripe-bank-status');
+      
+      if (statusData.chargesEnabled && statusData.payoutsEnabled) {
+        bankStatusEl.textContent = 'Connected ✅';
+        bankStatusEl.style.color = '#28a745';
+        connectBankBtn.textContent = 'Update Bank Info';
+      } else if (statusData.detailsSubmitted) {
+        bankStatusEl.textContent = 'Pending Verification ⏳';
+        bankStatusEl.style.color = '#ffc107';
+        connectBankBtn.textContent = 'Continue Setup';
+      } else {
+        bankStatusEl.textContent = 'Setup Incomplete ⚠️';
+        bankStatusEl.style.color = '#dc3545';
+        connectBankBtn.textContent = 'Complete Setup';
+      }
+
+    } catch (error) {
+      console.error('❌ [STATUS] Error checking status:', error);
     }
-    const data = await resp.json();
-    showNotification(data.message || 'Auto-withdraw setting updated', 'success');
-    await loadStripeBalance();
-  } catch (err) {
-    console.error('toggleAutoWithdraw error', err);
-    showNotification('Failed to update auto-withdraw setting', 'error');
   }
-}
 
-// Wire buttons on DOM ready
-document.addEventListener('DOMContentLoaded', () => {
-  const btnPayout = document.getElementById('stripe-request-payout');
-  const btnConnect = document.getElementById('stripe-connect-bank');
-  const btnAuto = document.getElementById('stripe-toggle-auto-withdraw');
+  // Check status on page load
+  await checkOnboardingStatus();
 
-  if (btnPayout) btnPayout.addEventListener('click', requestPayout);
-  if (btnConnect) btnConnect.addEventListener('click', connectBank);
-  if (btnAuto) btnAuto.addEventListener('click', toggleAutoWithdraw);
+  // Re-check status if returning from Stripe (URL param)
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('onboarding') === 'complete') {
+    console.log('🎉 Returned from Stripe onboarding!');
+    // Remove URL param
+    window.history.replaceState({}, document.title, window.location.pathname);
+    // Wait a moment for Stripe to sync, then check status
+    setTimeout(async () => {
+      await checkOnboardingStatus();
+      // Show success message
+      const bankStatusEl = document.getElementById('stripe-bank-status');
+      if (bankStatusEl.textContent.includes('✅')) {
+        alert('Bank account connected successfully! 🎉');
+      }
+    }, 2000);
+  }
 
-  // initial load
-  loadStripeBalance().catch(e => console.warn('initial loadStripeBalance failed', e));
+  // ============================================================================
+  // REQUEST PAYOUT BUTTON (Placeholder)
+  // ============================================================================
+  if (requestPayoutBtn) {
+    requestPayoutBtn.addEventListener('click', async () => {
+      alert('Payout request functionality coming soon!\n\nThis will allow you to request manual payouts from your available balance.');
+    });
+  }
+
+  // ============================================================================
+  // AUTO-WITHDRAWAL TOGGLE (Placeholder)
+  // ============================================================================
+  if (toggleAutoWithdrawBtn) {
+    toggleAutoWithdrawBtn.addEventListener('click', async () => {
+      alert('Auto-withdrawal functionality coming soon!\n\nThis will allow automatic daily/weekly payouts to your bank account.');
+    });
+  }
 });
-
-// expose for debugging
-window.loadStripeBalance = loadStripeBalance;
-window.requestPayout = requestPayout;
-window.connectBank = connectBank;
-window.toggleAutoWithdraw = toggleAutoWithdraw;

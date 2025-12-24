@@ -65,29 +65,63 @@ async function loadTerminalSettings() {
 }
 
 function showNotification(message, type = 'success') {
-  const notificationEl = document.getElementById('notification');
-  if (!notificationEl) {
-    console.warn('[Terminal] No notification element found, using alert:', message);
-    alert(message);
-    return;
+  // Create or reuse a top-level banner container that sits above the main header
+  let container = document.getElementById('terminal_notification_banner_container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'terminal_notification_banner_container';
+    container.style.position = 'fixed';
+    container.style.left = '0';
+    container.style.right = '0';
+    container.style.top = '0';
+    container.style.zIndex = '2147483647';
+    container.style.display = 'flex';
+    container.style.justifyContent = 'center';
+    container.style.pointerEvents = 'none';
+    // Insert before header if present so it visually sits above it
+    const header = document.querySelector('header');
+    if (header && header.parentNode) header.parentNode.insertBefore(container, header);
+    else document.body.insertBefore(container, document.body.firstChild);
   }
 
-  notificationEl.textContent = message;
-  notificationEl.className = 'notification';
+  // Create the banner element
+  let banner = document.getElementById('terminal_notification_banner');
+  if (banner) banner.remove();
+  banner = document.createElement('div');
+  banner.id = 'terminal_notification_banner';
+  banner.style.pointerEvents = 'auto';
+  banner.style.margin = '8px';
+  banner.style.minWidth = '280px';
+  banner.style.maxWidth = '980px';
+  banner.style.padding = '12px 18px';
+  banner.style.borderRadius = '8px';
+  banner.style.boxShadow = '0 8px 30px rgba(2,6,23,0.15)';
+  banner.style.fontWeight = '600';
+  banner.style.fontSize = '14px';
+  banner.style.color = '#fff';
 
   if (type === 'error') {
-    notificationEl.style.background = '#ef4444';
+    banner.style.background = '#ef4444';
   } else if (type === 'info') {
-    notificationEl.style.background = '#3b82f6';
+    banner.style.background = '#3b82f6';
   } else {
-    notificationEl.style.background = '#10b981';
+    banner.style.background = '#10b981';
+    banner.style.color = '#064e3b';
   }
 
-  notificationEl.classList.remove('hidden');
+  banner.textContent = message;
+  container.appendChild(banner);
 
+  // Animate in
+  banner.style.opacity = '0';
+  banner.style.transform = 'translateY(-6px)';
+  requestAnimationFrame(() => { banner.style.transition = 'all 220ms ease'; banner.style.opacity = '1'; banner.style.transform = 'translateY(0)'; });
+
+  // Auto-remove after 4s
   setTimeout(() => {
-    notificationEl.classList.add('hidden');
-  }, 3000);
+    try { banner.style.opacity = '0'; banner.style.transform = 'translateY(-6px)'; } catch (e){}
+    setTimeout(() => { try { banner.remove(); } catch (e){} }, 240);
+  }, 4000);
 }
 
 function openTerminalTestModal() {
