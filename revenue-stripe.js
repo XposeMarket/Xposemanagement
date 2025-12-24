@@ -50,7 +50,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Get shop details from database
       const { data: shop, error: shopError } = await supabase
         .from('shops')
-        .select('stripe_account_id, name, email')
+        .select('stripe_account_id, name, email, street, city, state, zipcode')
         .eq('id', shopId)
         .single();
 
@@ -72,7 +72,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             shopId: shopId,
             email: shop.email || 'shop@example.com',
             businessName: shop.name || 'Auto Shop',
-            country: 'US'
+            country: 'US',
+            address: {
+              street: shop.street || '123 Main St',
+              city: shop.city || 'Frederick',
+              state: shop.state || 'MD',
+              zipcode: shop.zipcode || '21701'
+            }
           })
         });
 

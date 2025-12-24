@@ -374,7 +374,7 @@ app.post('/get-session-subscription', async (req, res) => {
 
 // Create Express account for new shop
 app.post('/api/connect/create-account', async (req, res) => {
-  const { shopId, email, businessName, country = 'US' } = req.body;
+  const { shopId, email, businessName, country = 'US', address } = req.body;
   
   if (!stripe) {
     return res.status(500).json({ error: 'Stripe not configured' });
@@ -412,17 +412,22 @@ app.post('/api/connect/create-account', async (req, res) => {
 
     console.log('✅ Express account created:', account.id);
 
+    // Build terminal location address from shop data or use defaults
+    const locationAddress = {
+      line1: (address && address.street) || '123 Main St',
+      city: (address && address.city) || 'Frederick',
+      state: (address && address.state) || 'MD',
+      postal_code: (address && address.zipcode) || '21701',
+      country: country,
+    };
+
+    console.log('🏛️ Terminal location address:', locationAddress);
+
     // Create Stripe Terminal Location for this account
     const location = await stripe.terminal.locations.create(
       {
         display_name: businessName || 'Main Location',
-        address: {
-          line1: '123 Main St',
-          city: 'Frederick',
-          state: 'MD',
-          postal_code: '21701',
-          country: country,
-        },
+        address: locationAddress,
       },
       {
         stripeAccount: account.id,

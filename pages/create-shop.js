@@ -113,7 +113,13 @@ document.addEventListener('DOMContentLoaded', async () => {
               shopId: shopId,
               email: session.user.email,
               businessName: shopName,
-              country: 'US'
+              country: 'US',
+              address: {
+                street: street || '123 Main St',
+                city: city || 'Frederick',
+                state: state || 'MD',
+                zipcode: zipcode || '21701'
+              }
             })
           });
 
@@ -416,7 +422,13 @@ document.addEventListener('DOMContentLoaded', async () => {
               shopId: shopId,
               email: sanitizedEmail,
               businessName: sanitizedShopName,
-              country: 'US'
+              country: 'US',
+              address: {
+                street: sanitizedStreet || '123 Main St',
+                city: sanitizedCity || 'Frederick',
+                state: sanitizedState || 'MD',
+                zipcode: sanitizedZipcode || '21701'
+              }
             })
           });
 
