@@ -531,6 +531,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (signData.session) {
           await supabase.auth.setSession(signData.session);
           console.log('✅ Session set on Supabase client');
+          
+          // Verify the session is actually active
+          const { data: { user } } = await supabase.auth.getUser();
+          console.log('🔍 Verified current user after setSession:', user?.id);
+          if (!user || user.id !== auth_id) {
+            console.error('❌ Session verification failed! Expected:', auth_id, 'Got:', user?.id);
+            throw new Error('Session not properly set');
+          }
         }
         
         // NOW create shop with owner_id
