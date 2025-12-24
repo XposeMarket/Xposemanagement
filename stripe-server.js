@@ -418,9 +418,9 @@ app.post('/api/connect/create-account', async (req, res) => {
         display_name: businessName || 'Main Location',
         address: {
           line1: '123 Main St',
-          city: 'City',
-          state: 'State',
-          postal_code: '12345',
+          city: 'Frederick',
+          state: 'MD',
+          postal_code: '21701',
           country: country,
         },
       },
