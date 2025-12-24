@@ -1,6 +1,6 @@
 // pages/create-shop.js
-// Clean, modern create shop logic (Supabase + localStorage fallback)
-// FIXED: Added OAuth callback handling
+// Shop creation logic (Supabase only - production ready)
+// Supports: Email/password signup, Google OAuth, Stripe subscription integration
 
 import { getSupabaseClient } from '../helpers/supabase.js';
 import { 
@@ -373,11 +373,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     }
 
-    // Try Supabase first
-    let supabaseSuccess = false;
+    // Check if Supabase is available
+    if (!supabase) {
+      err.textContent = 'Database connection unavailable. Please refresh the page and try again.';
+      err.style.color = 'red';
+      return;
+    }
+
     try {
-      if (supabase) {
-        console.log('🏪 Creating shop via Supabase...');
+      console.log('🏪 Creating shop via Supabase...');
         
         // Create user in Supabase Auth FIRST to get auth ID
         console.log('👤 Creating admin user in Supabase Auth...');
@@ -652,55 +656,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Redirect directly to dashboard
         setTimeout(() => location.href = 'dashboard.html', 2000);
         return;
-      }
     } catch (ex) {
-  err.textContent = 'There was a problem creating your shop. Please try again.';
-      // Do not redirect on error
-    }
-
-    // LocalStorage fallback
-    if (!supabaseSuccess) {
-      try {
-        console.log('💾 Falling back to localStorage...');
-        const shops = JSON.parse(localStorage.getItem('xm_shops') || '[]');
-        const users = JSON.parse(localStorage.getItem('xm_users') || '[]');
+      console.error('❌ Shop creation error:', ex);
+      
+      // Provide user-friendly error messages
+      let errorMessage = 'There was a problem creating your shop. ';
+      
+      if (ex.message) {
+        const msg = ex.message.toLowerCase();
         
-        if (users.some(u => u.email === email)) {
-          err.textContent = 'Email already in use.';
-          return;
+        if (msg.includes('duplicate') || msg.includes('already exists') || msg.includes('unique')) {
+          errorMessage = 'This shop name or email is already in use. Please choose a different name.';
+        } else if (msg.includes('network') || msg.includes('fetch') || msg.includes('connection')) {
+          errorMessage = 'Network error. Please check your connection and try again.';
+        } else if (msg.includes('violates row-level security')) {
+          errorMessage = 'Permission error. Please refresh the page and try again.';
+        } else if (msg.includes('auth') || msg.includes('session')) {
+          errorMessage = 'Authentication error. Please refresh the page and try again.';
+        } else {
+          errorMessage += 'Please try again or contact support if the problem persists.';
         }
-        
-        const shopId = 'shop_' + Math.random().toString(36).slice(2,8);
-        const join_code = Math.random().toString(36).slice(2,8).toUpperCase();
-        const shop = { id: shopId, name: shopName, type: shopType, logo: shopLogo, join_code, staff_limit: 3 };
-        shops.push(shop);
-        localStorage.setItem('xm_shops', JSON.stringify(shops));
-        
-        const admin = { 
-          id: 'u_' + Math.random().toString(36).slice(2,8), 
-          first, 
-          last, 
-          email, 
-          password: pass, 
-          zipcode, 
-          role: 'admin', 
-          shop_id: shopId 
-        };
-        users.push(admin);
-        localStorage.setItem('xm_users', JSON.stringify(users));
-        
-        localStorage.setItem('xm_session', JSON.stringify({ 
-          email, 
-          shopId: shopId, 
-          at: Date.now() 
-        }));
-        
-        err.textContent = 'Shop created locally! Redirecting to dashboard...';
-        console.log('✅ Local shop created successfully.');
-        setTimeout(() => location.href = 'dashboard.html', 2000);
-      } catch (ex) {
-  err.textContent = 'There was a problem saving your shop. Please try again.';
+      } else {
+        errorMessage += 'Please try again or contact support if the problem persists.';
       }
+      
+      err.textContent = errorMessage;
+      err.style.color = 'red';
+      // Do not redirect - keep user on page to retry
     }
   });
 
