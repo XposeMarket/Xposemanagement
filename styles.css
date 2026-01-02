@@ -583,8 +583,16 @@ nav{display:flex;flex-wrap:nowrap;gap:2px;align-items:center;overflow-x:auto;scr
   padding: 0 18px;
 }
 /* Ensure floating parts/labor panels appear above the sticky header */
+/* Center parts/labor panels on mobile */
 #partsModal, #addPartsModal, #laborModal {
   z-index: 10020 !important;
+  margin-left: auto;
+  margin-right: auto;
+  left: 0;
+  right: 0;
+  position: relative;
+  max-width: 100%;
+}
 }
 /* Invoice-specific: orange edit/info button */
 #invTable .btn.info,
