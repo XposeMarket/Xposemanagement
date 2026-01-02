@@ -834,6 +834,132 @@ async function setupRevenuePage() {
     } catch (e) {
       // ignore aggregation errors
     }
+
+    // Load and display ordered parts
+    await loadOrderedParts(shopId, currentWeek);
+  }
+
+  // Helper function to map supplier name to logo path
+  function getSupplierLogo(supplier) {
+    const supplierMap = {
+      'partstech': 'assets/Parts Suppliers/partstech-logo.png',
+      'carquest': 'assets/Parts Suppliers/CarwquestLogo.webp',
+      'carquest/advance auto': 'assets/Parts Suppliers/CarwquestLogo.webp',
+      'advance auto': 'assets/Parts Suppliers/CarwquestLogo.webp',
+      'worldpac': 'assets/Parts Suppliers/Worldpaclogo.png',
+      'autozone': 'assets/Parts Suppliers/AutoZone-Logo-640x400.png',
+      'napa': 'assets/Parts Suppliers/NAPA_Auto_Parts_logo.svg.png',
+      "o'reilly": 'assets/Parts Suppliers/oreillyslogo.png',
+      'oreilly': 'assets/Parts Suppliers/oreillyslogo.png',
+      'summit racing': 'assets/Parts Suppliers/Summit-Racing-Equipment-Logo-1024x580.webp',
+      'parts authority': 'assets/Parts Suppliers/partsauthoritylogo.jpg',
+      'rockauto': 'assets/Parts Suppliers/rock-auto.jpg',
+      'manual entry': null // No logo for manual entry
+    };
+    
+    const normalized = (supplier || '').toLowerCase().trim();
+    console.log('🔍 Logo lookup:', { supplier, normalized, found: supplierMap[normalized] });
+    return supplierMap[normalized] || null;
+  }
+
+  // Load ordered parts from job_parts table
+  async function loadOrderedParts(shopId, week) {
+    const partsListEl = document.getElementById('parts-list');
+    const weeklyCostEl = document.getElementById('parts-weekly-cost');
+    const totalCostEl = document.getElementById('parts-total-cost');
+    
+    if (!partsListEl) return;
+    
+    try {
+      // Fetch all job_parts for this shop
+      const { data: allParts, error } = await supabase
+        .from('job_parts')
+        .select('*')
+        .eq('shop_id', shopId)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('Error loading parts:', error);
+        partsListEl.innerHTML = '<div style="text-align:center; color:var(--muted); padding:24px;">Error loading parts</div>';
+        return;
+      }
+      
+      const parts = allParts || [];
+      
+      // Calculate all-time total
+      const allTimeCost = parts.reduce((sum, part) => {
+        const qty = Number(part.quantity || 0);
+        const cost = Number(part.cost_price || 0);
+        return sum + (qty * cost);
+      }, 0);
+      
+      // Filter parts for the selected week
+      const weekStart = new Date(week.start);
+      weekStart.setHours(0, 0, 0, 0);
+      const weekEnd = new Date(week.end);
+      weekEnd.setHours(23, 59, 59, 999);
+      
+      const weeklyParts = parts.filter(part => {
+        if (!part.created_at) return false;
+        const partDate = new Date(part.created_at);
+        return partDate >= weekStart && partDate <= weekEnd;
+      });
+      
+      // Calculate weekly cost
+      const weeklyCost = weeklyParts.reduce((sum, part) => {
+        const qty = Number(part.quantity || 0);
+        const cost = Number(part.cost_price || 0);
+        return sum + (qty * cost);
+      }, 0);
+      
+      // Update cost displays
+      if (weeklyCostEl) weeklyCostEl.textContent = formatCurrency(weeklyCost);
+      if (totalCostEl) totalCostEl.textContent = formatCurrency(allTimeCost);
+      
+      // Render parts list
+      if (weeklyParts.length === 0) {
+        partsListEl.innerHTML = '<div style="text-align:center; color:var(--muted); padding:24px;">No parts ordered this week</div>';
+        return;
+      }
+      
+      const partsHtml = weeklyParts.map(part => {
+        const partName = part.part_name || 'Unknown Part';
+        const partNumber = part.part_number || '';
+        const price = Number(part.cost_price || 0);
+        const qty = Number(part.quantity || 1);
+        const totalCost = price * qty;
+        const supplier = part.supplier || 'Manual Entry';
+        const dateOrdered = part.created_at ? new Date(part.created_at).toLocaleDateString() : 'N/A';
+        
+        // Get supplier logo
+        const logoPath = getSupplierLogo(supplier);
+        const logoHtml = logoPath 
+          ? `<img src="${logoPath}" alt="${supplier}" class="parts-supplier-logo" onerror="this.style.display='none'">`
+          : `<div style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:var(--line);border-radius:4px;font-size:10px;font-weight:bold;color:var(--muted);">${supplier.charAt(0).toUpperCase()}</div>`;
+        
+        return `
+          <div class="parts-list-item">
+            ${logoHtml}
+            <div>
+              <div style="font-weight:600;">${partName}</div>
+              ${partNumber ? `<div style="font-size:0.85em;color:var(--muted);">Part #${partNumber}</div>` : ''}
+            </div>
+            <div style="text-align:right;">
+              <div style="font-weight:600;">${formatCurrency(totalCost)}</div>
+              <div style="font-size:0.85em;color:var(--muted);">Qty: ${qty}</div>
+            </div>
+            <div style="font-size:0.9em;color:var(--muted);">${supplier}</div>
+            <div style="font-size:0.85em;color:var(--muted);">${dateOrdered}</div>
+          </div>
+        `;
+      }).join('');
+      
+      partsListEl.innerHTML = partsHtml;
+      
+    } catch (ex) {
+      console.error('Exception loading parts:', ex);
+      partsListEl.innerHTML = '<div style="text-align:center; color:var(--muted); padding:24px;">Error loading parts</div>';
+    }
   }
 }
 

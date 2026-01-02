@@ -4,6 +4,7 @@
  * Part Pricing Modal Component
  * Allows manual entry of cost/sell prices after calling supplier
  * NOW WITH AUTOMATIC INVENTORY DEDUCTION + UI REFRESH!
+ * NOW WITH EDITABLE PART NAME AND OPTIONAL PART NUMBER FOR MANUAL ENTRY!
  */
 
 class PartPricingModal {
@@ -19,27 +20,35 @@ class PartPricingModal {
    */
   createModal() {
     const modalHTML = `
-      <div id="partPricingOverlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.35); z-index:10050;">
-        <div id="partPricingModal" class="card" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: 500px; width: 95vw; z-index:10051; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+      <div id="partPricingOverlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.35); z-index:99998;">
+        <div id="partPricingModal" class="card" style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: 500px; width: 95vw; z-index:99999; box-shadow: 0 20px 60px rgba(0,0,0,0.3); max-height: 90vh; overflow-y: auto;">
           <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <h3 style="margin: 0;">Add Part to Job</h3>
             <button class="modal-close" id="closePricingModal" style="background: none; border: none; font-size: 24px; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
           </div>
           <div class="modal-body">
-            <!-- P+R Group Title -->
+            <!-- P+R Group Title with placeholder -->
             <div class="form-field">
-              <label for="prGroupTitle">P+R Group Title</label>
-              <input type="text" id="prGroupTitle" class="form-control" placeholder="Group Title (e.g. Front Brakes P+R)">
-              <small style="color: #666;">This will be the section title for this Part+Rate group on the invoice. Default is part name + 'P+R'.</small>
+              <label for="prGroupTitle">Part Name / Group Title</label>
+              <input type="text" id="prGroupTitle" class="form-control" placeholder="Add part name here...">
+              <small style="color: #666;">This will be the section title for this Part+Rate group on the invoice.</small>
             </div>
-            <!-- Part Info -->
-            <div class="form-section" style="background: #f5f5f5; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+            
+            <!-- Part Number (Optional) -->
+            <div class="form-field">
+              <label for="pricingPartNumberInput">Part Number (Optional)</label>
+              <input type="text" id="pricingPartNumberInput" class="form-control" placeholder="Enter part number (optional)">
+            </div>
+            
+            <!-- Part Info Section (will be populated dynamically for inventory/catalog parts) -->
+            <div id="partInfoSection" class="form-section" style="background: #f5f5f5; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; display: none;">
               <h4 id="pricingPartName" style="margin: 0 0 0.5rem 0;"></h4>
               <p style="margin: 0; color: #666; font-size: 0.9rem;">
                 Part #: <span id="pricingPartNumber"></span>
               </p>
               <p id="pricingStockInfo" style="margin: 0.5rem 0 0 0; color: #666; font-size: 0.9rem;"></p>
             </div>
+            
             <!-- Pricing Form -->
             <div class="form-field">
               <label>Quantity</label>
@@ -117,95 +126,127 @@ class PartPricingModal {
     const partId = this.currentPart.id;
     const isInventoryItem = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(partId));
     const isCatalogPart = !isInventoryItem && jobVehicle; // Catalog parts come with jobVehicle
+    const isManualEntry = this.currentPart.manual_entry === true; // Supplier order manual entry
     const isManualPart = !isInventoryItem && !isCatalogPart;
     
-    console.log('🔍 Part type detection:', { partId, isInventoryItem, isCatalogPart, isManualPart });
+    console.log('🔍 Part type detection:', { partId, isInventoryItem, isCatalogPart, isManualPart, isManualEntry });
     
-    // Update part name based on type
-    let displayName = this.currentPart.name || this.currentPart.part_name || '';
+    // Get elements
+    const prGroupTitleEl = document.getElementById('prGroupTitle');
+    const partNumberInputEl = document.getElementById('pricingPartNumberInput');
+    const partInfoSection = document.getElementById('partInfoSection');
+    const partNameEl = document.getElementById('pricingPartName');
+    const partNumberEl = document.getElementById('pricingPartNumber');
+    const stockInfoEl = document.getElementById('pricingStockInfo');
     
-    if (isCatalogPart && jobVehicle) {
-      // Catalog part: strip old vehicle and add job vehicle
-      let baseName = displayName;
-      const dashIndex = baseName.indexOf(' - ');
-      if (dashIndex > 0) {
-        baseName = baseName.substring(0, dashIndex).trim();
+    // Handle Manual Entry from Supplier Links
+    if (isManualEntry) {
+      console.log('✅ Manual entry mode - showing editable fields');
+      
+      // Show editable fields, hide info section
+      if (partInfoSection) partInfoSection.style.display = 'none';
+      if (prGroupTitleEl) {
+        prGroupTitleEl.value = '';
+        prGroupTitleEl.placeholder = 'Add part name here...';
       }
-      displayName = `${baseName} - ${jobVehicle}`;
-      this.currentPart.name = displayName;
-      this.currentPart.part_name = displayName;
+      if (partNumberInputEl) {
+        partNumberInputEl.value = '';
+        partNumberInputEl.style.display = 'block';
+        partNumberInputEl.parentElement.style.display = 'block';
+      }
+    }
+    // Handle Inventory or Catalog Parts  
+    else {
+      // Update part name based on type
+      let displayName = this.currentPart.name || this.currentPart.part_name || '';
       
-      console.log('✅ Catalog part name updated:', {
-        original: baseName,
-        jobVehicle: jobVehicle,
-        newName: displayName
-      });
-    } else if (isManualPart && jobVehicle) {
-      // Manual part: add vehicle but no P+R in title
-      displayName = `${displayName} - ${jobVehicle}`;
-      this.currentPart.name = displayName;
-      this.currentPart.part_name = displayName;
-      
-      console.log('✅ Manual part name updated with vehicle:', displayName);
-    } else if (isInventoryItem) {
-      // Inventory item: strip any vehicle info and keep just the base name
-      let baseName = displayName;
-      const dashIndex = baseName.indexOf(' - ');
-      if (dashIndex > 0) {
-        // Check if what comes after the dash looks like a vehicle
-        const afterDash = baseName.substring(dashIndex + 3).trim();
-        // If it has multiple words or looks like year/make/model, strip it
-        if (afterDash.split(' ').length >= 2 || /\d{4}/.test(afterDash)) {
+      if (isCatalogPart && jobVehicle) {
+        // Catalog part: strip old vehicle and add job vehicle
+        let baseName = displayName;
+        const dashIndex = baseName.indexOf(' - ');
+        if (dashIndex > 0) {
           baseName = baseName.substring(0, dashIndex).trim();
-          displayName = baseName;
-          this.currentPart.name = displayName;
-          this.currentPart.part_name = displayName;
+        }
+        displayName = `${baseName} - ${jobVehicle}`;
+        this.currentPart.name = displayName;
+        this.currentPart.part_name = displayName;
+        
+        console.log('✅ Catalog part name updated:', {
+          original: baseName,
+          jobVehicle: jobVehicle,
+          newName: displayName
+        });
+      } else if (isManualPart && jobVehicle) {
+        // Manual part: add vehicle but no P+R in title
+        displayName = `${displayName} - ${jobVehicle}`;
+        this.currentPart.name = displayName;
+        this.currentPart.part_name = displayName;
+        
+        console.log('✅ Manual part name updated with vehicle:', displayName);
+      } else if (isInventoryItem) {
+        // Inventory item: strip any vehicle info and keep just the base name
+        let baseName = displayName;
+        const dashIndex = baseName.indexOf(' - ');
+        if (dashIndex > 0) {
+          // Check if what comes after the dash looks like a vehicle
+          const afterDash = baseName.substring(dashIndex + 3).trim();
+          // If it has multiple words or looks like year/make/model, strip it
+          if (afterDash.split(' ').length >= 2 || /\d{4}/.test(afterDash)) {
+            baseName = baseName.substring(0, dashIndex).trim();
+            displayName = baseName;
+            this.currentPart.name = displayName;
+            this.currentPart.part_name = displayName;
+          }
+        }
+        console.log('✅ Inventory item, keeping original name:', displayName);
+      }
+      
+      // Show info section for inventory/catalog parts
+      if (partInfoSection) partInfoSection.style.display = 'block';
+      if (partNameEl) partNameEl.textContent = this.currentPart.name || this.currentPart.part_name;
+      if (partNumberEl) partNumberEl.textContent = this.currentPart.part_number || 'N/A';
+      
+      // Hide the editable part number input for inventory/catalog
+      if (partNumberInputEl) {
+        partNumberInputEl.style.display = 'none';
+        partNumberInputEl.parentElement.style.display = 'none';
+      }
+      
+      // Show stock info for inventory items - STORE ITEM ID FOR REFRESH
+      if (stockInfoEl) {
+        if (isInventoryItem && typeof this.currentPart.qty_available !== 'undefined') {
+          const qty = parseInt(this.currentPart.qty_available) || 0;
+          const stockColor = qty === 0 ? '#ef4444' : qty <= 5 ? '#f59e0b' : '#10b981';
+          stockInfoEl.innerHTML = `<strong style="color: ${stockColor};">In Stock: ${qty}</strong>`;
+          stockInfoEl.style.display = 'block';
+          // Store item ID for later updates
+          stockInfoEl.dataset.itemId = partId;
+        } else {
+          stockInfoEl.style.display = 'none';
+          delete stockInfoEl.dataset.itemId;
         }
       }
-      console.log('✅ Inventory item, keeping original name:', displayName);
-    }
-    
-    // Populate part info with corrected name
-    const nameEl = document.getElementById('pricingPartName');
-    const numberEl = document.getElementById('pricingPartNumber');
-    const stockInfoEl = document.getElementById('pricingStockInfo');
-    if (nameEl) nameEl.textContent = this.currentPart.name || this.currentPart.part_name;
-    if (numberEl) numberEl.textContent = this.currentPart.part_number || 'N/A';
-    
-    // Show stock info for inventory items - STORE ITEM ID FOR REFRESH
-    if (stockInfoEl) {
-      if (isInventoryItem && typeof this.currentPart.qty_available !== 'undefined') {
-        const qty = parseInt(this.currentPart.qty_available) || 0;
-        const stockColor = qty === 0 ? '#ef4444' : qty <= 5 ? '#f59e0b' : '#10b981';
-        stockInfoEl.innerHTML = `<strong style="color: ${stockColor};">In Stock: ${qty}</strong>`;
-        stockInfoEl.style.display = 'block';
-        // Store item ID for later updates
-        stockInfoEl.dataset.itemId = partId;
-      } else {
-        stockInfoEl.style.display = 'none';
-        delete stockInfoEl.dataset.itemId;
-      }
-    }
-    
-    // Set default P+R group title based on part type
-    const prGroupTitleEl = document.getElementById('prGroupTitle');
-    if (prGroupTitleEl) {
-      const partName = (this.currentPart.name || this.currentPart.part_name || '').trim();
-      let defaultTitle;
       
-      if (isCatalogPart) {
-        // Catalog part: add P+R suffix
-        defaultTitle = partName ? `${partName} P+R` : 'P+R';
-      } else if (isInventoryItem) {
-        // Inventory item: just the name, no vehicle, no P+R
-        defaultTitle = partName || 'Part';
-      } else {
-        // Manual part: name + vehicle, but no P+R
-        defaultTitle = partName || 'Part';
+      // Set default P+R group title based on part type
+      if (prGroupTitleEl) {
+        const partName = (this.currentPart.name || this.currentPart.part_name || '').trim();
+        let defaultTitle;
+        
+        if (isCatalogPart) {
+          // Catalog part: add P+R suffix
+          defaultTitle = partName ? `${partName} P+R` : 'P+R';
+        } else if (isInventoryItem) {
+          // Inventory item: just the name, no vehicle, no P+R
+          defaultTitle = partName || '';
+        } else {
+          // Manual part: name + vehicle, but no P+R
+          defaultTitle = partName || '';
+        }
+        
+        prGroupTitleEl.value = this.currentPart.groupName || defaultTitle;
+        prGroupTitleEl.placeholder = defaultTitle || 'Add part name here...';
+        console.log('🏷️ Group title set to:', defaultTitle);
       }
-      
-      prGroupTitleEl.value = this.currentPart.groupName || defaultTitle;
-      console.log('🏷️ Group title set to:', defaultTitle);
     }
     
     // Reset form
@@ -230,6 +271,11 @@ class PartPricingModal {
     // Show overlay and modal
     if (this.overlay) this.overlay.style.display = 'block';
     if (this.modal) this.modal.style.display = 'block';
+    
+    // Focus on part name for manual entry
+    if (isManualEntry && prGroupTitleEl) {
+      setTimeout(() => prGroupTitleEl.focus(), 150);
+    }
   }
 
   /**
@@ -317,14 +363,37 @@ class PartPricingModal {
   /**
    * Save the part with pricing to the job
    * NOW WITH AUTOMATIC INVENTORY DEDUCTION + PROPER UI REFRESH!
+   * NOW WITH SUPPORT FOR MANUAL ENTRY FIELDS!
    */
   async savePart() {
+    // Get values from form
     const quantity = parseInt(document.getElementById('pricingQuantity').value) || 1;
     const costPrice = parseFloat(document.getElementById('pricingCost').value) || 0;
     const sellPrice = parseFloat(document.getElementById('pricingSell').value) || 0;
     const notes = document.getElementById('pricingNotes').value.trim();
-    const groupName = document.getElementById('prGroupTitle')?.value?.trim() || '';
+    let groupName = document.getElementById('prGroupTitle')?.value?.trim() || '';
+    let partNumber = document.getElementById('pricingPartNumberInput')?.value?.trim() || '';
     const shopId = this.getCurrentShopId();
+
+    // For manual entry, update the part object with user inputs
+    if (this.currentPart.manual_entry) {
+      // Get part name from the group title field
+      if (!groupName) {
+        try { showNotification('Part name is required', 'error'); } catch (e) { 
+          PartPricingModal._fallbackNotification('Part name is required', 'error'); 
+        }
+        return;
+      }
+      
+      this.currentPart.name = groupName;
+      this.currentPart.part_name = groupName;
+      this.currentPart.part_number = partNumber || '';
+      
+      console.log('✅ Updated manual entry part:', {
+        name: groupName,
+        partNumber: partNumber
+      });
+    }
 
     if (!shopId) {
       try { showNotification('Shop ID not found', 'error'); } catch (e) { PartPricingModal._fallbackNotification('Shop ID not found', 'error'); }
@@ -362,7 +431,7 @@ class PartPricingModal {
       console.log('💾 Saving part:', { partId, isInventoryUUID, quantity, shopId });
       
       // If it's an inventory item, use the NEW automatic deduction API FIRST
-      if (isInventoryUUID && partId) {
+      if (isInventoryUUID && partId && !this.currentPart.manual_entry) {
         console.log('📦 Inventory item detected - using automatic deduction API');
         try {
           const inventoryAPI = await import('../helpers/inventory-api.js');
@@ -501,13 +570,14 @@ class PartPricingModal {
           .insert({
             shop_id: shopId,
             job_id: this.currentJobId,
-            part_id: isInventoryUUID ? null : partId,
+            part_id: isInventoryUUID ? null : (partId && !this.currentPart.manual_entry ? partId : null),
             part_name: this.currentPart.name || this.currentPart.part_name || '',
             part_number: this.currentPart.part_number || '',
             quantity: quantity || 1,
             cost_price: costPrice || 0,
             sell_price: sellPrice || 0,
             markup_percent: sellPrice && costPrice ? ((sellPrice - costPrice) / costPrice * 100).toFixed(2) : 0,
+            supplier: this.currentPart.supplier || 'Manual Entry', // Save supplier name
             notes: notes || ''
           })
           .select()
@@ -548,9 +618,9 @@ class PartPricingModal {
             sellPrice, 
             costPrice, 
             groupName,
-            isInventoryUUID  // TRUE for inventory (already deducted), FALSE for catalog/manual
+            isInventoryUUID && !this.currentPart.manual_entry  // TRUE for inventory (already deducted), FALSE for catalog/manual
           );
-          if (isInventoryUUID) {
+          if (isInventoryUUID && !this.currentPart.manual_entry) {
             console.log('[✅ PartPricingModal] added INVENTORY item to invoice display (inventory already deducted by DB trigger)', { partItemId });
           } else {
             console.log('[PartPricingModal] added catalog/manual part to invoice', { partItemId });
@@ -584,8 +654,8 @@ class PartPricingModal {
   showConfirmationModal() {
     if (!document.getElementById('partLaborConfirmModal')) {
       const confirmHTML = `
-        <div id="partLaborConfirmModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.35); z-index:10060;">
-          <div class="card" style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); max-width:400px; width:95vw; z-index:10061; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <div id="partLaborConfirmModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.35); z-index:100000;">
+          <div class="card" style="position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); max-width:400px; width:95vw; z-index:100001; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
             <div style="padding:1.5rem; text-align:center;">
               <h3>Add Part Confirmation</h3>
               <p>Would you like to add labor for this part?</p>
@@ -644,7 +714,7 @@ class PartPricingModal {
       banner.style.color = '#fff';
       banner.style.padding = '16px 24px';
       banner.style.borderRadius = '8px';
-      banner.style.zIndex = '9999';
+      banner.style.zIndex = '100002';
       banner.style.boxShadow = '0 2px 12px rgba(0,0,0,0.15)';
       banner.style.display = 'flex';
       banner.style.alignItems = 'center';

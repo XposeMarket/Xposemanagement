@@ -18,6 +18,47 @@
       .staff-right { flex-basis:100%; flex-direction:row; align-items:center; justify-content:space-between; }
       .staff-stats { text-align:left; }
     }
+    
+    /* Two-panel layout for revenue overview and ordered parts */
+    .revenue-panels-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+    
+    @media (max-width: 968px) {
+      .revenue-panels-container {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    /* Ordered parts panel styles */
+    .parts-list-item {
+      display: grid;
+      grid-template-columns: auto 1fr auto auto auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    
+    .parts-list-item:hover {
+      background: var(--hover);
+    }
+    
+    .parts-supplier-logo {
+      width: 24px;
+      height: 24px;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+    
+    .parts-list-scrollable {
+      max-height: 400px;
+      overflow-y: auto;
+      margin-top: 16px;
+    }
   </style>
 </head>
 <body>
@@ -70,11 +111,35 @@
         </div>
       </div>
     </section>
-    <section id="revenue-summary" class="card" style="margin-bottom:24px;">
-      <h2>Weekly Revenue Overview</h2>
-      <div id="week-selector" style="margin-bottom:16px;"></div>
-      <div id="revenue-totals" class="grid cols-3" style="margin-bottom:16px;"></div>
-    </section>
+    
+    <!-- Two-panel layout: Revenue Overview + Ordered Parts -->
+    <div class="revenue-panels-container">
+      <!-- Weekly Revenue Overview Panel (now 50% width) -->
+      <section id="revenue-summary" class="card">
+        <h2>Weekly Revenue Overview</h2>
+        <div id="week-selector" style="margin-bottom:16px;"></div>
+        <div id="revenue-totals" class="grid cols-2" style="margin-bottom:16px;"></div>
+      </section>
+      
+      <!-- Ordered Parts Panel (new) -->
+      <section id="ordered-parts-panel" class="card">
+        <h2>Ordered Parts</h2>
+        <div style="margin-bottom:16px; padding-bottom:16px; border-bottom: 2px solid var(--line);">
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+            <span>All-Time Cost:</span>
+            <strong id="parts-total-cost">$0.00</strong>
+          </div>
+          <div style="display:flex; justify-content:space-between;">
+            <span>Weekly Cost:</span>
+            <strong id="parts-weekly-cost">$0.00</strong>
+          </div>
+        </div>
+        <div class="parts-list-scrollable" id="parts-list">
+          <div style="text-align:center; color:var(--muted); padding:24px;">Loading parts...</div>
+        </div>
+      </section>
+    </div>
+    
     <section id="staff-revenue" class="card" style="margin-bottom:24px;">
       <h2>Staff Earnings & Job Assignments</h2>
       <div id="staff-list"></div>

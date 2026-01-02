@@ -1,0 +1,217 @@
+/**
+ * Supplier Links Styles
+ * Styling for the quick supplier links in the parts modal
+ */
+
+/* Supplier Links Container */
+.supplier-links-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+  width: 100%;
+  max-width: 45%; /* Only take up left half of the parts panel */
+  margin-bottom: 16px;
+}
+
+/* Individual Supplier Card */
+.supplier-link-card {
+  background: #ffffff !important; /* Force white background */
+  border: 1.5px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 100px;
+  position: relative;
+  overflow: hidden;
+}
+
+.supplier-link-card:hover {
+  background: #f9fafb !important; /* Slightly off-white on hover */
+  border-color: #3b82f6;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.supplier-link-card:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Logo Wrapper */
+.supplier-logo-wrapper {
+  width: 100%;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
+.supplier-logo {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  filter: brightness(1) contrast(1);
+  transition: filter 0.2s ease;
+}
+
+.supplier-link-card:hover .supplier-logo {
+  filter: brightness(1.1) contrast(1.05);
+}
+
+/* Fallback Icon (emoji or letter) */
+.supplier-fallback-icon {
+  font-size: 32px;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+/* Supplier Name Label */
+.supplier-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1f2937 !important; /* Force dark text */
+  text-align: center;
+  line-height: 1.2;
+  transition: color 0.2s ease;
+}
+
+.supplier-link-card:hover .supplier-name {
+  color: #3b82f6 !important; /* Blue on hover */
+}
+
+/* Dark Mode Override - Keep cards white even in dark mode */
+@media (prefers-color-scheme: dark) {
+  .supplier-link-card {
+    background: #ffffff !important; /* Force white in dark mode */
+    border-color: #e5e7eb !important;
+  }
+  
+  .supplier-link-card:hover {
+    background: #f9fafb !important; /* Slightly off-white on hover */
+    border-color: #3b82f6 !important;
+  }
+  
+  .supplier-name {
+    color: #1f2937 !important; /* Force dark text in dark mode */
+  }
+  
+  .supplier-link-card:hover .supplier-name {
+    color: #3b82f6 !important;
+  }
+  
+  .supplier-logo {
+    filter: brightness(1) contrast(1); /* Normal brightness in dark mode */
+  }
+  
+  .supplier-link-card:hover .supplier-logo {
+    filter: brightness(1.1) contrast(1.05);
+  }
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .supplier-links-container {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+    max-width: 100%; /* Full width on mobile */
+  }
+  
+  .supplier-link-card {
+    min-height: 85px;
+    padding: 8px;
+    border-radius: 10px;
+    background: #ffffff !important; /* Force white on mobile */
+  }
+  
+  .supplier-logo-wrapper {
+    height: 50px;
+  }
+  
+  .supplier-name {
+    font-size: 0.75rem;
+    color: #1f2937 !important;
+  }
+  
+  .supplier-fallback-icon {
+    font-size: 24px;
+  }
+}
+
+/* Very Small Screens */
+@media (max-width: 480px) {
+  .supplier-links-container {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+  
+  .supplier-link-card {
+    min-height: 75px;
+    padding: 6px;
+    background: #ffffff !important; /* Force white on small screens */
+  }
+  
+  .supplier-logo-wrapper {
+    height: 40px;
+  }
+  
+  .supplier-name {
+    font-size: 0.7rem;
+    color: #1f2937 !important;
+  }
+}
+
+/* Accessibility - Focus State */
+.supplier-link-card:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  background: #ffffff !important;
+}
+
+/* Loading State (optional) */
+.supplier-link-card.loading {
+  opacity: 0.6;
+  pointer-events: none;
+  background: #ffffff !important;
+}
+
+.supplier-link-card.loading::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e5e7eb;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* Supplier Quick Links Section Header */
+#supplierQuickLinks h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0 0 12px 0;
+}
+
+/* Override dark mode for header too */
+@media (prefers-color-scheme: dark) {
+  #supplierQuickLinks h4 {
+    color: #f3f4f6; /* Keep header light in dark mode */
+  }
+}

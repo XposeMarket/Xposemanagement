@@ -295,6 +295,12 @@
           <button id="terminalModalClose" class="btn" aria-label="Close modal">×</button>
         </div>
       </div>
+      <div style="margin-top:12px;text-align:center;">
+        <button id="terminalOptOut" class="btn" style="background:#dc2626;color:#fff;font-size:0.95rem;padding:10px 20px;font-weight:600;line-height:1.4;">
+          Opt out - I have my own terminal<br>
+          <span style="font-size:0.85rem;opacity:0.9;">(Start using immediately)</span>
+        </button>
+      </div>
       <p style="color:#666;margin-top:8px;">All subscriptions include a Stripe Reader M2 by default — choose a different terminal to add its monthly fee.</p>
       <p style="color:#9ca3af;margin-top:6px;font-weight:600;">Terminal subscription payments will automatically end after 6 months.</p>
       <div id="terminalModalOptions" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:14px;align-items:stretch;">
@@ -490,6 +496,57 @@
         alert('Failed to start checkout: ' + msg);
         document.getElementById('terminalModalConfirm').disabled = false;
         document.getElementById('terminalModalConfirm').textContent = 'Confirm & Checkout';
+      }
+    };
+
+    // Opt out - proceed without terminal
+    document.getElementById('terminalOptOut').onclick = async function() {
+      const plan = selectedPlan;
+      if (!plan) {
+        alert('Please select a plan.');
+        return;
+      }
+      const priceId = PRICE_IDS[plan];
+      if (!priceId || priceId.includes('REPLACE')) {
+        alert('Stripe is not configured yet. Please add your Price IDs to paywall.html');
+        return;
+      }
+      document.getElementById('terminalOptOut').disabled = true;
+      document.getElementById('terminalOptOut').textContent = 'Loading...';
+      try {
+        const STRIPE_API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+          ? 'http://localhost:3001'
+          : 'https://xpose-stripe-server.vercel.app';
+        const response = await fetch(`${STRIPE_API_URL}/create-checkout-session`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            priceId: priceId,
+            customerEmail: getUserEmail(),
+            terminalModel: null // No terminal selected
+          }),
+        });
+        if (!response.ok) {
+          let bodyText = null;
+          try { bodyText = await response.text(); } catch (e) { bodyText = '<unreadable>'; }
+          console.error('Checkout error response:', response.status, response.statusText, bodyText);
+          throw new Error(`Server responded ${response.status}: ${bodyText}`);
+        }
+        const data = await response.json();
+        if (data && data.url) {
+          window.location.href = data.url;
+        } else {
+          console.error('Invalid checkout payload from server:', data);
+          throw new Error((data && data.error) || 'Failed to create checkout session (no url returned)');
+        }
+      } catch (error) {
+        console.error('Checkout exception:', error);
+        const msg = (error && error.message) ? error.message : 'Failed to start checkout. Please try again.';
+        alert('Failed to start checkout: ' + msg);
+        document.getElementById('terminalOptOut').disabled = false;
+        document.getElementById('terminalOptOut').innerHTML = 'Opt out - I have my own terminal<br><span style="font-size:0.85rem;opacity:0.9;">(Start using immediately)</span>';
       }
     };
   </script>
