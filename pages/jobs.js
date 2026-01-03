@@ -453,13 +453,42 @@ function openJobActionsModal(job) {
   manualPartsBtn.className = 'btn';
   manualPartsBtn.textContent = 'Add Parts Manually';
   manualPartsBtn.onclick = () => { 
+    console.log('[ManualParts] Button clicked');
     modal.classList.add('hidden'); 
     const appt = allAppointments.find(a => a.id === job.appointment_id);
-    // manualPartsBtn clicked. Opening manual parts modal if appointment exists.
-    if (appt) {
-      openAddPartsModal(job, appt);
-    } else {
-      // appointment not found for manualPartsBtn
+    
+    console.log('[ManualParts] Found appointment:', appt);
+    console.log('[ManualParts] partPricingModal available:', !!window.partPricingModal);
+    console.log('[ManualParts] xm_partPricingModal available:', !!window.xm_partPricingModal);
+    
+    // Use xm_partPricingModal directly as fallback
+    const pricingModal = window.partPricingModal || window.xm_partPricingModal;
+    
+    if (appt && pricingModal) {
+      // Create empty part object with manual_entry flag
+      const manualPart = {
+        manual_entry: true,
+        name: '',
+        part_name: '',
+        part_number: '',
+        id: 'manual'
+      };
+      
+      // Get vehicle info for the job
+      const vehicle = appt.vehicle_year && appt.vehicle_make && appt.vehicle_model
+        ? `${appt.vehicle_year} ${appt.vehicle_make} ${appt.vehicle_model}`
+        : null;
+      
+      console.log('[ManualParts] Opening pricing modal with vehicle:', vehicle);
+      
+      // Open the part pricing modal with manual entry mode
+      pricingModal.show(manualPart, job.id, vehicle);
+    } else if (!pricingModal) {
+      console.error('[ManualParts] Part pricing modal not available');
+      alert('Part pricing modal is not available. Please refresh the page.');
+    } else if (!appt) {
+      console.error('[ManualParts] Appointment not found for job:', job.id);
+      alert('Could not find appointment for this job.');
     }
   };
   btns.appendChild(manualPartsBtn);
