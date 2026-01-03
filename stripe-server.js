@@ -742,7 +742,70 @@ app.post('/api/terminal/register', async (req, res) => {
   }
 });
 
-// Get terminal status
+// Get terminal status (GET with shopId in URL)
+app.get('/api/terminal/status/:shopId?', async (req, res) => {
+  const shopId = req.params.shopId || req.query.shopId;
+
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe not configured' });
+  }
+
+  if (!shopId) {
+    return res.status(400).json({ error: 'Shop ID required' });
+  }
+
+  try {
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get shop
+    const { data: shop, error: shopError } = await supabase
+      .from('shops')
+      .select('stripe_account_id, terminal_id, terminal_status, terminal_model')
+      .eq('id', shopId)
+      .single();
+
+    if (shopError || !shop) {
+      return res.status(404).json({ error: 'Shop not found' });
+    }
+
+    if (!shop.terminal_id) {
+      return res.json({ hasTerminal: false });
+    }
+
+    // Get reader status from Stripe
+    const reader = await stripe.terminal.readers.retrieve(
+      shop.terminal_id,
+      {},
+      {
+        stripeAccount: shop.stripe_account_id,
+      }
+    );
+
+    res.json({
+      hasTerminal: true,
+      terminal: {
+        id: reader.id,
+        label: reader.label,
+        status: reader.status,
+        deviceType: reader.device_type,
+        model: shop.terminal_model,
+      },
+    });
+  } catch (error) {
+    console.error('❌ Terminal status check failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get terminal status (POST with shopId in body)
 app.post('/api/terminal/status', async (req, res) => {
   const { shopId } = req.body;
 
