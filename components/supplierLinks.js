@@ -600,10 +600,12 @@ async function saveDealership(dealerData) {
   
   try {
     const { supabase } = await import('../helpers/supabase.js');
+    const { getUUID } = await import('../helpers/uuid.js');
     
     const { data, error } = await supabase
       .from('dealerships')
       .insert({
+        id: getUUID(),
         shop_id: shopId,
         name: dealerData.name,
         manufacturer: dealerData.manufacturer,
