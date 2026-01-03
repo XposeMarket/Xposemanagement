@@ -6,7 +6,7 @@
  * with aggressive caching to stay under free tier limits
  */
 
-const { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
 
 // Environment variables (set these in Vercel dashboard)
 const GOOGLE_API_KEY = process.env.GOOGLE_SEARCH_API_KEY || 'AIzaSyAoepqAtWCIEcskpkSS22kD3TeQM7rDlJE';
@@ -14,7 +14,7 @@ const GOOGLE_CX = process.env.GOOGLE_SEARCH_CX || '5783145ca815040ec';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   // Only allow POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });

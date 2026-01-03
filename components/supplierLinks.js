@@ -450,19 +450,56 @@ async function searchDealerships(manufacturer, location) {
       body: JSON.stringify({ manufacturer, location, shopId: getShopInfo().shopId })
     });
     
-    if (!response.ok) {
-      throw new Error('Search failed');
+    // Check if we got HTML instead of JSON (404 error page)
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      throw new Error('API endpoint not available');
     }
     
     const data = await response.json();
-    displaySearchResults(data.results, manufacturer);
+    
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP ${response.status}: Search failed`);
+    }
+    
+    if (data.results && data.results.length > 0) {
+      displaySearchResults(data.results, manufacturer);
+    } else {
+      showNoResultsMessage(manufacturer);
+    }
     
   } catch (error) {
     console.error('Search error:', error);
-    resultsDiv.innerHTML = '<p style="color:#ef4444;text-align:center;">Search failed. Please try again.</p>';
+    
+    if (error.message.includes('Unexpected token') || error.message.includes('API endpoint not available')) {
+      // API not available - show manual option
+      resultsDiv.innerHTML = `
+        <p style="color:#666;text-align:center;margin-bottom:20px;">Dealer search not available. Add manually instead.</p>
+        <button class="btn primary" onclick="addManualDealer('${manufacturer}')" style="width:100%;">
+          Add ${manufacturer} Dealer Manually
+        </button>
+      `;
+    } else {
+      showNoResultsMessage(manufacturer);
+    }
   } finally {
     searchBtn.disabled = false;
     searchBtn.textContent = 'Search Dealerships';
+  }
+}
+
+/**
+ * Show no results message with manual option
+ */
+function showNoResultsMessage(manufacturer) {
+  const resultsDiv = document.getElementById('dealerSearchResults');
+  if (resultsDiv) {
+    resultsDiv.innerHTML = `
+      <p style="color:#666;text-align:center;margin-bottom:20px;">No dealerships found in this area. Try a nearby city.</p>
+      <button class="btn primary" onclick="addManualDealer('${manufacturer}')" style="width:100%;">
+        Add ${manufacturer} Dealer Manually
+      </button>
+    `;
   }
 }
 
@@ -700,6 +737,23 @@ function handleSupplierClick(supplier) {
       console.log(`Part added from ${supplier.name}`);
     });
   }
+}
+
+/**
+ * Add manual dealer when search fails
+ */
+function addManualDealer(manufacturer) {
+  const dealerData = {
+    name: `${manufacturer} Dealership`,
+    manufacturer: manufacturer,
+    address: 'Contact for address',
+    phone: '',
+    website: '',
+    latitude: null,
+    longitude: null
+  };
+  
+  saveDealership(dealerData);
 }
 
 /**
