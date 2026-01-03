@@ -296,8 +296,6 @@ function createInvitationsModal() {
   modal.className = 'modal-overlay hidden';
   modal.innerHTML = `
     <div class="modal-content card" style="max-width: 600px; margin: 0 auto; max-height: 90vh; display: flex; flex-direction: column;">
-      <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid var(--line);    modal.innerHTML = `
-    <div class="modal-content card" style="max-width: 600px; margin: 0 auto; max-height: 90vh; display: flex; flex-direction: column;">
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid var(--line);">
         <h2 style="margin: 0;">Notifications</h2>
         <div style="display:flex; gap:8px; align-items:center;">
@@ -335,7 +333,21 @@ function createInvitationsModal() {
     } catch (err) {
       console.error('[Invitations] Error marking all notifications read:', err);
       alert('Failed to mark all notifications as read. Please try again.');
-s="muted">No notifications.</div>';
+    }
+  });
+
+  return modal;
+}
+
+/**
+ * Render the invitations list in the modal
+ */
+function renderInvitationsList() {
+  const container = document.getElementById('invitationsListContainer');
+  if (!container) return;
+
+  if (!pendingInvitations || pendingInvitations.length === 0) {
+    container.innerHTML = '<div class="muted">No notifications.</div>';
     return;
   }
 
