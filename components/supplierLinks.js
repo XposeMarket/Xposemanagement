@@ -448,12 +448,16 @@ async function searchDealerships(manufacturer, location) {
     let data;
     let isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     
-    // Try production API first (for both local and live)
+    // The frontend is on GitHub Pages, API is on Vercel
+    // Always use the Vercel API URL for production
+    const VERCEL_API_URL = 'https://xpose-stripe-server.vercel.app';
+    
+    // Try Vercel API first (for both local and live)
     try {
-      console.log('🔍 Trying production API...');
-      const prodUrl = isLocal ? 'https://xpose.management/api/search-dealers' : '/api/search-dealers';
+      console.log('🔍 Trying Vercel API...');
+      const apiUrl = `${VERCEL_API_URL}/api/search-dealers`;
       
-      response = await fetch(prodUrl, {
+      response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ manufacturer, location, shopId: getShopInfo().shopId })
@@ -471,9 +475,9 @@ async function searchDealerships(manufacturer, location) {
         throw new Error(data.error || `HTTP ${response.status}: Search failed`);
       }
       
-      console.log('✅ Production API success');
+      console.log('✅ Vercel API success');
     } catch (prodError) {
-      console.warn('❌ Production API failed:', prodError.message);
+      console.warn('❌ Vercel API failed:', prodError.message);
       
       // If local development, try the local stripe-server as fallback
       if (isLocal) {
