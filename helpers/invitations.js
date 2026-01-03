@@ -263,19 +263,13 @@ function updateNotificationBadge(count) {
  * Set up polling to refresh notifications every 30 seconds
  */
 function setupPolling() {
-  let pollCount = 0;
-  
-  // Poll every 12 seconds
+  // Poll every 30 seconds
   setInterval(async () => {
-    pollCount++;
-    // Only log every 10th poll to reduce console spam
-    if (pollCount % 10 === 0) {
-      console.log(`[Invitations] Polling... (x10)`);
-    }
+    console.log('[Invitations] Polling for new notifications...');
     await fetchPendingInvitations();
-  }, 12000); // 12 seconds
-
-  console.log('[Invitations] Polling active (every 12 seconds)');
+  }, 30000); // 30 seconds
+  
+  console.log('[Invitations] Polling active (every 30 seconds)');
 }
 
 /**
@@ -300,7 +294,9 @@ function createInvitationsModal() {
   const modal = document.createElement('div');
   modal.id = 'invitationsModal';
   modal.className = 'modal-overlay hidden';
-    modal.innerHTML = `
+  modal.innerHTML = `
+    <div class="modal-content card" style="max-width: 600px; margin: 0 auto; max-height: 90vh; display: flex; flex-direction: column;">
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid var(--line);    modal.innerHTML = `
     <div class="modal-content card" style="max-width: 600px; margin: 0 auto; max-height: 90vh; display: flex; flex-direction: column;">
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid var(--line);">
         <h2 style="margin: 0;">Notifications</h2>
@@ -339,21 +335,7 @@ function createInvitationsModal() {
     } catch (err) {
       console.error('[Invitations] Error marking all notifications read:', err);
       alert('Failed to mark all notifications as read. Please try again.');
-    }
-  });
-
-  return modal;
-}
-
-/**
- * Render the list of invitations AND notifications in the modal
- */
-function renderInvitationsList() {
-  const container = document.getElementById('invitationsListContainer');
-  if (!container) return;
-
-  if (pendingInvitations.length === 0) {
-    container.innerHTML = '<div class="muted">No notifications.</div>';
+s="muted">No notifications.</div>';
     return;
   }
 

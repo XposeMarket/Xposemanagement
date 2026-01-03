@@ -5,6 +5,7 @@
     { "source": "/get-subscription-status", "destination": "/api" },
     { "source": "/health", "destination": "/api" },
     { "source": "/webhook", "destination": "/api" },
-    { "source": "/stripe/:path*", "destination": "/api" }
+    { "source": "/stripe/:path*", "destination": "/api" },
+    { "source": "/api/search-dealers", "destination": "/api/search-dealers" }
   ]
 }
