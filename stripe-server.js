@@ -45,6 +45,10 @@ const allowedOrigins = (() => {
   const list = [
     'http://localhost:5500',
     'http://127.0.0.1:5500',
+    'http://localhost:3001',  // VS Code Live Preview
+    'http://127.0.0.1:3001',  // VS Code Live Preview
+    'http://localhost:5501',  // Alternative Live Preview port
+    'http://127.0.0.1:5501',  // Alternative Live Preview port
     'https://www.xpose.management',
     'https://xpose.management'
   ];
@@ -79,7 +83,13 @@ app.use(cors({
 
     try {
       const incoming = String(origin).toLowerCase();
-      console.log('CORS check: incoming origin=', incoming, 'allowedOrigins=', allowedOrigins);
+      console.log('CORS check: incoming origin=', incoming);
+
+      // In development, allow ALL localhost origins
+      if (incoming.includes('localhost') || incoming.includes('127.0.0.1')) {
+        console.log('✅ CORS: allowing localhost origin');
+        return callback(null, true);
+      }
 
       // Direct exact-match first
       if (allowedOrigins.indexOf(incoming) !== -1) {
@@ -1137,6 +1147,133 @@ async function handlePaymentFailed(invoice) {
 }
 
 // ===========================
+// Search Dealers Route
+// ===========================
+
+// Search dealerships via Google Programmable Search API
+app.post('/api/search-dealers', async (req, res) => {
+  try {
+    const { manufacturer, location, shopId } = req.body;
+
+    if (!manufacturer || !location) {
+      return res.status(400).json({ error: 'Missing manufacturer or location' });
+    }
+
+    console.log('🔍 Searching dealerships for:', manufacturer, 'near', location);
+
+    // Initialize Supabase client
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ADMIN_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.warn('⚠️ Supabase credentials not configured - cannot cache results');
+      // Continue without caching
+    }
+
+    let supabase = null;
+    if (supabaseUrl && supabaseKey) {
+      const { createClient } = require('@supabase/supabase-js');
+      supabase = createClient(supabaseUrl, supabaseKey);
+    }
+
+    // Check cache first (30 day TTL) if Supabase is available
+    if (supabase) {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const { data: cached, error: cacheError } = await supabase
+        .from('dealership_search_cache')
+        .select('results, cached_at')
+        .eq('manufacturer', manufacturer.toLowerCase())
+        .eq('location', location.toLowerCase())
+        .gte('cached_at', thirtyDaysAgo)
+        .single();
+
+      if (cached && !cacheError) {
+        console.log('✅ Cache hit for:', manufacturer, location);
+        return res.status(200).json({
+          results: cached.results,
+          cached: true,
+          cached_at: cached.cached_at
+        });
+      }
+    }
+
+    console.log('🔍 Cache miss - calling Google API for:', manufacturer, location);
+
+    // Get Google API credentials
+    const GOOGLE_API_KEY = process.env.GOOGLE_SEARCH_API_KEY || 'AIzaSyAoepqAtWCIEcskpkSS22kD3TeQM7rDlJE';
+    const GOOGLE_CX = process.env.GOOGLE_SEARCH_CX || '5783145ca815040ec';
+
+    if (!GOOGLE_API_KEY || GOOGLE_API_KEY === 'your-api-key-here') {
+      return res.status(503).json({ 
+        error: 'Google Search API not configured', 
+        message: 'Please set GOOGLE_SEARCH_API_KEY environment variable' 
+      });
+    }
+
+    // Build search query
+    const query = `${manufacturer} dealership near ${location}`;
+    
+    // Call Google Programmable Search API
+    const googleUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}&num=5`;
+    
+    const response = await fetch(googleUrl);
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Google API Error:', errorData);
+      return res.status(response.status).json({ 
+        error: 'Google search failed', 
+        details: errorData 
+      });
+    }
+
+    const data = await response.json();
+
+    // Parse results into clean format
+    const results = (data.items || []).map(item => ({
+      title: item.title,
+      link: item.link,
+      snippet: item.snippet,
+      displayLink: item.displayLink
+    }));
+
+    // Save to cache if Supabase is available
+    if (supabase) {
+      const { error: insertError } = await supabase
+        .from('dealership_search_cache')
+        .upsert({
+          manufacturer: manufacturer.toLowerCase(),
+          location: location.toLowerCase(),
+          results: results,
+          cached_at: new Date().toISOString()
+        }, {
+          onConflict: 'manufacturer,location'
+        });
+
+      if (insertError) {
+        console.warn('Failed to cache results:', insertError);
+        // Continue anyway - cache failure shouldn't break the feature
+      }
+    }
+
+    console.log('✅ Google API call successful, returning', results.length, 'results');
+
+    return res.status(200).json({
+      results: results,
+      cached: false,
+      search_query: query
+    });
+
+  } catch (error) {
+    console.error('❌ Search dealers error:', error);
+    return res.status(500).json({ 
+      error: 'Internal server error', 
+      message: error.message 
+    });
+  }
+});
+
 // Twilio Messaging Routes
 // ===========================
 

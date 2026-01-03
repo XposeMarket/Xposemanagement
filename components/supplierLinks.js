@@ -444,22 +444,67 @@ async function searchDealerships(manufacturer, location) {
   resultsDiv.innerHTML = '<p style="text-align:center;color:#666;">🔍 Searching for dealerships...</p>';
   
   try {
-    const response = await fetch('/api/search-dealers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ manufacturer, location, shopId: getShopInfo().shopId })
-    });
+    let response;
+    let data;
+    let isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     
-    // Check if we got HTML instead of JSON (404 error page)
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      throw new Error('API endpoint not available');
-    }
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.error || `HTTP ${response.status}: Search failed`);
+    // Try production API first (for both local and live)
+    try {
+      console.log('🔍 Trying production API...');
+      const prodUrl = isLocal ? 'https://xpose.management/api/search-dealers' : '/api/search-dealers';
+      
+      response = await fetch(prodUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ manufacturer, location, shopId: getShopInfo().shopId })
+      });
+      
+      // Check if we got HTML instead of JSON (404 error page)
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('API endpoint not available - got HTML response');
+      }
+      
+      data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}: Search failed`);
+      }
+      
+      console.log('✅ Production API success');
+    } catch (prodError) {
+      console.warn('❌ Production API failed:', prodError.message);
+      
+      // If local development, try the local stripe-server as fallback
+      if (isLocal) {
+        console.log('🔄 Trying local stripe-server fallback...');
+        try {
+          response = await fetch('http://localhost:3000/api/search-dealers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ manufacturer, location, shopId: getShopInfo().shopId })
+          });
+          
+          const contentType = response.headers.get('content-type');
+          if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Local API endpoint not available');
+          }
+          
+          data = await response.json();
+          
+          if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}: Local API failed`);
+          }
+          
+          console.log('✅ Local API success');
+        } catch (localError) {
+          console.error('❌ Local API also failed:', localError.message);
+          throw new Error('Both production and local APIs failed. Please check API configuration.');
+        }
+      } else {
+        // On production, re-throw the original error
+        throw prodError;
+      }
     }
     
     if (data.results && data.results.length > 0) {
