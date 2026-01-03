@@ -72,6 +72,20 @@ function setupSettings() {
         if (error) throw error;
         shopData = shop;
 
+        // ✅ CHECK IF USER OPTED OUT OF TERMINAL - HIDE TERMINAL SECTION
+        if (shopData && shopData.terminal_opted_out === true) {
+          console.log('🚫 User opted out of terminal - hiding terminal settings section');
+          const terminalSection = document.getElementById('terminal-settings-section');
+          if (terminalSection) {
+            terminalSection.style.display = 'none';
+          }
+          // Also hide the parent card if it exists
+          const terminalCard = terminalSection?.closest('.card');
+          if (terminalCard) {
+            terminalCard.style.display = 'none';
+          }
+        }
+
         // Load owner info from shops.owner_id (if present)
         if (shopData && shopData.owner_id) {
           const { data: ownerUser, error: ownerError } = await supabase
