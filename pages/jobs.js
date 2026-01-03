@@ -2159,7 +2159,7 @@ async function setupJobs() {
   const openAddPartsFromFinderBtn = document.getElementById('openAddPartsFromFinder');
   if (openAddPartsFromFinderBtn) {
     openAddPartsFromFinderBtn.addEventListener('click', () => {
-      // Close the find parts modal and open add parts modal
+      // Close the find parts modal and open partPricingModal
       closePartsModal();
       // Get the job ID from the parts modal that was just closed
       const jobId = document.getElementById('partsModal').dataset.jobId;
@@ -2167,7 +2167,24 @@ async function setupJobs() {
         const job = allJobs.find(j => j.id === jobId);
         const appt = allAppointments.find(a => a.id === job?.appointment_id);
         if (job && appt) {
-          openAddPartsModal(job, appt);
+          // Use partPricingModal instead of old addPartsModal
+          const pricingModal = window.partPricingModal || window.xm_partPricingModal;
+          
+          if (pricingModal) {
+            const manualPart = {
+              manual_entry: true,
+              name: '',
+              part_name: '',
+              part_number: '',
+              id: 'manual'
+            };
+            
+            const vehicle = appt.vehicle_year && appt.vehicle_make && appt.vehicle_model
+              ? `${appt.vehicle_year} ${appt.vehicle_make} ${appt.vehicle_model}`
+              : null;
+            
+            pricingModal.show(manualPart, job.id, vehicle);
+          }
         }
       }
     });

@@ -238,20 +238,36 @@ class PartsModalHandler {
       }
     });
 
-    // Manual add button
+    // Manual add button - now uses partPricingModal
     document.getElementById('openAddPartsFromFinder')?.addEventListener('click', () => {
       const jobRef = this.currentJob;
       this.closeModal();
-      const addModal = document.getElementById('addPartsModal');
-      if (addModal) {
-        if (jobRef && jobRef.id) {
-          addModal.dataset.jobId = jobRef.id;
-          console.log('[PartsModalHandler] set addPartsModal.dataset.jobId to', jobRef.id);
-        } else {
-          console.warn('[PartsModalHandler] currentJob missing when opening addPartsModal', jobRef);
-          delete addModal.dataset.jobId;
-        }
-        addModal.classList.remove('hidden');
+      
+      // Use partPricingModal instead of old addPartsModal
+      const pricingModal = window.partPricingModal || window.xm_partPricingModal;
+      
+      if (pricingModal && jobRef) {
+        // Create empty part object with manual_entry flag
+        const manualPart = {
+          manual_entry: true,
+          name: '',
+          part_name: '',
+          part_number: '',
+          id: 'manual'
+        };
+        
+        // Get vehicle info for the job
+        const vehicle = jobRef.year && jobRef.make && jobRef.model
+          ? `${jobRef.year} ${jobRef.make} ${jobRef.model}`
+          : null;
+        
+        console.log('[PartsModalHandler] Opening partPricingModal for manual entry', { jobId: jobRef.id, vehicle });
+        
+        // Open the part pricing modal with manual entry mode
+        pricingModal.show(manualPart, jobRef.id, vehicle);
+      } else {
+        console.error('[PartsModalHandler] partPricingModal not available or no job');
+        alert('Part pricing modal is not available. Please refresh the page.');
       }
     });
 
