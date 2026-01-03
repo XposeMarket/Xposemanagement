@@ -12,7 +12,6 @@
 
 import { getSupabaseClient } from '../helpers/supabase.js';
 import { getUUID } from '../helpers/uuid.js';
-import { createShopNotification } from '../helpers/shop-notifications.js';
 
 // Current appointment being edited
 let currentApptId = null;
@@ -904,6 +903,22 @@ function getCurrentUser() {
 }
 
 /**
+ * Get current authenticated user's ID
+ */
+async function getCurrentAuthId() {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+  
+  try {
+    const { data: authData } = await supabase.auth.getUser();
+    return authData?.user?.id || null;
+  } catch (error) {
+    console.error('[Appointments] Error getting auth ID:', error);
+    return null;
+  }
+}
+
+/**
  * Save or update vehicle in Supabase vehicles table
  */
 async function upsertVehicleToSupabase(customerId, shopId, vehicleData) {
@@ -1751,7 +1766,7 @@ async function createInvoiceForAppointment(appt) {
 /**
  * Open view modal
  */
-function openViewModal(appt) {
+async function openViewModal(appt) {
   const modal = document.getElementById('viewApptModal');
   const content = document.getElementById('viewApptContent');
   const editBtn = document.getElementById('editFromViewBtn');
@@ -1771,6 +1786,16 @@ function openViewModal(appt) {
       <div><strong>Status:</strong> <span class="tag ${getStatusClass(appt.status)}">${appt.status || 'new'}</span></div>
       ${appt.notes ? `<div><strong>Notes:</strong><br>${appt.notes}</div>` : ''}
     </div>
+    
+    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #ddd;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <strong style="font-size: 15px;">Appointment Notes</strong>
+        <button type="button" id="viewModalAddNoteBtn" class="btn small info">Add Note</button>
+      </div>
+      <div id="viewModalNotesList" style="display: flex; flex-direction: column; gap: 12px;">
+        <p style="color: #666; font-style: italic; text-align: center;">Loading notes...</p>
+      </div>
+    </div>
   `;
   
   editBtn.onclick = () => {
@@ -1779,6 +1804,41 @@ function openViewModal(appt) {
   };
   
   modal.classList.remove('hidden');
+  
+  // Load and render notes
+  await renderViewModalNotes(appt.id);
+  
+  // Add note button handler
+  const addNoteBtn = document.getElementById('viewModalAddNoteBtn');
+  if (addNoteBtn) {
+    addNoteBtn.addEventListener('click', () => {
+      currentNotesAppointmentId = appt.id;
+      openAddNoteModal();
+    });
+  }
+}
+
+/**
+ * Render notes in view modal
+ */
+async function renderViewModalNotes(appointmentId) {
+  const container = document.getElementById('viewModalNotesList');
+  if (!container) return;
+  
+  const notes = await loadAppointmentNotes(appointmentId);
+  currentNotesAppointmentId = appointmentId;
+  
+  container.innerHTML = '';
+  
+  if (notes.length === 0) {
+    container.innerHTML = '<p style="color: #666; font-style: italic; padding: 12px; text-align: center;">No notes yet. Click "Add Note" above to create one.</p>';
+    return;
+  }
+  
+  notes.forEach(note => {
+    const notePanel = createNotePanel(note, false);
+    container.appendChild(notePanel);
+  });
 }
 
 /**
@@ -1845,38 +1905,6 @@ async function updateAppointmentStatus(apptId, newStatus) {
   allAppointments[index].updated_at = new Date().toISOString();
 
   await saveAppointments(allAppointments);
-  
-  // ✨ NOTIFICATION: Status changed
-  const appt = allAppointments[index];
-  const shopId = getCurrentShopId();
-  const currentUser = getCurrentUser();
-
-  // Determine priority based on status
-  let priority = 'normal';
-  if (newStatus === 'completed') priority = 'high';
-  if (newStatus === 'in_progress') priority = 'high';
-
-  const customerName = appt.customer || `${appt.customer_first} ${appt.customer_last}`.trim();
-
-  await createShopNotification({
-    supabase: getSupabaseClient(),
-    shopId,
-    type: 'appointment_status_changed',
-    category: 'appointment',
-    title: 'Appointment Status Updated',
-    message: `${customerName}'s appointment status changed to ${newStatus.replace(/_/g, ' ')}`,
-    relatedId: apptId,
-    relatedType: 'appointment',
-    metadata: {
-      customer_name: customerName,
-      new_status: newStatus,
-      vehicle: appt.vehicle || '',
-      service: appt.service || ''
-    },
-    priority,
-    createdBy: currentUser?.id || null
-  });
-  
   renderAppointments();
 
   // Auto-create or update job if status is in_progress or awaiting_parts
@@ -2046,31 +2074,6 @@ async function saveNewAppointment() {
 
   allAppointments.push(newAppt);
   await saveAppointments(allAppointments);
-  
-  // ✨ NOTIFICATION: New appointment created
-  const shopId = getCurrentShopId();
-  const currentUser = getCurrentUser();
-  await createShopNotification({
-    supabase: getSupabaseClient(),
-    shopId,
-    type: 'appointment_created',
-    category: 'appointment',
-    title: 'New Appointment Created',
-    message: `${first} ${last} scheduled ${service || 'service'} for ${vehicle || 'their vehicle'}`,
-    relatedId: newAppt.id,
-    relatedType: 'appointment',
-    metadata: {
-      customer_name: `${first} ${last}`,
-      phone: phone || '',
-      vehicle: vehicle || '',
-      service: service || '',
-      scheduled_date: date || '',
-      scheduled_time: time || ''
-    },
-    priority: 'normal',
-    createdBy: currentUser?.id || null
-  });
-  
   // If there's an invoice for this appointment, add the chosen service to it
   await addServiceToInvoice(newAppt.id, newAppt.service);
   
@@ -2085,7 +2088,7 @@ async function saveNewAppointment() {
 /**
  * Open edit modal
  */
-function openEditModal(appt) {
+async function openEditModal(appt) {
   currentApptId = appt.id;
   const modal = document.getElementById('apptModal');
   const form = document.getElementById('apptForm');
@@ -2145,7 +2148,9 @@ function openEditModal(appt) {
   form.elements['service'].value = appt.service || '';
   form.elements['preferred_date'].value = appt.preferred_date || '';
   form.elements['preferred_time'].value = appt.preferred_time || '';
-  form.elements['notes'].value = appt.notes || '';
+  
+  // Load notes for this appointment
+  await renderAppointmentNotes(appt.id);
   
   modal.classList.remove('hidden');
 }
@@ -2195,38 +2200,24 @@ async function saveEditedAppointment(e) {
     service: form.elements['service'].value.trim(),
     preferred_date: form.elements['preferred_date'].value || null,
     preferred_time: form.elements['preferred_time'].value || null,
-    notes: form.elements['notes'].value.trim(),
     updated_at: new Date().toISOString()
   };
 
   await saveAppointments(allAppointments);
 
-  // ✨ NOTIFICATION: Appointment edited
-  const shopId = getCurrentShopId();
-  const currentUser = getCurrentUser();
-  await createShopNotification({
-    supabase: getSupabaseClient(),
-    shopId,
-    type: 'appointment_edited',
-    category: 'appointment',
-    title: 'Appointment Updated',
-    message: `${customer_first} ${customer_last}'s appointment details were modified`,
-    relatedId: currentApptId,
-    relatedType: 'appointment',
-    metadata: {
-      customer_name: `${customer_first} ${customer_last}`,
-      vehicle,
-      service: allAppointments[index].service
-    },
-    priority: 'normal',
-    createdBy: currentUser?.id || null
-  });
-
   // 🆕 Update customer in customers table (with vehicle)
-  // NOTE: Do NOT auto-upsert customers when saving/editing an appointment.
-  // Customers should only be created/updated when the user explicitly
-  // clicks the "Save Customer" button in the UI. The Save Customer
-  // button already delegates to `upsertCustomerToSupabase()`.
+  await upsertCustomerToSupabase({
+    customer_first,
+    customer_last,
+    email: allAppointments[index].email,
+    phone: allAppointments[index].phone,
+    vehicle,
+    vehicle_year,
+    vehicle_make,
+    vehicle_model,
+    vin: allAppointments[index].vin,
+    notes: allAppointments[index].notes || ''
+  });
   // If there's an invoice linked to this appointment, ensure the service is added
   await addServiceToInvoice(currentApptId, allAppointments[index].service);
   
@@ -2300,19 +2291,16 @@ async function confirmDeleteAppointment() {
   
   const supabase = getSupabaseClient();
   const shopId = getCurrentShopId();
-  let relatedJobs = [];
-  let relatedInvoices = [];
-  
   if (supabase && shopId) {
     try {
       // Find related jobs
-      const { data: jobs } = await supabase
+      const { data: relatedJobs } = await supabase
         .from('jobs')
         .select('id')
         .eq('appointment_id', pendingDeleteApptId);
-      relatedJobs = jobs || [];
       
       // Find related invoices (by appointment_id or job_id)
+      let relatedInvoices = [];
       if (relatedJobs && relatedJobs.length > 0) {
         const jobIds = relatedJobs.map(j => j.id);
         const { data: invs } = await supabase
@@ -2388,35 +2376,6 @@ async function confirmDeleteAppointment() {
     }
   }
   
-  // ✨ NOTIFICATION: Appointment deleted
-  const appt = allAppointments.find(a => a.id === pendingDeleteApptId);
-  if (appt) {
-    const shopId = getCurrentShopId();
-    const currentUser = getCurrentUser();
-    const customerName = appt.customer || `${appt.customer_first} ${appt.customer_last}`.trim();
-    
-    await createShopNotification({
-      supabase: getSupabaseClient(),
-      shopId,
-      type: 'appointment_deleted',
-      category: 'appointment',
-      title: 'Appointment Deleted',
-      message: `${customerName}'s appointment for ${appt.service || 'service'} was deleted`,
-      relatedId: pendingDeleteApptId,
-      relatedType: 'appointment',
-      metadata: {
-        customer_name: customerName,
-        vehicle: appt.vehicle || '',
-        service: appt.service || '',
-        scheduled_date: appt.preferred_date || '',
-        related_jobs: relatedJobs.length,
-        related_invoices: relatedInvoices.length
-      },
-      priority: 'high',
-      createdBy: currentUser?.id || null
-    });
-  }
-  
   // Remove from local array
   allAppointments = allAppointments.filter(a => a.id !== pendingDeleteApptId);
   await saveAppointments(allAppointments);
@@ -2473,6 +2432,332 @@ function showNotification(message, type = 'success') {
   }, 3000);
 }
 
+// ========================================
+// APPOINTMENT NOTES SYSTEM
+// ========================================
+
+let currentNoteId = null;
+let currentNotesAppointmentId = null;
+let allNotes = [];
+
+/**
+ * Load notes for a specific appointment
+ */
+async function loadAppointmentNotes(appointmentId) {
+  const supabase = getSupabaseClient();
+  if (!supabase || !appointmentId) return [];
+  
+  try {
+    // Fetch notes
+    const { data: notes, error } = await supabase
+      .from('appointment_notes')
+      .select('*')
+      .eq('appointment_id', appointmentId)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    if (!notes || notes.length === 0) return [];
+    
+    // Get unique user IDs from notes
+    const userIds = [...new Set(notes.map(n => n.created_by).filter(Boolean))];
+    if (userIds.length === 0) return notes;
+    
+    // Create a map of userId -> user for easy lookup
+    const userMap = new Map();
+    
+    // Fetch user data from users table (admins/shop owners) - columns: first, last, email
+    try {
+      const { data: users, error: userError } = await supabase
+        .from('users')
+        .select('id, first, last, email')
+        .in('id', userIds);
+      
+      if (!userError && users) {
+        users.forEach(u => {
+          userMap.set(u.id, {
+            first_name: u.first,
+            last_name: u.last,
+            email: u.email
+          });
+        });
+      }
+    } catch (e) {
+      console.warn('Could not fetch users table data:', e);
+    }
+    
+    // Fetch user data from shop_staff table (staff members) - columns: first_name, last_name, email
+    try {
+      const { data: staff, error: staffError } = await supabase
+        .from('shop_staff')
+        .select('auth_id, first_name, last_name, email')
+        .in('auth_id', userIds);
+      
+      if (!staffError && staff) {
+        staff.forEach(s => {
+          // Only set if not already found in users table
+          if (!userMap.has(s.auth_id)) {
+            userMap.set(s.auth_id, {
+              first_name: s.first_name,
+              last_name: s.last_name,
+              email: s.email
+            });
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Could not fetch shop_staff table data:', e);
+    }
+    
+    // Attach user data to each note
+    return notes.map(note => ({
+      ...note,
+      user: userMap.get(note.created_by) || null
+    }));
+  } catch (err) {
+    console.error('Error loading appointment notes:', err);
+    return [];
+  }
+}
+
+/**
+ * Render notes list in the appointment modal
+ */
+async function renderAppointmentNotes(appointmentId) {
+  const container = document.getElementById('appointmentNotesList');
+  if (!container) return;
+  
+  allNotes = await loadAppointmentNotes(appointmentId);
+  currentNotesAppointmentId = appointmentId;
+  
+  container.innerHTML = '';
+  
+  if (allNotes.length === 0) {
+    container.innerHTML = '<p style="color: #666; font-style: italic; padding: 12px; text-align: center;">No notes yet. Click "Add Note" below to create one.</p>';
+    return;
+  }
+  
+  allNotes.forEach(note => {
+    const notePanel = createNotePanel(note);
+    container.appendChild(notePanel);
+  });
+}
+
+/**
+ * Create a single note panel element
+ */
+function createNotePanel(note, showActions = true) {
+  const panel = document.createElement('div');
+  panel.style.cssText = 'border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #f9f9f9;';
+  
+  // Header with author and date
+  const header = document.createElement('div');
+  header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;';
+  
+  const authorInfo = document.createElement('div');
+  authorInfo.style.cssText = 'display: flex; flex-direction: column; gap: 2px;';
+  
+  const authorName = document.createElement('strong');
+  authorName.style.fontSize = '14px';
+  authorName.style.color = '#333';
+  let userName = 'Unknown User';
+  if (note.user) {
+    const fullName = `${note.user.first_name || ''} ${note.user.last_name || ''}`.trim();
+    userName = fullName || note.user.email || 'Unknown User';
+  }
+  authorName.textContent = userName;
+  
+  const dateInfo = document.createElement('span');
+  dateInfo.style.cssText = 'font-size: 12px; color: #666;';
+  const createdDate = new Date(note.created_at);
+  const wasEdited = new Date(note.updated_at).getTime() !== createdDate.getTime();
+  dateInfo.textContent = createdDate.toLocaleString() + (wasEdited ? ' (edited)' : '');
+  
+  authorInfo.appendChild(authorName);
+  authorInfo.appendChild(dateInfo);
+  
+  header.appendChild(authorInfo);
+  
+  // Action buttons - only show if showActions is true
+  if (showActions) {
+    const actions = document.createElement('div');
+    actions.style.cssText = 'display: flex; gap: 8px;';
+    
+    // Edit button
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'btn small';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => openEditNoteModal(note));
+    
+    // Delete button with trash icon
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'btn small danger';
+    deleteBtn.setAttribute('aria-label', 'Delete note');
+    deleteBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg>';
+    deleteBtn.addEventListener('click', () => deleteAppointmentNote(note.id));
+    
+    actions.appendChild(editBtn);
+    actions.appendChild(deleteBtn);
+    
+    header.appendChild(actions);
+  }
+  
+  // Note content
+  const content = document.createElement('p');
+  content.style.cssText = 'margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; color: #333;';
+  content.textContent = note.note;
+  
+  panel.appendChild(header);
+  panel.appendChild(content);
+  
+  return panel;
+}
+
+/**
+ * Open modal to add a new note
+ */
+function openAddNoteModal() {
+  currentNoteId = null;
+  const modal = document.getElementById('noteModal');
+  const title = document.getElementById('noteModalTitle');
+  const textarea = document.getElementById('noteText');
+  
+  if (!modal || !title || !textarea) return;
+  
+  title.textContent = 'Add Note';
+  textarea.value = '';
+  modal.classList.remove('hidden');
+  textarea.focus();
+}
+
+/**
+ * Open modal to edit an existing note
+ */
+function openEditNoteModal(note) {
+  currentNoteId = note.id;
+  const modal = document.getElementById('noteModal');
+  const title = document.getElementById('noteModalTitle');
+  const textarea = document.getElementById('noteText');
+  
+  if (!modal || !title || !textarea) return;
+  
+  title.textContent = 'Edit Note';
+  textarea.value = note.note;
+  modal.classList.remove('hidden');
+  textarea.focus();
+}
+
+/**
+ * Close note modal
+ */
+function closeNoteModal() {
+  const modal = document.getElementById('noteModal');
+  if (modal) modal.classList.add('hidden');
+  currentNoteId = null;
+}
+
+/**
+ * Save note (create or update)
+ */
+async function saveNote(e) {
+  if (e) e.preventDefault();
+  
+  const textarea = document.getElementById('noteText');
+  const noteText = textarea.value.trim();
+  
+  if (!noteText) {
+    alert('Please enter a note.');
+    return;
+  }
+  
+  const supabase = getSupabaseClient();
+  const authId = await getCurrentAuthId();
+  
+  if (!supabase || !authId || !currentNotesAppointmentId) {
+    alert('Unable to save note. Please try again.');
+    return;
+  }
+  
+  try {
+    if (currentNoteId) {
+      // Update existing note
+      const { error } = await supabase
+        .from('appointment_notes')
+        .update({ note: noteText })
+        .eq('id', currentNoteId);
+      
+      if (error) throw error;
+      console.log('✅ Note updated');
+    } else {
+      // Create new note
+      const { error } = await supabase
+        .from('appointment_notes')
+        .insert({
+          appointment_id: currentNotesAppointmentId,
+          note: noteText,
+          created_by: authId
+        });
+      
+      if (error) throw error;
+      console.log('✅ Note created');
+    }
+    
+    // Refresh notes list in both edit modal and view modal
+    await renderAppointmentNotes(currentNotesAppointmentId);
+    
+    // Also refresh view modal notes if it's visible
+    const viewModalNotesList = document.getElementById('viewModalNotesList');
+    if (viewModalNotesList) {
+      await renderViewModalNotes(currentNotesAppointmentId);
+    }
+    
+    closeNoteModal();
+    
+  } catch (err) {
+    console.error('Error saving note:', err);
+    alert('Failed to save note. Please try again.');
+  }
+}
+
+/**
+ * Delete a note
+ */
+async function deleteAppointmentNote(noteId) {
+  if (!confirm('Are you sure you want to delete this note?')) return;
+  
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+  
+  try {
+    const { error } = await supabase
+      .from('appointment_notes')
+      .delete()
+      .eq('id', noteId);
+    
+    if (error) throw error;
+    
+    console.log('✅ Note deleted');
+    
+    // Refresh notes list in both edit modal and view modal
+    await renderAppointmentNotes(currentNotesAppointmentId);
+    
+    // Also refresh view modal notes if it's visible
+    const viewModalNotesList = document.getElementById('viewModalNotesList');
+    if (viewModalNotesList) {
+      await renderViewModalNotes(currentNotesAppointmentId);
+    }
+    
+  } catch (err) {
+    console.error('Error deleting note:', err);
+    alert('Failed to delete note. Please try again.');
+  }
+}
+
+// ========================================
+// END APPOINTMENT NOTES SYSTEM
+// ========================================
+
 /**
  * Setup appointments page
  */
@@ -2508,6 +2793,16 @@ async function setupAppointments() {
   
   const apptForm = document.getElementById('apptForm');
   if (apptForm) apptForm.addEventListener('submit', saveEditedAppointment);
+  
+  // Note modal event listeners
+  const addNoteBtn = document.getElementById('addNoteBtn');
+  if (addNoteBtn) addNoteBtn.addEventListener('click', openAddNoteModal);
+  
+  const closeNoteBtn = document.getElementById('closeNoteModal');
+  if (closeNoteBtn) closeNoteBtn.addEventListener('click', closeNoteModal);
+  
+  const noteForm = document.getElementById('noteForm');
+  if (noteForm) noteForm.addEventListener('submit', saveNote);
   
   const filterBtn = document.getElementById('apptFilter');
   if (filterBtn) filterBtn.addEventListener('click', applyFilters);

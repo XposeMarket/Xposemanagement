@@ -98,7 +98,8 @@
 </div>
 
 <!-- Labor Modal (single unified modal used by jobs and parts flows) -->
-<div id="laborModal" class="card hidden" style="position:fixed; right:20px; bottom:20px; max-width:420px; z-index:70">
+<!-- Labor Modal - NO OVERLAY/BLUR -->
+<div id="laborModal" class="card hidden" style="position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); max-width:500px; width:90%; max-height:90vh; overflow-y:auto; z-index:200001; box-shadow:0 20px 60px rgba(0,0,0,0.3); margin:0;">
   <div class="toolbar" style="justify-content:space-between">
     <h3>Add Labor</h3>
     <button id="labClose" class="btn">Close</button>
@@ -127,8 +128,12 @@
   </div>
   <p class="notice" id="labNote" class="notice"></p>
 </div>
+
+<!-- Parts Modal Overlay -->
+<div id="partsModalOverlay" class="modal-overlay" style="display:none; z-index:59;"></div>
+
 <!-- Parts Finder Modal (integrated with catalog) -->
-<div id="partsModal" class="card hidden" style="position:fixed; right:20px; bottom:20px; max-width:800px; z-index:60; max-height:90vh; overflow-y:auto;">
+<div id="partsModal" class="card hidden" style="position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); max-width:800px; width:95%; z-index:60; max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
   <div class="toolbar" style="justify-content:space-between">
     <h3 style="display: inline-block; margin: 0;">Find Parts</h3>
     <span style="font-size: 0.7rem; color: var(--muted); margin-left: 1rem;">
@@ -210,6 +215,40 @@
 </div>
 
 </main>
+
+<div id="jobViewModal" class="modal-overlay hidden" onclick="closeJobViewModal()">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <h3>Appointment Details</h3>
+      <button onclick="closeJobViewModal()" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body" id="jobViewContent">
+      <!-- content will be populated -->
+    </div>
+    <div class="modal-foot">
+      <button onclick="closeJobViewModal()" class="btn">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="jobNoteModal" class="modal-overlay hidden" onclick="closeJobNoteModal()" style="z-index: 10030;">
+  <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 600px;">
+    <div class="modal-head">
+      <h3 id="jobNoteModalTitle">Add Note</h3>
+      <button onclick="closeJobNoteModal()" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="jobNoteForm" style="display: flex; flex-direction: column; gap: 12px;">
+        <label for="jobNoteText">Note:</label>
+        <textarea id="jobNoteText" rows="5" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;" placeholder="Enter your note here..."></textarea>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button onclick="closeJobNoteModal()" class="btn">Cancel</button>
+      <button onclick="saveJobNote(event)" class="btn info">Save</button>
+    </div>
+  </div>
+</div>
 
 <div id="statusModal" class="modal-overlay hidden" onclick="closeStatusModal()">
   <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 400px;">

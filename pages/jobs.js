@@ -12,13 +12,14 @@
 
 import { getSupabaseClient } from '../helpers/supabase.js';
 import { LS } from '../helpers/constants.js';
-import { saveAppointments } from './appointments.js';
+import { saveAppointments } from './appointments.js?v=1767391500';
 import { createShopNotification } from '../helpers/shop-notifications.js';
 
 // Current job being edited
 let currentJobId = null;
 let currentJobForStatus = null;
 let currentJobForRemove = null;
+let currentJobNotesAppointmentId = null;
 let allJobs = [];
 let allAppointments = [];
 let allUsers = [];
@@ -418,6 +419,17 @@ function openJobActionsModal(job) {
   }
   const btns = modal.querySelector('#jobActionsBtns');
   btns.innerHTML = '';
+  
+  // View button
+  const viewBtn = document.createElement('button');
+  viewBtn.className = 'btn';
+  viewBtn.textContent = 'View Details';
+  viewBtn.onclick = () => { 
+    modal.classList.add('hidden'); 
+    openJobViewModal(job, appt);
+  };
+  btns.appendChild(viewBtn);
+  
   // Add action buttons (Parts, Assign, Remove)
   const partsBtn = document.createElement('button');
   partsBtn.className = 'btn';
@@ -519,10 +531,18 @@ function openJobActionsModal(job) {
     // Actions
     const tdActions = document.createElement('td');
     const actionsDiv = document.createElement('div');
-    actionsDiv.style.display = 'flex';
+    actionsDiv.style.display = 'grid';
+    actionsDiv.style.gridTemplateColumns = 'repeat(2, 1fr)';
     actionsDiv.style.gap = '4px';
     
-    // Assign/Unassign button
+    // View button (top-left)
+    const viewBtn = document.createElement('button');
+    viewBtn.className = 'btn small';
+    viewBtn.textContent = 'View';
+    viewBtn.onclick = () => openJobViewModal(job, appt);
+    actionsDiv.appendChild(viewBtn);
+    
+    // Assign/Unassign button (top-right)
     if (job.assigned_to) {
       const unassignBtn = document.createElement('button');
       unassignBtn.className = 'btn small danger';
@@ -543,7 +563,7 @@ function openJobActionsModal(job) {
       actionsDiv.appendChild(assignBtn);
     }
     
-  // Parts button
+  // Parts button (bottom-left)
   const partsBtn = document.createElement('button');
   // Use blue "info" style for parts action
   partsBtn.className = 'btn small info';
@@ -694,6 +714,308 @@ function closeRemoveModal() {
 
 // Make it global for onclick
 window.closeRemoveModal = closeRemoveModal;
+
+/**
+ * Open job view modal - shows appointment details with notes
+ */
+async function openJobViewModal(job, appt) {
+  const modal = document.getElementById('jobViewModal');
+  const content = document.getElementById('jobViewContent');
+  
+  if (!modal || !content || !appt) return;
+  
+  // Helper function to format time
+  const formatTime12 = (time24) => {
+    if (!time24) return 'Not set';
+    const [h, m] = time24.split(':');
+    const hour = parseInt(h, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return `${hour12}:${m} ${ampm}`;
+  };
+  
+  // Helper function to get status class
+  const getStatusClass = (status) => {
+    const map = {
+      'new': 'tag-new',
+      'scheduled': 'tag-scheduled',
+      'in_progress': 'tag-progress',
+      'awaiting_parts': 'tag-parts',
+      'completed': 'tag-done'
+    };
+    return map[status] || '';
+  };
+  
+  content.innerHTML = `
+    <div style="display: grid; gap: 12px;">
+      <div><strong>Customer:</strong> ${appt.customer || 'N/A'}</div>
+      <div><strong>Phone:</strong> ${appt.phone || 'N/A'}</div>
+      <div><strong>Email:</strong> ${appt.email || 'N/A'}</div>
+      <div><strong>Vehicle:</strong> ${appt.vehicle || 'N/A'}</div>
+      ${appt.vin ? `<div><strong>VIN:</strong> ${appt.vin}</div>` : ''}
+      <div><strong>Service:</strong> ${appt.service || 'N/A'}</div>
+      <div><strong>Date:</strong> ${appt.preferred_date ? new Date(appt.preferred_date).toLocaleDateString() : 'Not set'}</div>
+      <div><strong>Time:</strong> ${formatTime12(appt.preferred_time)}</div>
+      <div><strong>Status:</strong> <span class="tag ${getStatusClass(appt.status)}">${appt.status || 'new'}</span></div>
+      ${appt.notes ? `<div><strong>Notes:</strong><br>${appt.notes}</div>` : ''}
+    </div>
+    
+    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #ddd;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <strong style="font-size: 15px;">Appointment Notes</strong>
+        <button type="button" id="jobViewAddNoteBtn" class="btn small info">Add Note</button>
+      </div>
+      <div id="jobViewNotesList" style="display: flex; flex-direction: column; gap: 12px;">
+        <p style="color: #666; font-style: italic; text-align: center;">Loading notes...</p>
+      </div>
+    </div>
+  `;
+  
+  modal.classList.remove('hidden');
+  
+  // Load and render notes
+  await renderJobViewNotes(appt.id);
+  
+  // Add note button handler
+  const addNoteBtn = document.getElementById('jobViewAddNoteBtn');
+  if (addNoteBtn) {
+    addNoteBtn.addEventListener('click', () => {
+      currentJobNotesAppointmentId = appt.id;
+      openJobAddNoteModal();
+    });
+  }
+}
+
+/**
+ * Render notes in job view modal
+ */
+async function renderJobViewNotes(appointmentId) {
+  const container = document.getElementById('jobViewNotesList');
+  if (!container) return;
+  
+  const notes = await loadAppointmentNotes(appointmentId);
+  
+  container.innerHTML = '';
+  
+  if (notes.length === 0) {
+    container.innerHTML = '<p style="color: #666; font-style: italic; padding: 12px; text-align: center;">No notes for this appointment.</p>';
+    return;
+  }
+  
+  notes.forEach(note => {
+    const notePanel = createJobViewNotePanel(note);
+    container.appendChild(notePanel);
+  });
+}
+
+/**
+ * Load appointment notes
+ */
+async function loadAppointmentNotes(appointmentId) {
+  const supabase = getSupabaseClient();
+  if (!supabase || !appointmentId) return [];
+  
+  try {
+    // Fetch notes
+    const { data: notes, error } = await supabase
+      .from('appointment_notes')
+      .select('*')
+      .eq('appointment_id', appointmentId)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    if (!notes || notes.length === 0) return [];
+    
+    // Get unique user IDs from notes
+    const userIds = [...new Set(notes.map(n => n.created_by).filter(Boolean))];
+    if (userIds.length === 0) return notes;
+    
+    // Create a map of userId -> user for easy lookup
+    const userMap = new Map();
+    
+    // Fetch user data from users table (admins/shop owners)
+    try {
+      const { data: users, error: userError } = await supabase
+        .from('users')
+        .select('id, first, last, email')
+        .in('id', userIds);
+      
+      if (!userError && users) {
+        users.forEach(u => {
+          userMap.set(u.id, {
+            first_name: u.first,
+            last_name: u.last,
+            email: u.email
+          });
+        });
+      }
+    } catch (e) {
+      console.warn('[Jobs] Could not fetch users table data:', e);
+    }
+    
+    // Fetch user data from shop_staff table (staff members)
+    try {
+      const { data: staff, error: staffError } = await supabase
+        .from('shop_staff')
+        .select('auth_id, first_name, last_name, email')
+        .in('auth_id', userIds);
+      
+      if (!staffError && staff) {
+        staff.forEach(s => {
+          if (!userMap.has(s.auth_id)) {
+            userMap.set(s.auth_id, {
+              first_name: s.first_name,
+              last_name: s.last_name,
+              email: s.email
+            });
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[Jobs] Could not fetch shop_staff table data:', e);
+    }
+    
+    // Attach user data to each note
+    return notes.map(note => ({
+      ...note,
+      user: userMap.get(note.created_by) || null
+    }));
+  } catch (err) {
+    console.error('[Jobs] Error loading appointment notes:', err);
+    return [];
+  }
+}
+
+/**
+ * Create a read-only note panel for job view
+ */
+function createJobViewNotePanel(note) {
+  const panel = document.createElement('div');
+  panel.style.cssText = 'border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #f9f9f9;';
+  
+  // Header with author and date
+  const header = document.createElement('div');
+  header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;';
+  
+  const authorInfo = document.createElement('div');
+  authorInfo.style.cssText = 'display: flex; flex-direction: column; gap: 2px;';
+  
+  const authorName = document.createElement('strong');
+  authorName.style.fontSize = '14px';
+  authorName.style.color = '#333';
+  let userName = 'Unknown User';
+  if (note.user) {
+    const fullName = `${note.user.first_name || ''} ${note.user.last_name || ''}`.trim();
+    userName = fullName || note.user.email || 'Unknown User';
+  }
+  authorName.textContent = userName;
+  
+  const dateInfo = document.createElement('span');
+  dateInfo.style.cssText = 'font-size: 12px; color: #666;';
+  const createdDate = new Date(note.created_at);
+  const wasEdited = new Date(note.updated_at).getTime() !== createdDate.getTime();
+  dateInfo.textContent = createdDate.toLocaleString() + (wasEdited ? ' (edited)' : '');
+  
+  authorInfo.appendChild(authorName);
+  authorInfo.appendChild(dateInfo);
+  header.appendChild(authorInfo);
+  
+  // Note content
+  const content = document.createElement('p');
+  content.style.cssText = 'margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; color: #333;';
+  content.textContent = note.note;
+  
+  panel.appendChild(header);
+  panel.appendChild(content);
+  
+  return panel;
+}
+
+/**
+ * Close job view modal
+ */
+function closeJobViewModal() {
+  const modal = document.getElementById('jobViewModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+// Make it global for onclick
+window.closeJobViewModal = closeJobViewModal;
+
+/**
+ * Open modal to add a job note
+ */
+function openJobAddNoteModal() {
+  const modal = document.getElementById('jobNoteModal');
+  const title = document.getElementById('jobNoteModalTitle');
+  const textarea = document.getElementById('jobNoteText');
+  
+  if (!modal || !title || !textarea) return;
+  
+  title.textContent = 'Add Note';
+  textarea.value = '';
+  modal.classList.remove('hidden');
+  textarea.focus();
+}
+
+/**
+ * Close job note modal
+ */
+function closeJobNoteModal() {
+  const modal = document.getElementById('jobNoteModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+// Make it global for onclick
+window.closeJobNoteModal = closeJobNoteModal;
+
+/**
+ * Save job note
+ */
+async function saveJobNote(e) {
+  if (e) e.preventDefault();
+  
+  const textarea = document.getElementById('jobNoteText');
+  const noteText = textarea.value.trim();
+  
+  if (!noteText) {
+    alert('Please enter a note.');
+    return;
+  }
+  
+  const supabase = getSupabaseClient();
+  const authId = await getCurrentAuthId();
+  
+  if (!supabase || !authId || !currentJobNotesAppointmentId) {
+    alert('Unable to save note. Please try again.');
+    return;
+  }
+  
+  try {
+    // Create new note
+    const { error } = await supabase
+      .from('appointment_notes')
+      .insert({
+        appointment_id: currentJobNotesAppointmentId,
+        note: noteText,
+        created_by: authId
+      });
+    
+    if (error) throw error;
+    console.log('✅ Job note created');
+    
+    // Refresh notes list
+    await renderJobViewNotes(currentJobNotesAppointmentId);
+    closeJobNoteModal();
+    
+  } catch (err) {
+    console.error('[Jobs] Error saving note:', err);
+    alert('Failed to save note. Please try again.');
+  }
+}
+
+// Make it global for onclick
+window.saveJobNote = saveJobNote;
 
 /**
  * Update job status
@@ -1237,7 +1559,11 @@ async function handleAddToInvoice() {
 async function openLaborModal(jobId, partItemId, partName) {
   console.log('[openLaborModal] called with jobId:', jobId);
   const modal = document.getElementById('laborModal');
-  if (!modal) return;
+  const overlay = document.getElementById('laborModalOverlay');
+  if (!modal) {
+    console.error('[openLaborModal] laborModal element not found!');
+    return;
+  }
   
   // Clear form
   const labDescEl = document.getElementById('labDesc');
@@ -1319,7 +1645,11 @@ async function openLaborModal(jobId, partItemId, partName) {
     modalTitle.textContent = 'Add Labor';
   }
   
+  // Show overlay and modal
+  if (overlay) overlay.style.display = 'block';
   modal.classList.remove('hidden');
+  modal.style.display = 'block';
+  console.log('[openLaborModal] Modal opened successfully');
 }
 
 /**
@@ -1374,7 +1704,9 @@ async function handleAddLabor() {
     await addLaborToInvoice(jobId, finalDesc, labHours, labRate, partItemId);
     // Labor added to invoice
     // Close labor modal
-    modal.classList.add('hidden');
+    const overlay = document.getElementById('laborModalOverlay');
+    if (overlay) overlay.style.display = 'none';
+    modal.style.display = 'none';
     // Clear modal data attributes
     delete modal.dataset.partItemId;
     delete modal.dataset.partName;
@@ -1816,7 +2148,27 @@ async function setupJobs() {
   if (closeLabBtn) {
     closeLabBtn.addEventListener('click', () => {
       const laborModal = document.getElementById('laborModal');
-      if (laborModal) laborModal.classList.add('hidden');
+      const overlay = document.getElementById('laborModalOverlay');
+      if (overlay) overlay.style.display = 'none';
+      if (laborModal) {
+        laborModal.classList.add('hidden');
+        laborModal.style.display = 'none';
+      }
+    });
+  }
+  
+  // Close labor modal when clicking overlay
+  const laborOverlay = document.getElementById('laborModalOverlay');
+  if (laborOverlay) {
+    laborOverlay.addEventListener('click', (e) => {
+      if (e.target === laborOverlay) {
+        const laborModal = document.getElementById('laborModal');
+        laborOverlay.style.display = 'none';
+        if (laborModal) {
+          laborModal.classList.add('hidden');
+          laborModal.style.display = 'none';
+        }
+      }
     });
   }
   
@@ -1849,6 +2201,7 @@ async function setupJobs() {
   window.addPartToInvoice = addPartToInvoice;
   window.addLaborToInvoice = addLaborToInvoice;
   window.getInvoiceForAppointment = getInvoiceForAppointment;
+  window.openLaborModal = openLaborModal;
   console.log('✅ Jobs page setup complete');
 }
 

@@ -62,7 +62,6 @@ window.openInvoiceActionsModal = function(inv) {
  */
 
 import { getSupabaseClient } from '../helpers/supabase.js';
-import { handleItemDeletion, handleQuantityChange, setupInvoiceInventoryMonitoring, handleInvoiceSave } from '../helpers/invoice-inventory-handler.js';
 
 function setupInvoices() {
   // Helper to map invoice status to tag class for color
@@ -84,6 +83,7 @@ function setupInvoices() {
   let users = [];
   let jobs = [];
   let settings = {};
+  let terminalOptedOut = false;
   let currentInvoiceForRemove = null;
   // Sorting state for invoices
   let invoiceSortCol = 'number';
@@ -138,6 +138,16 @@ function setupInvoices() {
   async function loadData() {
     console.log('[Invoices] Loading data...');
     if (supabase) {
+      // Fetch terminal opt-out status
+      const { data: shopData } = await supabase
+        .from('shops')
+        .select('terminal_opted_out')
+        .eq('id', shopId)
+        .single();
+
+      terminalOptedOut = shopData?.terminal_opted_out || false;
+      console.log('[Invoices] Terminal opted out:', terminalOptedOut);
+
       const { data, error } = await supabase.from('data').select('invoices,appointments,jobs,settings').eq('shop_id', shopId).single();
       if (error) {
         console.error('[Invoices] Supabase load error:', error);
@@ -221,21 +231,21 @@ function setupInvoices() {
       if (!customer) customer = 'Unknown Customer';
       console.log(`[Invoices] Rendering invoice ${inv.id}: customer=${customer}`);
       const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${inv.number || inv.id}</td>
-          <td>${customer}</td>
-          <td style="font-weight:bold;color:#007bff">$${calcTotal(inv).toFixed(2)}</td>
-          <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1">${(inv.status || 'open').replace(/_/g, ' ')}</span></td>
-          <td>${inv.due || ''}</td>
-          <td style="text-align:right">
-            <div class="appt-actions-grid" style="display:inline-grid;">
-              <button class="btn small" data-id="${inv.id}" data-action="view">View</button>
-              <button class="btn small" data-id="${inv.id}" data-action="checkout">Checkout</button>
-              <button class="btn small info" data-id="${inv.id}" data-action="edit">Edit</button>
-              <button class="btn small danger" data-id="${inv.id}" data-action="remove" aria-label="Remove invoice"><svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg></button>
-            </div>
-          </td>
-        `;
+      tr.innerHTML = `
+        <td>${inv.number || inv.id}</td>
+        <td>${customer}</td>
+        <td>$${calcTotal(inv).toFixed(2)}</td>
+  <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1">${(inv.status || 'open').replace(/_/g, ' ')}</span></td>
+        <td>${inv.due || ''}</td>
+        <td style="text-align:right">
+          <div class="appt-actions-grid" style="display:inline-grid;">
+            <button class="btn small" data-id="${inv.id}" data-action="view">View</button>
+            <button class="btn small" data-id="${inv.id}" data-action="markPaid">Mark Paid</button>
+            <button class="btn small info" data-id="${inv.id}" data-action="edit">Edit</button>
+            <button class="btn small danger" data-id="${inv.id}" data-action="remove" aria-label="Remove invoice"><svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg></button>
+          </div>
+        </td>
+      `;
       // On mobile, make row clickable to open actions modal
       if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
         tr.classList.add('inv-row-clickable');
@@ -279,20 +289,20 @@ function setupInvoices() {
       if (!customer) customer = 'Unknown Customer';
       console.log(`[Invoices] Rendering PAID invoice ${inv.id}: customer=${customer}`);
       const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${inv.number || inv.id}</td>
-          <td>${customer}</td>
-          <td style="font-weight:bold;color:#007bff">$${calcTotal(inv).toFixed(2)}</td>
-          <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1">${(inv.status || 'paid').replace(/_/g, ' ')}</span></td>
-          <td>${inv.due || ''}</td>
-          <td style="text-align:right">
-            <div class="appt-actions-grid" style="display:inline-grid;">
-              <button class="btn small info" data-id="${inv.id}" data-action="view">View</button>
-              <button class="btn small" data-id="${inv.id}" data-action="markUnpaid">Mark Unpaid</button>
-              <button class="btn small danger" data-id="${inv.id}" data-action="remove" aria-label="Remove invoice"><svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg></button>
-            </div>
-          </td>
-        `;
+      tr.innerHTML = `
+        <td>${inv.number || inv.id}</td>
+        <td>${customer}</td>
+        <td>$${calcTotal(inv).toFixed(2)}</td>
+        <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1">${(inv.status || 'paid').replace(/_/g, ' ')}</span></td>
+        <td>${inv.due || ''}</td>
+        <td style="text-align:right">
+          <div class="appt-actions-grid" style="display:inline-grid;">
+            <button class="btn small info" data-id="${inv.id}" data-action="view">View</button>
+            <button class="btn small" data-id="${inv.id}" data-action="markUnpaid">Mark Unpaid</button>
+            <button class="btn small danger" data-id="${inv.id}" data-action="remove" aria-label="Remove invoice"><svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg></button>
+          </div>
+        </td>
+      `;
       // Enable mobile modal for paid invoices
       if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
         tr.classList.add('inv-row-clickable');
@@ -384,6 +394,12 @@ function setupInvoices() {
     if (addLaborEl) addLaborEl.onclick = () => { inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'labor' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
     if (addServiceEl) addServiceEl.onclick = () => { inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'service' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
 
+    // Hide platform fee description if user opted out of terminal
+    const platformFeeDesc = document.getElementById('platformFeeDesc');
+    if (platformFeeDesc) {
+      platformFeeDesc.style.display = terminalOptedOut ? 'none' : 'block';
+    }
+
     const modal = document.getElementById('invModal');
     if (!modal) return;
     modal.classList.remove('hidden');
@@ -442,25 +458,40 @@ function setupInvoices() {
     if (addLaborBtn) addLaborBtn.onclick = () => { itemTypeModal.classList.add('hidden'); inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'labor' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
     if (addServiceBtn) addServiceBtn.onclick = () => { itemTypeModal.classList.add('hidden'); inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'service' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
     if (cancelItemBtn) cancelItemBtn.onclick = () => { itemTypeModal.classList.add('hidden'); };
-    // Compute subtotal (pre-tax, pre-discount) for platform fee calculation
-    const subtotalVal = (inv.items || []).reduce((sum, itm) => sum + ((Number(itm.qty) || 0) * (Number(itm.price) || 0)), 0);
-    const taxVal = subtotalVal * ((inv.tax_rate || 0) / 100);
-    const discountVal = subtotalVal * ((inv.discount || 0) / 100);
-    const totalVal = subtotalVal + taxVal - discountVal;
-
+    
+    // Calculate subtotal: sum of all items (no tax)
+    const subtotalVal = (inv.items || []).reduce((sum, itm) => sum + (itm.qty * itm.price), 0);
+    const taxRate = inv.tax_rate || 0;
+    const taxVal = subtotalVal * (taxRate / 100);
+    const totalVal = subtotalVal + taxVal;
+    
     document.getElementById('subTotal').textContent = subtotalVal.toFixed(2);
     document.getElementById('grandTotal').textContent = totalVal.toFixed(2);
-
-    // Combined platform fee: Shows total processing fees (Stripe 2.7% + Xpose 2.3% = 5%)
-    // Calculated on subtotal only (not on tax portion)
-    const combinedFeePercent = 0.05; // 5% total
-    const fixedFee = 0.05;
-    const platformFee = (subtotalVal * combinedFeePercent) + fixedFee;
     
-    // Shop receives: Grand Total - Platform Fee
-    const netTotal = totalVal - platformFee;
-    const netTotalEl = document.getElementById('netTotal');
-    if (netTotalEl) netTotalEl.textContent = netTotal.toFixed(2);
+    // Platform fee: 5% of Grand Total + $0.05 fixed fee
+    // Only show if user has NOT opted out of terminal
+    if (!terminalOptedOut) {
+      const platformFeePercent = 0.05; // 5%
+      const fixedFee = 0.05; // $0.05
+      const platformFee = (totalVal * platformFeePercent) + fixedFee;
+      
+      // Shop receives: Grand Total - Platform Fee
+      const netTotal = totalVal - platformFee;
+      const netTotalEl = document.getElementById('netTotal');
+      if (netTotalEl) {
+        netTotalEl.textContent = netTotal.toFixed(2);
+        const netTotalRow = netTotalEl.closest('div');
+        if (netTotalRow) netTotalRow.style.display = 'flex';
+      }
+    } else {
+      // User opted out - hide net total calculation
+      const netTotalEl = document.getElementById('netTotal');
+      if (netTotalEl) {
+        const netTotalRow = netTotalEl.closest('div');
+        if (netTotalRow) netTotalRow.style.display = 'none';
+      }
+    }
+    
     // Save button
     document.getElementById('saveInv').onclick = () => {
       console.log('[InvoiceModal] Save button clicked', inv);
@@ -470,20 +501,6 @@ function setupInvoices() {
       document.getElementById('closeInv').onclick = () => {
         document.getElementById('invModal').classList.add('hidden');
       };
-      // Setup inventory monitoring for invoice edits (if linked to a job)
-      try {
-        // expose current job/shop to the inventory handler
-        window._currentJobId = job && job.id ? job.id : window._currentJobId || null;
-        window._currentShopId = shopId || window._currentShopId || null;
-        if (inv.appointment_id) {
-          const theJob = jobs.find(j => j.appointment_id === inv.appointment_id);
-          if (theJob && theJob.id) {
-            setupInvoiceInventoryMonitoring(inv.items || [], theJob.id, shopId);
-          }
-        }
-      } catch (e) {
-        console.warn('Could not setup inventory monitoring:', e);
-      }
       // Note: generic Add Item button removed; only Parts and Labor are allowed
   }
 
@@ -887,42 +904,27 @@ function setupInvoices() {
           const cancelBtn = document.getElementById('confirmItemRemoveCancel');
 
           if (confirmBtn) {
-              confirmBtn.onclick = async () => {
-                try {
-                  if (Array.isArray(itemsArr) && __pendingRemoveIndex !== null && itemsArr[__pendingRemoveIndex]) {
-                    const targetIdx = __pendingRemoveIndex;
-                    const target = itemsArr[targetIdx];
-
-                    // Try to return inventory before removing item
-                    try {
-                      const jobId = window._currentJobId;
-                      const shopId = window._currentShopId;
-                      if (jobId && shopId && target) {
-                        console.log('🗑️ Deleting item with inventory check:', target);
-                        await handleItemDeletion(target, jobId, shopId);
-                      }
-                    } catch (invError) {
-                      console.error('Inventory return error:', invError);
-                      if (typeof showNotification === 'function') {
-                        showNotification('Warning: Could not return inventory', 'error');
-                      }
-                    }
-
-                    // Now remove from array (preserve existing removal rules)
-                    if (target && target.type === 'part' && itemsArr[targetIdx + 1] && itemsArr[targetIdx + 1].type === 'labor' && itemsArr[targetIdx + 1]._attached) {
-                      itemsArr.splice(targetIdx, 2);
-                    } else if (target && target.type === 'labor' && target._attached && itemsArr[targetIdx - 1] && itemsArr[targetIdx - 1].type === 'part' && itemsArr[targetIdx - 1]._hasAttachedLabor) {
-                      itemsArr.splice(targetIdx - 1, 2);
-                    } else {
-                      itemsArr.splice(targetIdx, 1);
-                    }
+            confirmBtn.onclick = () => {
+              try {
+                if (Array.isArray(itemsArr) && __pendingRemoveIndex !== null && itemsArr[__pendingRemoveIndex]) {
+                  // If removing a part that has an attached labor row immediately after it, remove both
+                  const targetIdx = __pendingRemoveIndex;
+                  const target = itemsArr[targetIdx];
+                  if (target && target.type === 'part' && itemsArr[targetIdx + 1] && itemsArr[targetIdx + 1].type === 'labor' && itemsArr[targetIdx + 1]._attached) {
+                    itemsArr.splice(targetIdx, 2);
+                  } else if (target && target.type === 'labor' && target._attached && itemsArr[targetIdx - 1] && itemsArr[targetIdx - 1].type === 'part' && itemsArr[targetIdx - 1]._hasAttachedLabor) {
+                    // If removing an attached labor directly (shouldn't normally show a remove button), also remove the parent part
+                    itemsArr.splice(targetIdx - 1, 2);
+                  } else {
+                    itemsArr.splice(targetIdx, 1);
                   }
-                } catch (e) { console.error('Error removing item', e); }
-                // re-render and hide modal
-                renderItems(itemsArr || []);
-                if (modal) modal.classList.add('hidden');
-                __pendingRemoveIndex = null;
-              };
+                }
+              } catch (e) { console.error('Error removing item', e); }
+              // re-render and hide modal
+              renderItems(itemsArr || []);
+              if (modal) modal.classList.add('hidden');
+              __pendingRemoveIndex = null;
+            };
           }
           if (cancelBtn) {
             cancelBtn.onclick = () => {
@@ -954,38 +956,13 @@ function setupInvoices() {
 
       // Show/hide addRateBtn when select changes
       if (laborSelect) {
-        // Normalize names by removing leading 'labor' prefixes and trailing price suffixes
-        const normalizeName = (n) => {
-          if (!n) return '';
-          let s = String(n).trim();
-          // remove leading 'labor', 'labor -', 'labor:'
-          s = s.replace(/^labor\s*[-:\s]*/i, '');
-          // remove trailing price like ' - $60/hr' or ' — $60/hr' or ' - $60'
-          s = s.replace(/[\s\u2013\u2014-]+\$?\d+(?:[.,]\d+)?(?:\/?hr|\/?h| per hour|\/hour)?\b.*$/i, '');
-          return s.trim();
-        };
-
         const updateAddBtn = () => {
           const sel = laborSelect.value;
-          const currentRate = parseFloat(priceInput.value);
-          const currentName = nameInput.value.trim();
-          const normalizedCurrent = normalizeName(currentName);
-
-          // Check if this labor rate matches an existing saved rate (compare normalized names)
-          const matchesExistingRate = laborRates.some(r => 
-            normalizeName(r.name) === normalizedCurrent && Number(r.rate) === currentRate
-          );
-          
-          // only show the add-rate controls when the user explicitly selects 'Custom' option
-          // OR when the rate doesn't match any saved rates (custom rate from jobs page)
+          // only show the add-rate controls when the user explicitly selects the 'Custom' option
           if (sel === '__custom__') {
             // hide the select and reveal the free-text input in the same spot
             laborSelect.style.display = 'none';
             nameInput.style.display = '';
-            addRateBtn.style.display = '';
-          } else if (!matchesExistingRate && currentName && sel !== '' && sel !== '__custom__') {
-            // Labor came from jobs page with custom rate that doesn't match saved rates
-            // Keep select visible but show save button
             addRateBtn.style.display = '';
           } else {
             // show the select (presets) and hide the free-text input
@@ -995,9 +972,6 @@ function setupInvoices() {
           }
         };
         laborSelect.addEventListener('change', updateAddBtn);
-        // Also check on price/name changes in case user modifies values
-        priceInput.addEventListener('input', updateAddBtn);
-        nameInput.addEventListener('input', updateAddBtn);
         // initial state
         updateAddBtn();
       }
@@ -1066,9 +1040,11 @@ function setupInvoices() {
           opt.text = `${newName} - $${newPrice}/hr`;
           if (laborSelect) laborSelect.appendChild(opt);
           if (laborSelect) {
+            // ensure the select is visible again and select the new option
             laborSelect.style.display = '';
             laborSelect.value = newName;
           }
+          // hide add button and name input now that preset exists
           nameInput.style.display = 'none';
           addRateBtn.style.display = 'none';
           showNotification('Labor rate saved to Settings');
@@ -1222,10 +1198,9 @@ function setupInvoices() {
       inv.items = job.items ? JSON.parse(JSON.stringify(job.items)) : [];
     } else {
       // Preserve any existing cost_price values by matching DOM rows to prior invoice items
-
       const priorItems = Array.isArray(inv.items) ? JSON.parse(JSON.stringify(inv.items)) : [];
       const domRows = Array.from(document.querySelectorAll('#items .grid'));
-      const newItems = domRows.map(row => {
+      inv.items = domRows.map(row => {
         const rawNameEl = row.querySelector('.itm-name');
         const rawSelect = row.querySelector('.itm-labor-select');
         let rawName = '';
@@ -1239,45 +1214,35 @@ function setupInvoices() {
           rawName = rawNameEl ? rawNameEl.value : '';
         }
         const name = (rawName || '').replace(/\s*-\s*\$\d+(?:\.\d+)?\/hr\s*$/i, '').trim();
-        const qtyRaw = row.querySelector('.itm-qty').value;
-        const qty = qtyRaw === '' || qtyRaw == null ? undefined : parseFloat(qtyRaw) || 1;
+        const qty = parseFloat(row.querySelector('.itm-qty').value) || 1;
         const priceRaw = row.querySelector('.itm-price').value;
-        const price = priceRaw === '' || priceRaw == null ? undefined : parseFloat(priceRaw) || 0;
+        const price = priceRaw === '' ? 0 : parseFloat(priceRaw) || 0;
         const typeEl = row.querySelector('.itm-type');
         const type = typeEl ? (typeEl.value || 'part') : 'part';
 
-        // Try to find a matching prior item to preserve missing values
+        // Try to find a matching prior item to preserve cost_price
         let matched = null;
         if (priorItems && priorItems.length) {
           matched = priorItems.find(pi => {
-            if ((pi.name || '').toString().trim() === name && (pi.type || 'part') === type) return true;
+            // Exact match by name + qty + price
+            if ((pi.name || '').toString().trim() === name && Number(pi.qty || 0) === Number(qty) && Number(pi.price || 0) === Number(price)) return true;
+            // Match by name + price
+            if ((pi.name || '').toString().trim() === name && Number(pi.price || 0) === Number(price)) return true;
+            // Match by name only (best effort)
             if ((pi.name || '').toString().trim() === name) return true;
             return false;
           });
         }
 
-        const item = { name, qty: qty !== undefined ? qty : (matched ? matched.qty : 1), price: price !== undefined ? price : (matched ? matched.price : 0), type };
+        const item = { name, qty, price, type };
         if (matched) {
           if (typeof matched.cost_price !== 'undefined') item.cost_price = Number(matched.cost_price);
           else if (typeof matched.cost !== 'undefined') item.cost_price = Number(matched.cost);
-          Object.keys(matched).forEach(k => {
-            if (!(k in item)) item[k] = matched[k];
-          });
         }
         return item;
       });
 
-      // NEW: Handle inventory adjustments BEFORE updating the invoice
-      try {
-        await handleInvoiceSave(newItems);
-      } catch (invError) {
-        console.error('❌ Inventory adjustment failed:', invError);
-        showNotification(invError.message || 'Inventory adjustment failed', 'error');
-        return; // Stop save if inventory adjustment fails
-      }
-
-      // Assign computed items back to invoice and update job if present
-      inv.items = newItems;
+      // Also update job items if job exists
       if (job) job.items = JSON.parse(JSON.stringify(inv.items));
     }
 
@@ -1487,12 +1452,6 @@ function setupInvoices() {
         console.error('[Invoices] Error updating invoice in invoices table:', upsertError);
       } else {
         console.log(`[Invoices] ✅ Invoice ${inv.id} marked as PAID in invoices table`);
-        // Create in-app notifications for shop owners that invoice was paid
-        try {
-          await createInvoiceNotification(inv, 'paid');
-        } catch (nErr) {
-          console.error('[Invoices] Notification error (paid):', nErr);
-        }
       }
     } else {
       const data = JSON.parse(localStorage.getItem('xm_data') || '{}');
@@ -1575,12 +1534,6 @@ function setupInvoices() {
         console.error('[Invoices] Error updating invoice in invoices table:', upsertError);
       } else {
         console.log(`[Invoices] ✅ Invoice ${inv.id} marked as UNPAID in invoices table`);
-        // Notify owners that invoice status changed to open/unpaid
-        try {
-          await createInvoiceNotification(inv, 'open');
-        } catch (nErr) {
-          console.error('[Invoices] Notification error (open):', nErr);
-        }
       }
     } else {
       const data = JSON.parse(localStorage.getItem('xm_data') || '{}');
@@ -1610,58 +1563,6 @@ function setupInvoices() {
   }
 
   // Make it global
-  // Create notification entries in Supabase for invoice status changes
-  async function createInvoiceNotification(inv, action) {
-    try {
-      if (!supabase) return;
-      // action: 'paid' | 'open' etc.
-      const { data: owners, error: ownerErr } = await supabase
-        .from('user_shops')
-        .select('user_id')
-        .eq('shop_id', shopId)
-        .eq('role', 'owner');
-
-      if (ownerErr) {
-        console.error('[Notifications] Could not fetch owners:', ownerErr);
-        return;
-      }
-      if (!owners || owners.length === 0) return;
-
-      const title = action === 'paid' ? 'Invoice Paid' : 'Invoice Updated';
-      // Prefer customer name when available, otherwise fall back to invoice number/id
-      const customerName = (inv.customer_first || inv.customer_last)
-        ? `${(inv.customer_first || '').trim()} ${(inv.customer_last || '').trim()}`.trim()
-        : (inv.customer_name || inv.customer || null);
-      const idDisplay = customerName || (inv.number ? `#${inv.number}` : inv.id);
-      const message = action === 'paid'
-        ? `${idDisplay} was marked as PAID.`
-        : `${idDisplay} status changed to ${action}.`;
-
-      // Only set `related_id` if it looks like a UUID; otherwise keep it null and include invoice id/number in metadata
-      const looksLikeUUID = (val) => typeof val === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(val);
-      const notifications = owners.map(o => ({
-        user_id: o.user_id,
-        shop_id: shopId,
-        type: 'invoice',
-        category: action === 'paid' ? 'financial' : 'invoice',
-        title,
-        message,
-        related_id: looksLikeUUID(inv.id) ? inv.id : null,
-        related_type: 'invoice',
-        metadata: { invoice_id: inv.id, invoice_number: inv.number || null, status: action },
-        priority: 'normal',
-        created_by: (window.xm_session && window.xm_session.user_id) || null,
-        is_read: false,
-        created_at: new Date().toISOString()
-      }));
-
-      const { error: insertErr } = await supabase.from('notifications').insert(notifications);
-      if (insertErr) console.error('[Notifications] Insert error:', insertErr);
-      else console.log(`[Notifications] Created ${notifications.length} notification(s) for invoice ${inv.id}`);
-    } catch (err) {
-      console.error('[Notifications] Exception creating notifications:', err);
-    }
-  }
   window.closeRemoveInvModal = closeRemoveInvModal;
 
   // Handle remove invoice
@@ -1835,156 +1736,28 @@ function setupInvoices() {
             <p>Initializing terminal...</p>
           </div>
         </div>
-        <div class="terminal-footer" style="display:flex;gap:8px;align-items:center;">
+        <div class="terminal-footer">
           <button class="btn" onclick="document.getElementById('terminal-payment-modal').style.display='none'">Cancel</button>
-          <button id="manualCheckoutBtn" class="btn btn-secondary" style="background:#fff;color:#2a7cff;border:1px solid #e0e7ff;">Manual Checkout</button>
         </div>
       </div>
     `;
 
     modal.style.display = 'flex';
 
-    // Process real terminal payment via server + poll for result
-    processTerminalPayment(inv, modal).catch(err => {
-      console.error('Terminal payment failed:', err);
+    // Simulate terminal checkout process
+    setTimeout(() => {
       const statusIcon = modal.querySelector('.status-icon');
       const statusText = modal.querySelector('.terminal-status p');
-      if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-times-circle" style="color:#ef4444"></i>';
-
-      // Friendly user-facing message (hide technical details)
-      let friendly = 'Payment failed. The terminal service is currently unavailable.';
-      // If it's likely a network/server HTML response (starts with '<'), give a hint about service
-      const raw = (err && err.message) ? err.message.toString() : '';
-      // Detect HTML/garbage responses (e.g. server returned an HTML error page)
-      if (raw && new RegExp('unexpected token.*<', 'i').test(raw)) {
-        friendly = 'Payment failed. The terminal service returned an unexpected response. Please try again or use Manual Checkout.';
-      }
-      if (statusText) statusText.textContent = friendly;
-
-      // Expose manual checkout button (already in footer) to allow bypassing terminal
-      const manualBtn = document.getElementById('manualCheckoutBtn');
-      if (manualBtn) {
-        manualBtn.style.display = 'inline-block';
-        manualBtn.onclick = async () => {
-          // Create a themed inline confirmation inside the modal instead of a browser confirm()
-          // Remove existing confirm if present
-          let existing = modal.querySelector('.manual-confirm');
-          if (existing) existing.remove();
-
-          const conf = document.createElement('div');
-          conf.className = 'manual-confirm';
-          conf.style.cssText = 'margin-top:12px;padding:12px;border-radius:8px;background:#f8fafc;border:1px solid #e6eefc;display:flex;gap:8px;align-items:center;justify-content:space-between;';
-
-          const txt = document.createElement('div');
-          txt.textContent = 'Mark this invoice as PAID?';
-          txt.style.cssText = 'font-weight:600;color:#111;';
-
-          const controls = document.createElement('div');
-          controls.style.cssText = 'display:flex;gap:8px;';
-
-          const btnCancel = document.createElement('button');
-          btnCancel.className = 'btn';
-          btnCancel.textContent = 'Cancel';
-          btnCancel.onclick = () => { try { conf.remove(); } catch(e){} };
-
-          const btnConfirm = document.createElement('button');
-          btnConfirm.className = 'btn btn-primary';
-          btnConfirm.textContent = 'Mark Paid';
-          btnConfirm.onclick = async () => {
-            try {
-              // show spinner/state
-              if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-              if (statusText) statusText.textContent = 'Marking invoice as paid...';
-              // disable buttons while processing
-              btnConfirm.disabled = true;
-              btnCancel.disabled = true;
-              await markInvoicePaid(inv);
-              if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-check-circle" style="color:#059669"></i>';
-              if (statusText) statusText.textContent = 'Marked as paid (manual).';
-              setTimeout(() => { try { modal.style.display = 'none'; } catch(e){} }, 900);
-            } catch (mErr) {
-              console.error('Manual checkout failed:', mErr);
-              // show friendly error inside modal
-              if (statusText) statusText.textContent = 'Could not mark invoice as paid. Please try again.';
-              btnConfirm.disabled = false;
-              btnCancel.disabled = false;
-            }
-          };
-
-          controls.appendChild(btnCancel);
-          controls.appendChild(btnConfirm);
-          conf.appendChild(txt);
-          conf.appendChild(controls);
-          // insert before footer or at end of modal content
-          const footer = modal.querySelector('.terminal-footer');
-          if (footer) footer.parentNode.insertBefore(conf, footer);
-          else modal.appendChild(conf);
-        };
-      }
-    });
-  }
-
-  // Create a terminal payment on the server and poll invoice status
-  async function processTerminalPayment(inv, modal) {
-    if (!inv || !inv.id) throw new Error('Invalid invoice');
-    const API_BASE = window.API_URL || 'https://xpose-stripe-server.vercel.app/api';
-    const shop = getCurrentShopId();
-    const statusIcon = modal.querySelector('.status-icon');
-    const statusText = modal.querySelector('.terminal-status p');
-
-    if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-    if (statusText) statusText.textContent = 'Sending to terminal...';
-
-    // Create payment on server which will trigger terminal processing
-    let paymentIntentId = null;
-    try {
-      const resp = await fetch(API_BASE + '/terminal/create-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceId: inv.id, shopId: shop })
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data && data.error ? data.error : 'Failed to create terminal payment');
-      paymentIntentId = data && data.paymentIntent;
-    } catch (err) {
-      throw new Error('Could not initiate terminal payment: ' + (err.message || err));
-    }
-
-    // Poll Supabase invoices table for this invoice to be marked 'paid'
-    if (statusText) statusText.textContent = 'Waiting for terminal...';
-
-    const maxAttempts = 30; // ~30 * 2s = 60s
-    const intervalMs = 2000;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      // Allow user to cancel the modal which will break out
-      if (!modal || modal.style.display === 'none') throw new Error('Payment cancelled');
-
-      try {
-        const { data: invoiceRow, error } = await supabase
-          .from('invoices')
-          .select('status')
-          .eq('id', inv.id)
-          .single();
-        if (!error && invoiceRow && (invoiceRow.status || '').toString().toLowerCase() === 'paid') {
-          if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
-          if (statusText) statusText.textContent = 'Payment successful!';
-          // Small delay so user sees success then close and refresh
-          setTimeout(async () => {
-            try { modal.style.display = 'none'; } catch(e){}
-            await markInvoicePaid(inv);
-          }, 1200);
-          return;
-        }
-      } catch (pollErr) {
-        console.warn('Polling invoice status failed:', pollErr);
-      }
-
-      // wait
-      await new Promise(r => setTimeout(r, intervalMs));
-    }
-
-    // If we reach here, timeout
-    throw new Error('Timed out waiting for terminal confirmation');
+      
+      statusIcon.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
+      statusText.textContent = 'Payment successful!';
+      
+      // Auto-close after 2 seconds and mark invoice as paid
+      setTimeout(async () => {
+        modal.style.display = 'none';
+        await markInvoicePaid(inv);
+      }, 2000);
+    }, 2000);
   }
 
   // Wire up actions

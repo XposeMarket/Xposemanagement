@@ -162,21 +162,21 @@ function handleSupplierClick(supplier) {
 function openPartPricingModalForSupplier(supplierName) {
   const partsModal = document.getElementById('partsModal');
   
-  // Try to get job ID from parts modal if it's open
-  let jobId = partsModal?.dataset?.jobId;
+  // CRITICAL: Get the CURRENT job ID from the parts modal's data attribute
+  // This is set when the parts modal is opened for a specific job
+  let jobId = partsModal?.dataset?.currentJobId;
   
-  // If no job ID, try to find it from the current page context
   if (!jobId) {
-    console.log('No job ID in parts modal, checking page context...');
-    
-    // Try to get from currently visible job row (if parts modal was just opened)
-    const jobRows = document.querySelectorAll('[data-job-id]');
-    if (jobRows.length > 0) {
-      // Get the first job ID as fallback
-      jobId = jobRows[0].dataset.jobId;
-      console.log('Using first available job ID:', jobId);
+    console.warn('No job ID found in parts modal. User must open Parts for a job first.');
+    if (typeof showNotification === 'function') {
+      showNotification('Please open Parts for a job first, then click the supplier link', 'error');
+    } else {
+      alert('Please open Parts for a job first, then click the supplier link');
     }
+    return;
   }
+  
+  console.log('✅ Using job ID from parts modal:', jobId);
   
   if (!jobId) {
     console.warn('No job ID available - showing notification');

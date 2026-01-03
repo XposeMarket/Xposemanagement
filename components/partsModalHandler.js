@@ -201,6 +201,16 @@ class PartsModalHandler {
       this.closeModal();
     });
 
+    // Close when clicking overlay
+    const overlay = document.getElementById('partsModalOverlay');
+    if (overlay) {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          this.closeModal();
+        }
+      });
+    }
+
     // Cascading dropdowns
     document.getElementById('catalogYear')?.addEventListener('change', (e) => {
       this.selectedYear = e.target.value;
@@ -258,9 +268,13 @@ class PartsModalHandler {
   async openModal(job) {
     this.currentJob = job;
     const modal = document.getElementById('partsModal');
+    const overlay = document.getElementById('partsModalOverlay');
     if (!modal) return;
 
+    // Store job ID in dataset for supplier links to access
+    modal.dataset.currentJobId = job.id;
     modal.classList.remove('hidden');
+    if (overlay) overlay.style.display = 'block';
 
     const vehicleDisplay = document.getElementById('partsCurrentVehicle');
     if (vehicleDisplay) {
@@ -280,7 +294,13 @@ class PartsModalHandler {
   }
 
   closeModal() {
-    document.getElementById('partsModal')?.classList.add('hidden');
+    const modal = document.getElementById('partsModal');
+    const overlay = document.getElementById('partsModalOverlay');
+    if (modal) {
+      modal.classList.add('hidden');
+      delete modal.dataset.currentJobId;
+    }
+    if (overlay) overlay.style.display = 'none';
     this.currentJob = null;
   }
 

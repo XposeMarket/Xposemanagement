@@ -321,8 +321,20 @@
           </div>
         </div>
 
-        <label>Notes</label>
-        <textarea name="notes" rows="3" placeholder="Anything else?"></textarea>
+        <!-- Notes Section -->
+        <div style="grid-column: 1 / -1;">
+          <label>Notes</label>
+          <div id="appointmentNotesList" style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
+            <!-- Notes will be dynamically loaded here -->
+          </div>
+          <button type="button" id="addNoteBtn" class="btn" style="margin-top: 12px; width: 100%;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Add Note
+          </button>
+        </div>
       </form>
     </div>
     <div class="modal-foot">
@@ -336,9 +348,28 @@
   </div>
 </div>
 
+<!-- ===== Note Edit/Create Modal ===== -->
+<div id="noteModal" class="modal-backdrop hidden">
+  <div class="modal-card" style="max-width: 600px;">
+    <div class="modal-head">
+      <h3 id="noteModalTitle">Add Note</h3>
+      <button type="button" class="btn" id="closeNoteModal">Close</button>
+    </div>
+    <div class="modal-body">
+      <form id="noteForm">
+        <label>Note</label>
+        <textarea id="noteText" rows="4" placeholder="Enter note..." required></textarea>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button type="submit" form="noteForm" class="btn info">Save Note</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== Save Customer wiring (Phase 2A - Supabase integration) ===== -->
 <script type="module">
-import { upsertCustomerToSupabase } from './pages/appointments.js';
+import { upsertCustomerToSupabase } from './pages/appointments.js?v=1767390869';
 
 (function(){
   const LS = window.LS || {users:"xm_users",session:"xm_session",data:"xm_data"};

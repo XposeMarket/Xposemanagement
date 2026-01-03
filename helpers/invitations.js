@@ -263,9 +263,15 @@ function updateNotificationBadge(count) {
  * Set up polling to refresh notifications every 30 seconds
  */
 function setupPolling() {
+  let pollCount = 0;
+  
   // Poll every 12 seconds
   setInterval(async () => {
-    console.log('[Invitations] Polling...');
+    pollCount++;
+    // Only log every 10th poll to reduce console spam
+    if (pollCount % 10 === 0) {
+      console.log(`[Invitations] Polling... (x10)`);
+    }
     await fetchPendingInvitations();
   }, 12000); // 12 seconds
 

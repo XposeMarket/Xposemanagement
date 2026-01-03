@@ -13,7 +13,7 @@ import { initShopSwitcher } from './helpers/shop-switcher-ui.js';
 
 import { setupLogin } from './pages/index.js';
 import { setupDashboard } from './pages/dashboard.js';
-import { setupAppointments } from './pages/appointments.js';
+import { setupAppointments } from './pages/appointments.js?v=1767391500';
 import { setupJobs } from './pages/jobs.js';
 import { setupInvoices } from './pages/invoices.js';
 import { setupMessages } from './pages/messages-backend.js';

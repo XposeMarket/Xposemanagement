@@ -674,22 +674,75 @@ class PartPricingModal {
     modal.style.display = 'block';
     document.getElementById('confirmPartCancel').onclick = () => { modal.style.display = 'none'; };
     document.getElementById('confirmPartAddLabor').onclick = async () => {
+      // Hide confirmation modal AND its overlay
       modal.style.display = 'none';
+      const confirmOverlay = document.getElementById('partLaborConfirmModal');
+      if (confirmOverlay) confirmOverlay.style.display = 'none';
+      
       try {
         await this.savePart();
+        
+        // FORCEFULLY HIDE ALL OVERLAYS AND MODALS
+        // Part pricing modal
+        if (this.overlay) {
+          this.overlay.style.display = 'none';
+        }
+        if (this.modal) {
+          this.modal.style.display = 'none';
+        }
+        
+        // Main parts panel and related modals
+        const partsModal = document.getElementById('partsModal');
+        const partsOverlay = document.getElementById('partsModalOverlay');
+        const addPartsModal = document.getElementById('addPartsModal');
+        
+        if (partsModal) {
+          partsModal.classList.add('hidden');
+          partsModal.style.display = 'none';
+        }
+        if (partsOverlay) {
+          partsOverlay.style.display = 'none';
+        }
+        if (addPartsModal) {
+          addPartsModal.classList.add('hidden');
+          addPartsModal.style.display = 'none';
+        }
+        
+        // Hide ANY element with overlay-like classes or IDs (except labor modal)
+        document.querySelectorAll('[id*="overlay"], [id*="Overlay"], [class*="overlay"], [class*="modal-overlay"]').forEach(el => {
+          if (el.id !== 'laborModalOverlay' && el.id !== 'laborOverlay') {
+            el.style.display = 'none';
+          }
+        });
+        
+        console.log('[PartPricingModal] All overlays hidden, opening labor modal...');
+        
+        // Wait for everything to close, then open labor modal
+        setTimeout(() => {
+          if (typeof window.openLaborModal === 'function') {
+            window.openLaborModal(
+              this.currentJobId, 
+              this.lastAddedPartData?.invoiceItemId, 
+              this.lastAddedPartData?.name
+            );
+          } else {
+            console.error('[PartPricingModal] window.openLaborModal not available');
+            try {
+              showNotification('Labor modal not available. Please try adding labor manually.', 'error');
+            } catch (e) {
+              alert('Labor modal not available.');
+            }
+          }
+        }, 200); // Longer delay to ensure cleanup
+        
       } catch (err) {
         console.error('[PartPricingModal] savePart failed', err);
-        return;
-      }
-      try {
-        if (typeof window.openLaborModal === 'function') {
-          window.openLaborModal(this.currentJobId, this.lastAddedPartData?.invoiceItemId, this.lastAddedPartData?.name);
+        try {
+          showNotification('Failed to save part: ' + err.message, 'error');
+        } catch (e) {
+          alert('Failed to save part: ' + err.message);
         }
-      } catch (err) {
-        console.error('[PartPricingModal] openLaborModal call failed', err);
       }
-      if (this.overlay) this.overlay.style.display = 'none';
-      if (this.modal) this.modal.style.display = 'none';
     };
     document.getElementById('confirmPartAddInvoice').onclick = () => {
       modal.style.display = 'none';
