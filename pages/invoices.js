@@ -240,7 +240,7 @@ function setupInvoices() {
         <td style="text-align:right">
           <div class="appt-actions-grid" style="display:inline-grid;">
             <button class="btn small" data-id="${inv.id}" data-action="view">View</button>
-            <button class="btn small" data-id="${inv.id}" data-action="markPaid">Mark Paid</button>
+            <button class="btn small" data-id="${inv.id}" data-action="checkout">Checkout</button>
             <button class="btn small info" data-id="${inv.id}" data-action="edit">Edit</button>
             <button class="btn small danger" data-id="${inv.id}" data-action="remove" aria-label="Remove invoice"><svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg></button>
           </div>
@@ -1737,6 +1737,7 @@ function setupInvoices() {
           </div>
         </div>
         <div class="terminal-footer">
+          <button class="btn" id="manual-mark-paid-btn">Mark Paid Manually</button>
           <button class="btn" onclick="document.getElementById('terminal-payment-modal').style.display='none'">Cancel</button>
         </div>
       </div>
@@ -1744,10 +1745,27 @@ function setupInvoices() {
 
     modal.style.display = 'flex';
 
-    // Simulate terminal checkout process
+    // Add manual mark paid handler
+    const manualBtn = modal.querySelector('#manual-mark-paid-btn');
+    manualBtn.onclick = async () => {
+      modal.style.display = 'none';
+      await markInvoicePaid(inv);
+    };
+
+    // Simulate terminal checkout process (check if terminal is available)
     setTimeout(() => {
       const statusIcon = modal.querySelector('.status-icon');
       const statusText = modal.querySelector('.terminal-status p');
+      
+      // Check if shop has terminal
+      const shopInfo = window.getShopInfo ? window.getShopInfo() : null;
+      const hasTerminal = shopInfo && shopInfo.terminal_id;
+      
+      if (!hasTerminal) {
+        statusIcon.innerHTML = '<i class="fas fa-info-circle" style="color:#ff9800;"></i>';
+        statusText.textContent = 'No terminal connected. Use manual payment option below.';
+        return;
+      }
       
       statusIcon.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
       statusText.textContent = 'Payment successful!';
