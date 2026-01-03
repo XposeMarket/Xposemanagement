@@ -155,54 +155,12 @@
     </div>
   </div>
 
-  <!-- Catalog Search Section -->
-  <div id="catalogSearchSection">
-    <h4 style="margin: 0 0 12px 0; font-size: 1rem;">Search Parts Catalog</h4>
-    
-    <!-- YMM Dropdowns -->
-    <div class="grid cols-3" style="margin-bottom: 12px;">
-      <div>
-        <label>Year</label>
-        <select id="catalogYear" class="form-control">
-          <option value="">Select Year</option>
-        </select>
-      </div>
-      <div>
-        <label>Make</label>
-        <select id="catalogMake" class="form-control" disabled>
-          <option value="">Select Make</option>
-        </select>
-      </div>
-      <div>
-        <label>Model</label>
-        <select id="catalogModel" class="form-control" disabled>
-          <option value="">Select Model</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- Category & Search -->
-    <div class="grid cols-3" style="margin-bottom: 12px;">
-      <div>
-        <label>Category</label>
-        <select id="catalogCategory" class="form-control">
-          <option value="">All Categories</option>
-        </select>
-      </div>
-      <div>
-        <label>Search</label>
-        <input type="text" id="catalogSearch" class="form-control" placeholder="Part name or number...">
-      </div>
-      <div style="display: flex; align-items: flex-end;">
-        <button id="searchCatalogBtn" class="btn info" style="width: 100%;">Search Catalog</button>
-      </div>
-    </div>
-
-    <!-- Results -->
-    <div id="catalogResults" style="margin-top: 16px; max-height: 300px; overflow-y: auto;">
+  <!-- Inventory Results Section -->
+  <div id="inventoryResultsSection">
+    <div id="catalogResults" style="margin-top: 16px; max-height: 400px; overflow-y: auto;">
       <p class="notice" style="text-align: center; color: var(--muted); padding: 2rem 1rem;">
-        <strong style="display: block; margin-bottom: 0.5rem;">Select vehicle and search to find parts</strong>
-        <small style="color: var(--muted); font-size: 0.85rem;">💡 Call suppliers or local auto parts stores for accurate pricing</small>
+        <strong style="display: block; margin-bottom: 0.5rem;">Loading inventory...</strong>
+        <small style="color: var(--muted); font-size: 0.85rem;">💡 Your shop's inventory items will appear here</small>
       </p>
     </div>
   </div>
