@@ -305,8 +305,7 @@ class PartsModalHandler {
       await this.prefillVehicle(job.year, job.make, job.model);
     }
 
-    document.getElementById('catalogResults').innerHTML = 
-      '<p class="notice" style="text-align: center; color: var(--muted);">Select vehicle and search to find parts</p>';
+    document.getElementById('catalogResults').innerHTML = '';
   }
 
   closeModal() {
