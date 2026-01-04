@@ -2083,6 +2083,145 @@ function showNotification(message, type = 'success') {
 }
 
 /**
+ * Close service modal
+ */
+function closeServiceModal() {
+  const serviceModal = document.getElementById('serviceModal');
+  if (serviceModal) {
+    serviceModal.classList.add('hidden');
+  }
+}
+
+/**
+ * Open service modal and populate available services
+ */
+async function openServiceModal() {
+  const serviceModal = document.getElementById('serviceModal');
+  const serviceContainer = document.getElementById('serviceOptionsContainer');
+  
+  if (!serviceModal || !serviceContainer) return;
+  
+  // Get available services from shop settings
+  const supabase = getSupabaseClient();
+  const shopId = getCurrentShopId();
+  let services = [];
+  
+  try {
+    if (supabase && shopId) {
+      const { data } = await supabase.from('data').select('settings').eq('shop_id', shopId).single();
+      if (data?.settings?.services && Array.isArray(data.settings.services)) {
+        services = data.settings.services;
+      }
+    }
+  } catch (e) {
+    // Fallback to localStorage
+    const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
+    services = (localData.settings?.services) || [];
+  }
+  
+  // Populate service options
+  serviceContainer.innerHTML = '';
+  
+  if (services.length === 0) {
+    serviceContainer.innerHTML = '<p style="color: var(--muted); font-size: 0.9rem;">No services configured in your shop settings.</p>';
+    serviceModal.classList.remove('hidden');
+    return;
+  }
+  
+  services.forEach(service => {
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.type = 'button';
+    btn.style.textAlign = 'left';
+    btn.style.display = 'flex';
+    btn.style.justifyContent = 'space-between';
+    btn.style.alignItems = 'center';
+    
+    const serviceName = service.name || service;
+    const servicePrice = service.price || 0;
+    
+    btn.innerHTML = `
+      <span>${serviceName}</span>
+      <span style="font-size: 0.9rem; color: var(--muted);">$${parseFloat(servicePrice).toFixed(2)}</span>
+    `;
+    
+    btn.addEventListener('click', () => handleServiceSelection(service, serviceModal));
+    serviceContainer.appendChild(btn);
+  });
+  
+  serviceModal.classList.remove('hidden');
+}
+
+/**
+ * Handle service selection
+ */
+async function handleServiceSelection(service, serviceModal) {
+  try {
+    // Get current job from partsModalHandler
+    const partsHandler = window.partsModalHandler;
+    if (!partsHandler || !partsHandler.currentJob) {
+      showNotification('No job selected', 'error');
+      return;
+    }
+    
+    const currentJob = partsHandler.currentJob;
+    const appointment = allAppointments.find(a => a.id === currentJob.appointment_id);
+    
+    if (!appointment) {
+      showNotification('Appointment not found', 'error');
+      return;
+    }
+    
+    // Get or create invoice for this appointment
+    let invoice = await getInvoiceForAppointment(appointment.id);
+    if (!invoice) {
+      invoice = await createInvoiceForAppointment(appointment);
+    }
+    
+    if (!invoice) {
+      showNotification('Could not create invoice', 'error');
+      return;
+    }
+    
+    // Add service as a line item to the invoice
+    const serviceName = service.name || service;
+    const servicePrice = parseFloat(service.price) || 0;
+    
+    const serviceItem = {
+      id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: serviceName,
+      qty: 1,
+      price: servicePrice,
+      type: 'service'
+    };
+    
+    invoice.items = invoice.items || [];
+    invoice.items.push(serviceItem);
+    
+    // Save invoice
+    await saveInvoice(invoice);
+    
+    console.log('Service added to invoice:', serviceItem);
+    
+    // Close modals
+    closeServiceModal();
+    const partsModal = document.getElementById('partsModal');
+    const partsOverlay = document.getElementById('partsModalOverlay');
+    if (partsModal) {
+      partsModal.classList.add('hidden');
+    }
+    if (partsOverlay) {
+      partsOverlay.style.display = 'none';
+    }
+    
+    showNotification(`Service "${serviceName}" added to invoice`, 'success');
+  } catch (error) {
+    console.error('Error adding service:', error);
+    showNotification('Failed to add service', 'error');
+  }
+}
+
+/**
  * Setup jobs page
  */
 async function setupJobs() {
@@ -2190,6 +2329,11 @@ async function setupJobs() {
     });
   }
   
+  const openAddServiceFromFinderBtn = document.getElementById('openAddServiceFromFinder');
+  if (openAddServiceFromFinderBtn) {
+    openAddServiceFromFinderBtn.addEventListener('click', openServiceModal);
+  }
+  
   const closeLabBtn = document.getElementById('labClose');
   if (closeLabBtn) {
     closeLabBtn.addEventListener('click', () => {
@@ -2248,6 +2392,8 @@ async function setupJobs() {
   window.addLaborToInvoice = addLaborToInvoice;
   window.getInvoiceForAppointment = getInvoiceForAppointment;
   window.openLaborModal = openLaborModal;
+  window.openServiceModal = openServiceModal;
+  window.closeServiceModal = closeServiceModal;
   console.log('✅ Jobs page setup complete');
 }
 

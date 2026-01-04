@@ -166,8 +166,9 @@
 
   <!-- Manual Entry Fallback -->
   <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); display:flex; gap:8px;">
-    <button id="openAddPartsFromFinder" class="btn" style="flex:1; max-width:48%;">Or Add Parts Manually</button>
-    <button id="openInventoryPartsFromFinder" class="btn" style="flex:1; max-width:48%;">Add Part from Inventory</button>
+    <button id="openAddPartsFromFinder" class="btn" style="flex:1;">Add Parts Manually</button>
+    <button id="openInventoryPartsFromFinder" class="btn" style="flex:1;">Add Part from Inventory</button>
+    <button id="openAddServiceFromFinder" class="btn" style="flex:1;">Add Service</button>
   </div>
 </div>
 
@@ -240,6 +241,27 @@
 
 <!-- Parts Catalog Modals -->
 <div id="partPricingModal"></div>
+
+<!-- Service Selection Modal -->
+<div id="serviceModal" class="modal-overlay hidden" onclick="closeServiceModal()" style="z-index: 10040;">
+  <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px;">
+    <div class="modal-head">
+      <h3>Add Additional Service</h3>
+      <button onclick="closeServiceModal()" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom: 20px;">
+        <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 12px;">Select a service to add to this job:</p>
+        <div id="serviceOptionsContainer" style="display: flex; flex-direction: column; gap: 8px;">
+          <!-- Service options will be populated here -->
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button onclick="closeServiceModal()" class="btn">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <footer class="container">© Xpose Market</footer>
 <script src="vendor/supabase.umd.js"></script>
