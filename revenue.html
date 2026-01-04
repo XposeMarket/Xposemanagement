@@ -55,9 +55,28 @@
     }
     
     .parts-list-scrollable {
-      max-height: 400px;
+      max-height: 252px; /* Show ~4.5 items before scrolling */
       overflow-y: auto;
       margin-top: 16px;
+    }
+    
+    /* Custom scrollbar for parts list */
+    .parts-list-scrollable::-webkit-scrollbar {
+      width: 6px;
+    }
+    
+    .parts-list-scrollable::-webkit-scrollbar-track {
+      background: var(--line);
+      border-radius: 3px;
+    }
+    
+    .parts-list-scrollable::-webkit-scrollbar-thumb {
+      background: var(--muted);
+      border-radius: 3px;
+    }
+    
+    .parts-list-scrollable::-webkit-scrollbar-thumb:hover {
+      background: var(--text);
     }
   </style>
 </head>
