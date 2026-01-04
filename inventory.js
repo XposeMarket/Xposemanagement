@@ -10,6 +10,9 @@ let inventory = [];
 let inventoryFolders = [];
 // Track which shop we're currently viewing
 let currentShopId = null;
+let lastFetchedShopId = null;
+// Flag to track if remote inventory has been fetched
+let remoteInventoryFetched = false;
 
 // DOM references (initialized in setupInventory)
 let inventoryGrid;

@@ -291,6 +291,41 @@ class PartsModalHandler {
     modal.dataset.currentJobId = job.id;
     modal.classList.remove('hidden');
     if (overlay) overlay.style.display = 'block';
+    
+    // Check if user is staff and hide supplier sections
+    // Check window flag first, then try to determine from session
+    let isStaffUser = window.xm_isStaffUser || false;
+    if (!isStaffUser) {
+      // Double check from session
+      try {
+        const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+        isStaffUser = session.role === 'staff';
+      } catch (e) {}
+    }
+    
+    if (isStaffUser) {
+      // Hide supplier column
+      const supplierColumn = document.getElementById('suppliersColumn');
+      if (supplierColumn) supplierColumn.style.display = 'none';
+      
+      // Hide dealerships column
+      const dealershipsColumn = document.getElementById('dealershipsColumn');
+      if (dealershipsColumn) dealershipsColumn.style.display = 'none';
+      
+      // Hide "Add Parts Manually" button - staff can only add from inventory or services
+      const addPartsManuallyBtn = document.getElementById('openAddPartsFromFinder');
+      if (addPartsManuallyBtn) addPartsManuallyBtn.style.display = 'none';
+    } else {
+      // Show all sections for non-staff users (owners/admins)
+      const supplierColumn = document.getElementById('suppliersColumn');
+      if (supplierColumn) supplierColumn.style.display = '';
+      
+      const dealershipsColumn = document.getElementById('dealershipsColumn');
+      if (dealershipsColumn) dealershipsColumn.style.display = '';
+      
+      const addPartsManuallyBtn = document.getElementById('openAddPartsFromFinder');
+      if (addPartsManuallyBtn) addPartsManuallyBtn.style.display = '';
+    }
 
     const vehicleDisplay = document.getElementById('partsCurrentVehicle');
     if (vehicleDisplay) {

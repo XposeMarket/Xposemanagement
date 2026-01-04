@@ -24,6 +24,9 @@ let allJobs = [];
 let allAppointments = [];
 let allUsers = [];
 let allStaff = []; // shop_staff rows (for assignment lookups)
+// Track if current user is staff (not admin)
+let isStaffUser = false;
+let currentStaffUserId = null;
 // Sorting state for jobs tables
 let jobSortCol = 'created_at';
 let jobSortDir = 'desc';
@@ -69,6 +72,87 @@ async function getCurrentAuthId() {
   } catch (error) {
     console.error('[Jobs] Error getting auth ID:', error);
     return null;
+  }
+}
+
+/**
+ * Get current user with role (async - from Supabase shop_staff)
+ */
+async function getCurrentUserWithRole() {
+  const supabase = getSupabaseClient();
+  if (!supabase) return getCurrentUser();
+  
+  try {
+    const { data: authData } = await supabase.auth.getUser();
+    const authUser = authData?.user;
+    if (!authUser) return getCurrentUser();
+    
+    // Check shop_staff table for role
+    const { data: staffData } = await supabase
+      .from('shop_staff')
+      .select('*')
+      .eq('auth_id', authUser.id)
+      .limit(1);
+    
+    if (staffData && staffData.length > 0) {
+      const staff = staffData[0];
+      return {
+        id: staff.id || authUser.id,
+        auth_id: authUser.id,
+        first: staff.first_name || '',
+        last: staff.last_name || '',
+        email: staff.email || authUser.email,
+        role: staff.role || 'staff',
+        shop_id: staff.shop_id
+      };
+    }
+    
+    // Fallback to email lookup
+    if (authUser.email) {
+      const { data: emailData } = await supabase
+        .from('shop_staff')
+        .select('*')
+        .ilike('email', authUser.email)
+        .limit(1);
+      
+      if (emailData && emailData.length > 0) {
+        const staff = emailData[0];
+        return {
+          id: staff.id || authUser.id,
+          auth_id: authUser.id,
+          first: staff.first_name || '',
+          last: staff.last_name || '',
+          email: staff.email || authUser.email,
+          role: staff.role || 'staff',
+          shop_id: staff.shop_id
+        };
+      }
+    }
+    
+    // Check users table for admin/owner
+    const { data: userData } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', authUser.id)
+      .limit(1)
+      .single();
+    
+    if (userData) {
+      return {
+        id: userData.id,
+        auth_id: authUser.id,
+        first: userData.first || '',
+        last: userData.last || '',
+        email: userData.email || authUser.email,
+        role: userData.role || 'admin',
+        shop_id: userData.shop_id
+      };
+    }
+    
+    return getCurrentUser();
+  } catch (e) {
+    console.warn('getCurrentUserWithRole failed:', e);
+    return getCurrentUser();
   }
 }
 
@@ -571,25 +655,114 @@ function openJobActionsModal(job) {
     viewBtn.onclick = () => openJobViewModal(job, appt);
     actionsDiv.appendChild(viewBtn);
     
-    // Assign/Unassign button (top-right)
+    // Assign/Unclaim button (top-right)
     if (job.assigned_to) {
-      const unassignBtn = document.createElement('button');
-      unassignBtn.className = 'btn small danger';
-      unassignBtn.textContent = 'Unassign';
-      unassignBtn.onclick = () => {
-        job.assigned_to = null;
-        job.updated_at = new Date().toISOString();
-        saveJobs(allJobs);
-        renderJobs();
-        showNotification('Job unassigned');
+      const unclaimBtn = document.createElement('button');
+      unclaimBtn.className = 'btn small danger';
+      unclaimBtn.textContent = 'Unclaim';
+      unclaimBtn.onclick = async () => {
+        const supabase = getSupabaseClient();
+        const shopId = getCurrentShopId();
+        
+        if (supabase && shopId) {
+          try {
+            // Update the jobs table
+            const { error: jobError } = await supabase
+              .from('jobs')
+              .update({ 
+                assigned_to: null,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', job.id);
+            
+            if (jobError) {
+              console.error('Error unclaiming job:', jobError);
+              showNotification('Failed to unclaim job', 'error');
+              return;
+            }
+            
+            // Also update data table's jobs JSONB for consistency
+            const { data } = await supabase.from('data').select('jobs').eq('shop_id', shopId).single();
+            const jobs = data?.jobs || [];
+            const jobIndex = jobs.findIndex(j => j.id === job.id);
+            if (jobIndex >= 0) {
+              jobs[jobIndex].assigned_to = null;
+              jobs[jobIndex].updated_at = new Date().toISOString();
+              await supabase.from('data').update({ jobs }).eq('shop_id', shopId);
+            }
+            
+            // Update local
+            job.assigned_to = null;
+            job.updated_at = new Date().toISOString();
+            
+            renderJobs();
+            showNotification('Job unclaimed', 'success');
+            console.log('✅ Job unclaimed in jobs table');
+          } catch (e) {
+            console.error('Error unclaiming job:', e);
+            showNotification('Failed to unclaim job', 'error');
+          }
+        }
       };
-      actionsDiv.appendChild(unassignBtn);
+      actionsDiv.appendChild(unclaimBtn);
     } else {
-      const assignBtn = document.createElement('button');
-      assignBtn.className = 'btn small';
-      assignBtn.textContent = 'Assign';
-      assignBtn.onclick = () => openAssignModal(job);
-      actionsDiv.appendChild(assignBtn);
+      // For staff: show Claim button, for admin: show Assign button
+      if (isStaffUser) {
+        const claimBtn = document.createElement('button');
+        claimBtn.className = 'btn small info';
+        claimBtn.textContent = 'Claim';
+        claimBtn.onclick = async () => {
+          const supabase = getSupabaseClient();
+          const shopId = getCurrentShopId();
+          
+          if (supabase && shopId) {
+            try {
+              // Update the jobs table
+              const { error: jobError } = await supabase
+                .from('jobs')
+                .update({ 
+                  assigned_to: currentStaffUserId,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', job.id);
+              
+              if (jobError) {
+                console.error('Error claiming job:', jobError);
+                showNotification('Failed to claim job', 'error');
+                return;
+              }
+              
+              // Also update data table's jobs JSONB for consistency
+              const { data } = await supabase.from('data').select('jobs').eq('shop_id', shopId).single();
+              const jobs = data?.jobs || [];
+              const jobIndex = jobs.findIndex(j => j.id === job.id);
+              if (jobIndex >= 0) {
+                jobs[jobIndex].assigned_to = currentStaffUserId;
+                jobs[jobIndex].updated_at = new Date().toISOString();
+                await supabase.from('data').update({ jobs }).eq('shop_id', shopId);
+              }
+              
+              // Update local
+              job.assigned_to = currentStaffUserId;
+              job.updated_at = new Date().toISOString();
+              
+              renderJobs();
+              showNotification('Job claimed!', 'success');
+              console.log('✅ Job claimed in jobs table');
+            } catch (e) {
+              console.error('Error claiming job:', e);
+              showNotification('Failed to claim job', 'error');
+            }
+          }
+        };
+        actionsDiv.appendChild(claimBtn);
+      } else {
+        const assignBtn = document.createElement('button');
+        assignBtn.className = 'btn small';
+        assignBtn.textContent = 'Assign';
+        assignBtn.onclick = () => openAssignModal(job);
+        actionsDiv.appendChild(assignBtn);
+      }
     }
     
   // Parts button (bottom-left)
@@ -600,13 +773,23 @@ function openJobActionsModal(job) {
     partsBtn.onclick = () => openPartsModal(job, appt);
     actionsDiv.appendChild(partsBtn);
     
-    // Remove button
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'btn small danger';
-    removeBtn.setAttribute('aria-label', 'Remove job');
-    removeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg>';
-    removeBtn.onclick = () => openRemoveModal(job);
-    actionsDiv.appendChild(removeBtn);
+    // Note or Remove button based on role
+    if (isStaffUser) {
+      // Staff users get Note button
+      const noteBtn = document.createElement('button');
+      noteBtn.className = 'btn small secondary';
+      noteBtn.setAttribute('aria-label', 'Add note');
+      noteBtn.textContent = 'Note';
+      noteBtn.onclick = () => openJobNoteModal(job);
+      actionsDiv.appendChild(noteBtn);
+    } else {
+      // Admin/Owner users get Remove button
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'btn small danger';
+      removeBtn.textContent = 'Remove';
+      removeBtn.onclick = () => openRemoveModal(job);
+      actionsDiv.appendChild(removeBtn);
+    }
     
     tdActions.appendChild(actionsDiv);
     tr.appendChild(tdActions);
@@ -970,6 +1153,18 @@ function closeJobViewModal() {
 
 // Make it global for onclick
 window.closeJobViewModal = closeJobViewModal;
+
+/**
+ * Open modal to add a job note (from table action button)
+ */
+function openJobNoteModal(job) {
+  // Find appointment for this job
+  const appt = allAppointments.find(a => a.id === job.appointment_id);
+  if (appt) {
+    currentJobNotesAppointmentId = appt.id;
+  }
+  openJobAddNoteModal();
+}
 
 /**
  * Open modal to add a job note
@@ -2226,6 +2421,30 @@ async function handleServiceSelection(service, serviceModal) {
  */
 async function setupJobs() {
   console.log('💼 Setting up Jobs page...');
+  
+  // Check if current user is staff (not admin) - use async version to get role from Supabase
+  const currentUser = await getCurrentUserWithRole();
+  isStaffUser = currentUser.role === 'staff';
+  currentStaffUserId = currentUser.id;
+  // Set global for other components to check
+  window.xm_isStaffUser = isStaffUser;
+  // Also store in session for partsModalHandler
+  try {
+    const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+    session.role = currentUser.role;
+    localStorage.setItem('xm_session', JSON.stringify(session));
+  } catch (e) {}
+  console.log(`👤 User role: ${currentUser.role || 'unknown'}, isStaffUser: ${isStaffUser}`);
+  
+  // For staff: hide supplier and dealer sections in parts modal
+  if (isStaffUser) {
+    const supplierSection = document.getElementById('supplierQuickLinks');
+    if (supplierSection) supplierSection.style.display = 'none';
+    
+    // Also hide the "Add Parts Manually" button - staff can only add from inventory or add service
+    const addPartsManuallyBtn = document.getElementById('openAddPartsFromFinder');
+    if (addPartsManuallyBtn) addPartsManuallyBtn.style.display = 'none';
+  }
   
   // Load all data
   allJobs = await loadJobs();
