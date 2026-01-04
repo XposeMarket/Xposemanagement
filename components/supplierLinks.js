@@ -643,10 +643,52 @@ function handleDealerClick(dealer) {
     window.open(dealer.website, '_blank', 'noopener,noreferrer');
   }
   
-  // Open part pricing modal
-  setTimeout(() => {
-    openPartPricingModalForSupplier(dealer.name);
-  }, 100);
+  // Open part pricing modal for manual entry
+  if (typeof window.xm_partPricingModal !== 'undefined' && window.xm_partPricingModal) {
+    const jobId = getCurrentJobId();
+    if (!jobId) {
+      if (typeof showNotification === 'function') {
+        showNotification('No job selected for adding parts', 'error');
+      }
+      return;
+    }
+    
+    // Get vehicle info from the current job
+    let vehicle = null;
+    
+    // Try to get from partsModalHandler's currentJob first
+    if (window.xm_partsHandler && window.xm_partsHandler.currentJob) {
+      const job = window.xm_partsHandler.currentJob;
+      if (job.year || job.make || job.model) {
+        vehicle = `${job.year || ''} ${job.make || ''} ${job.model || ''}`.trim();
+      }
+    }
+    
+    // Fallback: try to get from the displayed vehicle info in the parts modal
+    if (!vehicle) {
+      const vehicleDisplay = document.getElementById('partsCurrentVehicle');
+      if (vehicleDisplay && vehicleDisplay.textContent && vehicleDisplay.textContent !== 'No vehicle info') {
+        vehicle = vehicleDisplay.textContent.trim();
+      }
+    }
+    
+    // Create a manual entry part object
+    const manualPart = {
+      id: `manual_${Date.now()}`,
+      name: '',
+      part_name: '',
+      part_number: '',
+      supplier: dealer.name,
+      manual_entry: true
+    };
+    
+    // Show the pricing modal with vehicle info (small delay to let website open first)
+    setTimeout(() => {
+      window.xm_partPricingModal.show(manualPart, jobId, vehicle, () => {
+        console.log(`Part added from ${dealer.name}`);
+      });
+    }, 100);
+  }
 }
 
 /**
@@ -765,6 +807,25 @@ function handleSupplierClick(supplier) {
       return;
     }
     
+    // Get vehicle info from the current job
+    let vehicle = null;
+    
+    // Try to get from partsModalHandler's currentJob first
+    if (window.xm_partsHandler && window.xm_partsHandler.currentJob) {
+      const job = window.xm_partsHandler.currentJob;
+      if (job.year || job.make || job.model) {
+        vehicle = `${job.year || ''} ${job.make || ''} ${job.model || ''}`.trim();
+      }
+    }
+    
+    // Fallback: try to get from the displayed vehicle info in the parts modal
+    if (!vehicle) {
+      const vehicleDisplay = document.getElementById('partsCurrentVehicle');
+      if (vehicleDisplay && vehicleDisplay.textContent && vehicleDisplay.textContent !== 'No vehicle info') {
+        vehicle = vehicleDisplay.textContent.trim();
+      }
+    }
+    
     // Create a manual entry part object
     const manualPart = {
       id: `manual_${Date.now()}`,
@@ -775,8 +836,8 @@ function handleSupplierClick(supplier) {
       manual_entry: true
     };
     
-    // Show the pricing modal
-    window.xm_partPricingModal.show(manualPart, jobId, () => {
+    // Show the pricing modal with vehicle info
+    window.xm_partPricingModal.show(manualPart, jobId, vehicle, () => {
       // Callback after part is added
       console.log(`Part added from ${supplier.name}`);
     });
@@ -804,24 +865,41 @@ function addManualDealer(manufacturer) {
  * Get current job ID from the page
  */
 function getCurrentJobId() {
-  // Try multiple ways to get the current job ID
+  // PRIORITY 1: Get from the parts modal's dataset (most accurate when modal is open)
+  const partsModal = document.getElementById('partsModal');
+  if (partsModal && partsModal.dataset.currentJobId) {
+    console.log('[SupplierLinks] Got jobId from partsModal.dataset.currentJobId:', partsModal.dataset.currentJobId);
+    return partsModal.dataset.currentJobId;
+  }
+  
+  // PRIORITY 2: Check the partsModalHandler's currentJob
+  if (window.xm_partsHandler && window.xm_partsHandler.currentJob && window.xm_partsHandler.currentJob.id) {
+    console.log('[SupplierLinks] Got jobId from xm_partsHandler.currentJob:', window.xm_partsHandler.currentJob.id);
+    return window.xm_partsHandler.currentJob.id;
+  }
+  
+  // PRIORITY 3: Try window.currentJobId (global fallback)
   if (window.currentJobId) {
+    console.log('[SupplierLinks] Got jobId from window.currentJobId:', window.currentJobId);
     return window.currentJobId;
   }
   
-  // Try to get from URL or page context
+  // PRIORITY 4: Try to get from URL
   const urlParams = new URLSearchParams(window.location.search);
   const jobIdFromUrl = urlParams.get('jobId');
   if (jobIdFromUrl) {
+    console.log('[SupplierLinks] Got jobId from URL:', jobIdFromUrl);
     return jobIdFromUrl;
   }
   
-  // Try to get from active job elements
-  const activeJobElement = document.querySelector('[data-job-id]');
-  if (activeJobElement) {
-    return activeJobElement.dataset.jobId;
+  // PRIORITY 5: Try to get from active job modal (job actions modal)
+  const jobActionsModal = document.getElementById('jobActionsModal');
+  if (jobActionsModal && jobActionsModal.dataset.jobId) {
+    console.log('[SupplierLinks] Got jobId from jobActionsModal:', jobActionsModal.dataset.jobId);
+    return jobActionsModal.dataset.jobId;
   }
   
+  console.warn('[SupplierLinks] Could not determine current job ID');
   return null;
 }
 

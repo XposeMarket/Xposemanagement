@@ -26,6 +26,16 @@ class PartPricingModal {
             <h3 style="margin: 0;">Add Part to Job</h3>
             <button class="modal-close" id="closePricingModal" style="background: none; border: none; font-size: 24px; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
           </div>
+          <!-- Job Context Banner - shows which job this part is being added to -->
+          <div id="pricingJobContext" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: white; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; display: none;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <i class="fas fa-car" style="font-size: 16px;"></i>
+              <div>
+                <div id="pricingJobVehicle" style="font-weight: 600; font-size: 14px;"></div>
+                <div id="pricingJobId" style="font-size: 12px; opacity: 0.85;"></div>
+              </div>
+            </div>
+          </div>
           <div class="modal-body">
             <!-- P+R Group Title with placeholder -->
             <div class="form-field">
@@ -120,6 +130,21 @@ class PartPricingModal {
     if (!this.modal) {
       console.log('🔨 Creating modal for first time');
       this.createModal();
+    }
+    
+    // Update job context banner
+    const jobContextEl = document.getElementById('pricingJobContext');
+    const jobVehicleEl = document.getElementById('pricingJobVehicle');
+    const jobIdEl = document.getElementById('pricingJobId');
+    
+    if (jobContextEl && jobVehicleEl && jobIdEl) {
+      if (jobId || jobVehicle) {
+        jobVehicleEl.textContent = jobVehicle || 'Vehicle not specified';
+        jobIdEl.textContent = jobId ? `Job #${jobId.slice(-6).toUpperCase()}` : '';
+        jobContextEl.style.display = 'block';
+      } else {
+        jobContextEl.style.display = 'none';
+      }
     }
     
     // Detect part type
