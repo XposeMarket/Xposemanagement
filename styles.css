@@ -781,8 +781,94 @@ nav{display:flex;flex-wrap:nowrap;gap:2px;align-items:center;overflow-x:auto;scr
 label{font-size:13px;color:var(--muted)} input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text);outline:none}
 .table{width:100%;border-collapse:collapse}.table th,.table td{border-bottom:1px solid var(--line);padding:10px 8px;text-align:left}
 
-/* Ensure staff table text respects theme color (fixes dark theme readability) */
-#staffTable th, #staffTable td, #shopOwner { color: var(--text); }
+/* Staff Table Mobile Responsiveness */
+#staffTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#staffTable th, #staffTable td, #shopOwner { 
+  color: var(--text);
+}
+
+/* Mobile: Stack columns vertically and make table responsive */
+@media (max-width: 768px) {
+  #staffTable {
+    font-size: 0.9rem;
+  }
+  
+  #staffTable thead {
+    display: none;
+  }
+  
+  #staffTable tbody tr {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 12px;
+    padding: 12px;
+    margin-bottom: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+  }
+  
+  #staffTable td {
+    border: none;
+    padding: 4px 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  
+  #staffTable td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  
+  /* Specific column widths for mobile grid */
+  #staffTable td:nth-child(1)::before { content: "Name"; }
+  #staffTable td:nth-child(2)::before { content: "Email"; }
+  #staffTable td:nth-child(3)::before { content: "Role"; }
+  #staffTable td:nth-child(4)::before { content: "Hourly Rate"; }
+  #staffTable td:nth-child(5)::before { content: "Actions"; }
+}
+
+/* Extra small screens */
+@media (max-width: 480px) {
+  #staffTable tbody tr {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  
+  #staffTable td {
+    grid-column: 1;
+  }
+  
+  #staffTable td input[type="number"] {
+    width: 100% !important;
+    max-width: 100px;
+  }
+  
+  #staffTable button {
+    padding: 6px 12px !important;
+    font-size: 0.85rem !important;
+    white-space: nowrap;
+  }
+  
+  #staffTable td:nth-child(4) {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+  }
+  
+  #staffTable td:nth-child(5) button {
+    width: 100%;
+  }
+}
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
 @media (max-width:768px){ .kpis{grid-template-columns:repeat(2,1fr)} }
 @media (max-width:768px){ .kpis{grid-template-columns:1fr} }

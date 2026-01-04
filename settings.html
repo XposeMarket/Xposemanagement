@@ -431,6 +431,7 @@ document.addEventListener('DOMContentLoaded', function(){
             if (u.id) tr.dataset.userId = u.id;
 
             const tdName = document.createElement('td');
+            tdName.setAttribute('data-label', 'Name');
             tdName.textContent = `${u.first||u.first_name||''} ${u.last||u.last_name||''}`;
             if(isOwner){
               const badge = document.createElement('span');
@@ -439,8 +440,12 @@ document.addEventListener('DOMContentLoaded', function(){
               tdName.appendChild(badge);
             }
             tr.appendChild(tdName);
-            const tdEmail = document.createElement('td'); tdEmail.textContent = u.email || ''; tr.appendChild(tdEmail);
+            const tdEmail = document.createElement('td');
+            tdEmail.setAttribute('data-label', 'Email');
+            tdEmail.textContent = u.email || '';
+            tr.appendChild(tdEmail);
             const tdRole = document.createElement('td');
+            tdRole.setAttribute('data-label', 'Role');
             if(isOwner){
               tdRole.textContent = 'owner';
             } else {
@@ -463,6 +468,7 @@ document.addEventListener('DOMContentLoaded', function(){
             tr.appendChild(tdRole);
             // Hourly Rate cell
             const tdRate = document.createElement('td');
+            tdRate.setAttribute('data-label', 'Hourly Rate');
             const rateVal = (u.hourly_rate != null) ? u.hourly_rate : (u.rate != null ? u.rate : '');
             const rateInput = document.createElement('input');
             rateInput.type = 'number';
@@ -527,6 +533,7 @@ document.addEventListener('DOMContentLoaded', function(){
             tdRate.appendChild(saveBtn);
             tr.appendChild(tdRate);
             const tdAct = document.createElement('td');
+            tdAct.setAttribute('data-label', 'Actions');
             if(isOwner){
               tdAct.textContent = '';
             } else {
