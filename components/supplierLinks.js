@@ -216,6 +216,7 @@ async function initSupplierLinks() {
   
   const supplierHeading = document.createElement('h4');
   supplierHeading.textContent = 'Quick Order from Suppliers';
+  supplierHeading.style.cssText = 'margin: 0 0 12px 0; font-size: 1rem; font-weight: 600; color: var(--text-primary);';
   
   const supplierBtnGroup = document.createElement('div');
   
@@ -251,6 +252,7 @@ async function initSupplierLinks() {
   
   const dealerHeading = document.createElement('h4');
   dealerHeading.textContent = 'Local Dealerships';
+  dealerHeading.style.cssText = 'margin: 0 0 12px 0; font-size: 1rem; font-weight: 600; color: var(--text-primary);';
   
   const dealerBtnGroup = document.createElement('div');
   

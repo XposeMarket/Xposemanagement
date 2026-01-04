@@ -111,6 +111,33 @@
       font-size: 1.18rem;
       margin-bottom: 38px;
     }
+    .pricing-tabs {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 40px;
+    }
+    .pricing-tab {
+      background: #f0f4f8;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 32px;
+      font-size: 1.08rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: #666;
+      transition: all 0.2s;
+    }
+    .pricing-tab.active {
+      background: #2a7cff;
+      color: #fff;
+    }
+    .pricing-tab:hover {
+      background: #e0e7ff;
+    }
+    .pricing-tab.active:hover {
+      background: #195bb5;
+    }
     .pricing-row {
       display: grid;
       grid-template-columns: repeat(auto-fit,minmax(260px,1fr));
@@ -247,13 +274,21 @@
     <div class="pricing-desc">Simple, transparent pricing. Start with a 14-day free trial. Cancel anytime.</div>
       <div class="pricing-desc" style="font-size:1.08rem;color:#2a7cff;margin-bottom:8px;">All plans include a free Stripe M2 terminal with optional upgrades.</div>
       <div class="pricing-desc" style="font-size:1.02rem;color:#666;margin-bottom:28px;">Terminals will ship within 5-7 Business Days of shop creation.</div>
-    <div class="pricing-row">
+    
+    <!-- Pricing Tabs -->
+    <div class="pricing-tabs">
+      <button class="pricing-tab active" onclick="switchPricingPeriod('monthly')">Monthly</button>
+      <button class="pricing-tab" onclick="switchPricingPeriod('annually')">Annually</button>
+    </div>
+
+    <!-- Monthly Pricing -->
+    <div id="monthly-pricing" class="pricing-row">
       <div class="pricing-card">
         <h3>Single <span class="popular-badge">Available Now</span></h3>
         <div class="plan-type">1 Shop</div>
-        <div style="font-size:2rem;font-weight:800;color:#dc2626;margin-bottom:4px;">$99</div>
+        <div style="font-size:2rem;font-weight:800;color:#059669;margin-bottom:4px;">$99.99</div>
         <div style="font-size:1.5rem;font-weight:700;margin-bottom:8px;">
-          <span style="color:#000;text-decoration:line-through;text-decoration-color:#dc2626;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$129</span>
+          <span style="color:#000;text-decoration:line-through;text-decoration-color:#059669;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$129.99</span>
           <span style="font-size:1rem;font-weight:400;color:#000;"> /month</span>
         </div>
         <ul>
@@ -264,35 +299,80 @@
       <div class="pricing-card popular">
         <h3>Local <span class="popular-badge">Most Popular</span></h3>
         <div class="plan-type">1-3 Shops</div>
-        <div style="font-size:2rem;font-weight:800;color:#dc2626;margin-bottom:4px;">$149</div>
+        <div style="font-size:2rem;font-weight:800;color:#059669;margin-bottom:4px;">$149.99</div>
         <div style="font-size:1.5rem;font-weight:700;margin-bottom:8px;">
-          <span style="color:#000;text-decoration:line-through;text-decoration-color:#dc2626;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$199</span>
+          <span style="color:#000;text-decoration:line-through;text-decoration-color:#059669;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$199.99</span>
           <span style="font-size:1rem;font-weight:400;color:#000;"> /month</span>
         </div>
         <ul>
           <li>All Core features</li>
           <li>Multi-shop management</li>
-          <li><strong>1 month free Messaging</strong></li>
         </ul>
         <button class="plan-btn">Select Local</button>
       </div>
       <div class="pricing-card">
         <h3>Multi</h3>
         <div class="plan-type">1-6 Shops</div>
-        <div style="font-size:2rem;font-weight:800;color:#dc2626;margin-bottom:4px;">$199</div>
+        <div style="font-size:2rem;font-weight:800;color:#059669;margin-bottom:4px;">$199.99</div>
         <div style="font-size:1.5rem;font-weight:700;margin-bottom:8px;">
-          <span style="color:#000;text-decoration:line-through;text-decoration-color:#dc2626;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$250</span>
+          <span style="color:#000;text-decoration:line-through;text-decoration-color:#059669;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$249.99</span>
           <span style="font-size:1rem;font-weight:400;color:#000;"> /month</span>
         </div>
         <ul>
           <li>All Core features</li>
           <li>Advanced multi-shop tools</li>
           <li>First to receive all updates (Beta Testings included)</li>
-          <li><strong>1 month free Messaging</strong></li>
         </ul>
         <button class="plan-btn">Select Multi</button>
       </div>
     </div>
+
+    <!-- Annually Pricing -->
+    <div id="annually-pricing" class="pricing-row" style="display: none;">
+      <div class="pricing-card">
+        <h3>Single <span class="popular-badge">Available Now</span></h3>
+        <div class="plan-type">1 Shop</div>
+        <div style="font-size:2rem;font-weight:800;color:#059669;margin-bottom:4px;">$999</div>
+        <div style="font-size:1.5rem;font-weight:700;margin-bottom:8px;">
+          <span style="color:#000;text-decoration:line-through;text-decoration-color:#059669;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$1,199</span>
+          <span style="font-size:1rem;font-weight:400;color:#000;"> /year</span>
+        </div>
+        <ul>
+          <li>All core features</li>
+        </ul>
+        <button class="plan-btn">Start Single</button>
+      </div>
+      <div class="pricing-card popular">
+        <h3>Local <span class="popular-badge">Most Popular</span></h3>
+        <div class="plan-type">1-3 Shops</div>
+        <div style="font-size:2rem;font-weight:800;color:#059669;margin-bottom:4px;">$1,649</div>
+        <div style="font-size:1.5rem;font-weight:700;margin-bottom:8px;">
+          <span style="color:#000;text-decoration:line-through;text-decoration-color:#059669;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$1,799</span>
+          <span style="font-size:1rem;font-weight:400;color:#000;"> /year</span>
+        </div>
+        <ul>
+          <li>All Core features</li>
+          <li>Multi-shop management</li>
+        </ul>
+        <button class="plan-btn">Select Local</button>
+      </div>
+      <div class="pricing-card">
+        <h3>Multi</h3>
+        <div class="plan-type">1-6 Shops</div>
+        <div style="font-size:2rem;font-weight:800;color:#059669;margin-bottom:4px;">$1,999</div>
+        <div style="font-size:1.5rem;font-weight:700;margin-bottom:8px;">
+          <span style="color:#000;text-decoration:line-through;text-decoration-color:#059669;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$2,399</span>
+          <span style="font-size:1rem;font-weight:400;color:#000;"> /year</span>
+        </div>
+        <ul>
+          <li>All Core features</li>
+          <li>Advanced multi-shop tools</li>
+          <li>First to receive all updates (Beta Testings included)</li>
+        </ul>
+        <button class="plan-btn">Select Multi</button>
+      </div>
+    </div>
+    
     <div class="trial-note">All plans come with a 14-day free trial. Cancel anytime free of charge.</div>
   </main>
 
@@ -402,9 +482,9 @@
   <script>
     // Stripe Price IDs - These are your actual Price IDs from Stripe Dashboard
     const PRICE_IDS = {
-      single: 'price_1SX97Z4K55W1qqBCSwzYlDd6',
-      local: 'price_1SX97b4K55W1qqBC7o7fJYUi',
-      multi: 'price_1SX97d4K55W1qqBCcNM0eP00'
+      single: 'price_1Slydh4K55W1qqBCPa4CAwOi',
+      local: 'price_1Slyf44K55W1qqBCIayxsn8D',
+      multi: 'price_1Slyfn4K55W1qqBCMj84DH1q'
     };
 
     // Get user email if logged in
@@ -449,13 +529,20 @@
     };
 
     // Plan button click handler
-    document.querySelectorAll('.plan-btn').forEach((btn, index) => {
+    document.querySelectorAll('.plan-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
+        // Get the card that contains this button
+        const card = btn.closest('.pricing-card');
+        const heading = card.querySelector('h3').textContent;
+        
         let planName;
-        if (index === 0) planName = 'single';
-        else if (index === 1) planName = 'local';
-        else if (index === 2) planName = 'multi';
-        showTerminalModal(planName);
+        if (heading.includes('Single')) planName = 'single';
+        else if (heading.includes('Local')) planName = 'local';
+        else if (heading.includes('Multi')) planName = 'multi';
+        
+        if (planName) {
+          showTerminalModal(planName);
+        }
       });
     });
 
@@ -561,6 +648,25 @@
         document.getElementById('terminalOptOut').innerHTML = 'Opt out - I have my own terminal<br><span style="font-size:0.85rem;opacity:0.9;">(Start using immediately)</span>';
       }
     };
+
+    // Function to switch pricing period
+    function switchPricingPeriod(period) {
+      const monthlyPricing = document.getElementById('monthly-pricing');
+      const annuallyPricing = document.getElementById('annually-pricing');
+      const tabs = document.querySelectorAll('.pricing-tab');
+
+      if (period === 'monthly') {
+        monthlyPricing.style.display = 'grid';
+        annuallyPricing.style.display = 'none';
+        tabs[0].classList.add('active');
+        tabs[1].classList.remove('active');
+      } else {
+        monthlyPricing.style.display = 'none';
+        annuallyPricing.style.display = 'grid';
+        tabs[0].classList.remove('active');
+        tabs[1].classList.add('active');
+      }
+    }
   </script>
 </body>
 </html>

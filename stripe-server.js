@@ -342,11 +342,14 @@ app.post('/get-session-subscription', async (req, res) => {
     
     // Map price IDs to normalized plan keys used by the app
     const PRICE_TO_PLAN = {
-      // production price IDs -> normalized keys
+      // Monthly price IDs -> normalized keys
       'price_1SX97Z4K55W1qqBCSwzYlDd6': 'single',
       'price_1SX97b4K55W1qqBC7o7fJYUi': 'local',
       'price_1SX97d4K55W1qqBCcNM0eP00': 'multi',
-      // add additional mappings as needed
+      // Annual price IDs -> normalized keys
+      'price_1Slydh4K55W1qqBCPa4CAwOi': 'single',
+      'price_1Slyf44K55W1qqBCIayxsn8D': 'local',
+      'price_1Slyfn4K55W1qqBCMj84DH1q': 'multi',
     };
     // Prefer explicit mapping; fall back to nickname and try to normalize it
     planName = PRICE_TO_PLAN[priceId] || (subscription.items.data[0].price.nickname || 'unknown');
@@ -990,10 +993,14 @@ async function handleSubscriptionUpdate(subscription) {
   
   // Map price ID to plan name - use EXACT same format as frontend expects
   const PRICE_TO_PLAN = {
+    // Monthly price IDs
     'price_1SX97Z4K55W1qqBCSwzYlDd6': 'Single Shop',
     'price_1SX97b4K55W1qqBC7o7fJYUi': 'Local Shop',
     'price_1SX97d4K55W1qqBCcNM0eP00': 'Multi Shop',
-    // Add any additional live price IDs here as needed
+    // Annual price IDs
+    'price_1Slydh4K55W1qqBCPa4CAwOi': 'Single Shop',
+    'price_1Slyf44K55W1qqBCIayxsn8D': 'Local Shop',
+    'price_1Slyfn4K55W1qqBCMj84DH1q': 'Multi Shop',
   };
   
   let planName = PRICE_TO_PLAN[priceId];
