@@ -16,8 +16,10 @@ const SUPPLIERS = [
   {
     name: 'Carquest/Advance Auto',
     logo: 'assets/Parts Suppliers/CarwquestLogo.webp',
-    url: 'https://app.partstech.com/',
-    visible: true
+    dualLogo: 'assets/Parts Suppliers/Logo_of_Advance_Auto_Parts.svg.png',
+    url: 'https://shop.advanceautoparts.com/',
+    visible: true,
+    isDualLogo: true
   },
   {
     name: 'WorldPac',
@@ -76,6 +78,62 @@ const SUPPLIERS = [
     name: 'LKQ',
     logo: 'assets/Parts Suppliers/lkq-corp-logo.jpg',
     url: 'https://www.lkqonline.com',
+    visible: false,
+    preset: true
+  }
+  ,{
+    name: 'Dorman',
+    logo: 'assets/Parts Suppliers/brand-dorman.jpg',
+    url: 'https://www.dormanproducts.com',
+    visible: false,
+    preset: true
+  },
+  {
+    name: 'ECS Tuning',
+    logo: 'assets/Parts Suppliers/ecs-tuning.webp',
+    url: 'https://www.ecstuning.com',
+    visible: false,
+    preset: true
+  },
+  {
+    name: 'Enjuku Racing',
+    logo: 'assets/Parts Suppliers/enjukuracinglogo.png',
+    url: 'https://www.enjukuracing.com',
+    visible: false,
+    preset: true
+  },
+  {
+    name: 'GM Genuine Parts',
+    logo: 'assets/Parts Suppliers/gmgennuineparts.png',
+    url: 'https://www.genuinegmparts.com',
+    visible: false,
+    preset: true
+  },
+  {
+    name: 'JEGS',
+    logo: 'assets/Parts Suppliers/jegslogo.png',
+    url: 'https://www.jegs.com',
+    visible: false,
+    preset: true
+  },
+  {
+    name: 'Moog',
+    logo: 'assets/Parts Suppliers/moog-vector-logo.png',
+    url: 'https://www.moogparts.com',
+    visible: false,
+    preset: true
+  },
+  {
+    name: 'Tire Rack',
+    logo: 'assets/Parts Suppliers/TireRack_Logo.jpg',
+    url: 'https://www.tirerack.com',
+    visible: false,
+    preset: true
+  },
+  {
+    name: 'Turner Motorsport',
+    logo: 'assets/Parts Suppliers/turnermotorsportslogowebp.webp',
+    url: 'https://www.turnermotorsport.com',
     visible: false,
     preset: true
   }
@@ -312,17 +370,56 @@ function createSupplierCard(supplier) {
   const logoWrapper = document.createElement('div');
   logoWrapper.className = 'supplier-logo-wrapper';
   
-  const logo = document.createElement('img');
-  logo.src = supplier.logo;
-  logo.alt = supplier.name;
-  logo.className = 'supplier-logo';
-  logo.onerror = () => {
-    if (supplier.fallbackLogo) {
-      logoWrapper.innerHTML = `<span class="supplier-fallback-icon">${supplier.fallbackLogo}</span>`;
-    }
-  };
-  
-  logoWrapper.appendChild(logo);
+  // Handle dual logos (split diagonally)
+  if (supplier.isDualLogo && supplier.dualLogo) {
+    logoWrapper.style.position = 'relative';
+    logoWrapper.style.overflow = 'hidden';
+    
+    // First logo (top-left)
+    const logo1 = document.createElement('img');
+    logo1.src = supplier.logo;
+    logo1.alt = supplier.name;
+    logo1.className = 'supplier-logo';
+    logo1.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; clip-path: polygon(0 0, 100% 0, 0 100%);';
+    logo1.onerror = () => {
+      if (supplier.fallbackLogo) {
+        logoWrapper.innerHTML = `<span class="supplier-fallback-icon">${supplier.fallbackLogo}</span>`;
+      }
+    };
+    
+    // Second logo (bottom-right)
+    const logo2 = document.createElement('img');
+    logo2.src = supplier.dualLogo;
+    logo2.alt = supplier.name;
+    logo2.className = 'supplier-logo';
+    logo2.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; clip-path: polygon(100% 0, 100% 100%, 0 100%);';
+    logo2.onerror = () => {
+      // If second logo fails, just show first logo normally
+      logoWrapper.innerHTML = '';
+      const logo = document.createElement('img');
+      logo.src = supplier.logo;
+      logo.alt = supplier.name;
+      logo.className = 'supplier-logo';
+      logo.style.cssText = '';
+      logoWrapper.appendChild(logo);
+    };
+    
+    logoWrapper.appendChild(logo1);
+    logoWrapper.appendChild(logo2);
+  } else {
+    // Single logo
+    const logo = document.createElement('img');
+    logo.src = supplier.logo;
+    logo.alt = supplier.name;
+    logo.className = 'supplier-logo';
+    logo.onerror = () => {
+      if (supplier.fallbackLogo) {
+        logoWrapper.innerHTML = `<span class="supplier-fallback-icon">${supplier.fallbackLogo}</span>`;
+      }
+    };
+    
+    logoWrapper.appendChild(logo);
+  }
   
   const nameLabel = document.createElement('div');
   nameLabel.className = 'supplier-name';
