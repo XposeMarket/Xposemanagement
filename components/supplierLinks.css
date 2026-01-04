@@ -201,17 +201,99 @@
   }
 }
 
-/* Supplier Quick Links Section Header */
-#supplierQuickLinks h4 {
+/* Supplier/Dealer Section Headers */
+#supplierQuickLinks h4,
+#supplierDealerSection h4 {
   font-size: 1rem;
   font-weight: 600;
   color: #1f2937;
-  margin: 0 0 12px 0;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Mobile Header Adjustment */
+@media (max-width: 768px) {
+  #supplierQuickLinks h4,
+  #supplierDealerSection h4 {
+    font-size: 0.95rem;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 480px) {
+  #supplierQuickLinks h4,
+  #supplierDealerSection h4 {
+    font-size: 0.85rem;
+    white-space: normal;
+  }
+}
+
+/* Supplier/Dealer Section Grid Container */
+#supplierDealerSection {
+  display: grid;
+  grid-template-columns: 1.2fr 1.2fr;
+  gap: 40px;
+  margin-bottom: 20px;
+  width: 100%;
+  max-width: none;
+  overflow: visible;
+}
+
+/* Mobile: Stack columns vertically */
+@media (max-width: 768px) {
+  #supplierDealerSection {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  #supplierDealerSection {
+    gap: 16px;
+  }
+}
+
+/* Header Row in Each Column */
+#suppliersColumn > div:first-child,
+#dealershipsColumn > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 480px) {
+  #suppliersColumn > div:first-child,
+  #dealershipsColumn > div:first-child {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+}
+
+/* Button Groups - Stack on Mobile */
+#suppliersColumn > div:first-child > div:last-child,
+#dealershipsColumn > div:first-child > div:last-child {
+  display: flex;
+  gap: 8px;
+}
+
+@media (max-width: 480px) {
+  #suppliersColumn > div:first-child > div:last-child,
+  #dealershipsColumn > div:first-child > div:last-child {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 /* Override dark mode for header too */
 @media (prefers-color-scheme: dark) {
-  #supplierQuickLinks h4 {
+  #supplierQuickLinks h4,
+  #supplierDealerSection h4 {
     color: #f3f4f6; /* Keep header light in dark mode */
   }
 }

@@ -146,24 +146,20 @@ async function initSupplierLinks() {
     return;
   }
 
-  // Create TWO-COLUMN layout
+  // Create TWO-COLUMN layout (with CSS media queries for mobile)
   const supplierDealerSection = document.createElement('div');
   supplierDealerSection.id = 'supplierDealerSection';
-  supplierDealerSection.style.cssText = 'display: grid; grid-template-columns: 1.2fr 1.2fr; gap: 40px; margin-bottom: 20px; width: 100%; max-width: none; overflow: visible;';
   
   // LEFT COLUMN - Suppliers
   const suppliersCol = document.createElement('div');
   suppliersCol.id = 'suppliersColumn';
   
   const supplierHeader = document.createElement('div');
-  supplierHeader.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;';
   
   const supplierHeading = document.createElement('h4');
-  supplierHeading.style.cssText = 'margin: 0; font-size: 1rem; font-weight: 600;';
   supplierHeading.textContent = 'Quick Order from Suppliers';
   
   const supplierBtnGroup = document.createElement('div');
-  supplierBtnGroup.style.cssText = 'display: flex; gap: 8px;';
   
   const editSupplierBtn = document.createElement('button');
   editSupplierBtn.className = 'btn small';
@@ -194,14 +190,11 @@ async function initSupplierLinks() {
   dealershipsCol.id = 'dealershipsColumn';
   
   const dealerHeader = document.createElement('div');
-  dealerHeader.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;';
   
   const dealerHeading = document.createElement('h4');
-  dealerHeading.style.cssText = 'margin: 0; font-size: 1rem; font-weight: 600;';
   dealerHeading.textContent = 'Local Dealerships';
   
   const dealerBtnGroup = document.createElement('div');
-  dealerBtnGroup.style.cssText = 'display: flex; gap: 8px;';
   
   const editDealerBtn = document.createElement('button');
   editDealerBtn.className = 'btn small';
