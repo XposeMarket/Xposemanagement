@@ -11,6 +11,14 @@ function formatCurrency(val) {
   return `$${(val || 0).toFixed(2)}`;
 }
 
+// Utility: get status class for colored pills
+function getStatusClass(status) {
+  if (!status) return '';
+  const s = status.toLowerCase();
+  if (s === 'done') return 'completed';
+  return s;
+}
+
 // Utility: get start/end of week for a given date
 function getWeekRange(date = new Date()) {
   const d = new Date(date);
@@ -41,6 +49,172 @@ function renderWeekSelector(currentWeek, onChange) {
   el.appendChild(prevBtn);
   el.appendChild(weekLabel);
   el.appendChild(nextBtn);
+}
+
+// Global variable to store the chart instance
+let revenueBreakdownChart = null;
+
+// Render revenue breakdown circle chart
+function renderRevenueBreakdownChart(weekTotalRevenue, weekStaffCost, weekPartsCost, weekNetRevenue) {
+  const canvas = document.getElementById('revenue-breakdown-chart');
+  if (!canvas) return;
+  
+  const ctx = canvas.getContext('2d');
+  
+  // Destroy existing chart if it exists
+  if (revenueBreakdownChart) {
+    revenueBreakdownChart.destroy();
+  }
+  
+  // Calculate percentages for display
+  const total = weekTotalRevenue;
+  const staffPercent = total > 0 ? ((weekStaffCost / total) * 100).toFixed(1) : 0;
+  const partsPercent = total > 0 ? ((weekPartsCost / total) * 100).toFixed(1) : 0;
+  const netPercent = total > 0 ? ((weekNetRevenue / total) * 100).toFixed(1) : 0;
+  
+  revenueBreakdownChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: [
+        `Staff Cost (${staffPercent}%)`,
+        `Parts Cost (${partsPercent}%)`,
+        `Net Revenue (${netPercent}%)`
+      ],
+      datasets: [{
+        data: [weekStaffCost, weekPartsCost, weekNetRevenue],
+        backgroundColor: [
+          '#FF6384',  // Staff Cost - pink/red
+          '#36A2EB',  // Parts Cost - blue
+          '#4BC0C0'   // Net Revenue - teal/green
+        ],
+        borderColor: [
+          '#FF6384',
+          '#36A2EB',
+          '#4BC0C0'
+        ],
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            padding: 15,
+            font: {
+              size: 12
+            }
+          }
+        },
+        title: {
+          display: true,
+          text: `Total: ${formatCurrency(weekTotalRevenue)}`,
+          font: {
+            size: 18,
+            weight: 'bold'
+          },
+          padding: {
+            top: 10,
+            bottom: 20
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const label = context.label || '';
+              const value = formatCurrency(context.parsed);
+              return `${label}: ${value}`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// Render weekly days overview boxes with color-coded revenue
+function renderWeeklyDaysOverview(currentWeek, invoices, appointments, jobs) {
+  const container = document.getElementById('weekly-days-grid');
+  if (!container) return;
+  
+  // Build the 7-day array (Mon-Sun)
+  const weekStart = new Date(currentWeek.start);
+  weekStart.setHours(0, 0, 0, 0);
+  const days = [];
+  
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    const iso = d.toISOString().slice(0, 10);
+    const dayName = d.toLocaleDateString(undefined, { weekday: 'short' });
+    const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    days.push({ iso, dayName, dateStr, date: d, revenue: 0 });
+  }
+  
+  // Calculate revenue for each day
+  days.forEach(day => {
+    const dayStart = new Date(day.date);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(day.date);
+    dayEnd.setHours(23, 59, 59, 999);
+    
+    // Find jobs/invoices for this day
+    const dayJobs = jobs.filter(j => {
+      const appt = appointments.find(a => a.id === j.appointment_id);
+      const rawDate = appt?.preferred_date || appt?.preferred_time || j.created_at || j.updated_at;
+      if (!rawDate) return false;
+      const jDate = new Date(rawDate);
+      return jDate >= dayStart && jDate <= dayEnd;
+    });
+    
+    // Calculate total revenue for the day
+    dayJobs.forEach(j => {
+      const inv = invoices.find(ii => 
+        (ii.job_id && ii.job_id === j.id) || 
+        (ii.appointment_id && ii.appointment_id === j.appointment_id)
+      );
+      if (inv) {
+        day.revenue += calcInvTotal(inv);
+      }
+    });
+  });
+  
+  // Find min and max revenue for color coding
+  const revenues = days.map(d => d.revenue);
+  const maxRevenue = Math.max(...revenues);
+  const minRevenue = Math.min(...revenues);
+  const range = maxRevenue - minRevenue;
+  
+  // Assign color class based on revenue
+  days.forEach(day => {
+    if (range === 0) {
+      // All days have same revenue
+      day.colorClass = 'good';
+    } else if (day.revenue === maxRevenue) {
+      day.colorClass = 'best';
+    } else if (day.revenue === minRevenue) {
+      day.colorClass = 'worst';
+    } else {
+      // Calculate position in range (0 to 1)
+      const position = (day.revenue - minRevenue) / range;
+      if (position > 0.6) {
+        day.colorClass = 'good'; // Yellow (closer to green)
+      } else {
+        day.colorClass = 'moderate'; // Orange (closer to red)
+      }
+    }
+  });
+  
+  // Render the boxes
+  container.innerHTML = days.map(day => `
+    <div class="weekly-day-box ${day.colorClass}" data-date="${day.iso}">
+      <div class="weekly-day-name">${day.dayName}</div>
+      <div class="weekly-day-date">${day.dateStr}</div>
+      <div class="weekly-day-amount">${formatCurrency(day.revenue)}</div>
+    </div>
+  `).join('');
 }
 
 // Main page logic
@@ -439,6 +613,11 @@ async function setupRevenuePage() {
     const weekEnd = new Date(currentWeek.end);
     weekEnd.setHours(23,59,59,999);
     let jobListFiltered = jobList.filter(j => {
+      // Skip jobs with 'pending' status (these are likely from deleted invoices/appointments)
+      if (j.status && j.status.toLowerCase() === 'pending') {
+        console.debug('[revenue] filtering out pending job:', j.id);
+        return false;
+      }
       const appt = appointments.find(a => a.id === j.appointment_id) || {};
       const inv = invoices.find(ii => (ii.job_id && ii.job_id === j.id) || (ii.appointment_id && ii.appointment_id === j.appointment_id)) || null;
 
@@ -593,8 +772,10 @@ async function setupRevenuePage() {
               <div style="color:var(--muted);">Scheduled: ${schedDate}</div>
             </div>
             <div style="flex:2;">
-              <span style="margin-right:16px;">Staff: <strong>${staffName}</strong></span>
-              <span style="margin-right:16px;">Status: <strong>${j.status || 'N/A'}</strong></span>
+              <div style="margin-bottom:8px; display:flex; align-items:center; gap:16px;">
+                <span>Staff: <strong>${staffName}</strong></span>
+                <span style="display:inline-flex; align-items:center; gap:6px;">Status: <span class="tag ${getStatusClass(j.status || 'open')}" style="flex-shrink:0;">${j.status || 'Open'}</span></span>
+              </div>
               <div style="display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,auto);gap:4px 12px;align-items:center;">
                 <div style="font-size:0.95em;">Total Revenue:</div>
                 <strong data-total="${j.id}" style="font-size:0.95em;">${Number.isFinite(totalRevenue) ? formatCurrency(totalRevenue) : '...'}</strong>
@@ -781,6 +962,12 @@ async function setupRevenuePage() {
       <div>Total Staff Cost: <strong>${formatCurrency(weekStaffCost)}</strong></div>
       <div>Net Revenue: <strong>${formatCurrency(weekNetRevenue)}</strong></div>
     `;
+
+    // Render the revenue breakdown chart
+    renderRevenueBreakdownChart(weekTotalRevenue, weekStaffCost, weekPartsCost, weekNetRevenue);
+
+    // Render the weekly days overview boxes
+    renderWeeklyDaysOverview(currentWeek, invoices, appointments, jobListFiltered);
 
 
 

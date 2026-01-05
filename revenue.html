@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Revenue</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     /* Revenue page: responsive staff panel fixes */
     .staff-panel { display:flex; align-items:center; flex-wrap:wrap; gap:12px; }
@@ -55,7 +56,7 @@
     }
     
     .parts-list-scrollable {
-      max-height: 252px; /* Show ~4.5 items before scrolling */
+      max-height: 336px; /* Show ~6 items before scrolling */
       overflow-y: auto;
       margin-top: 16px;
     }
@@ -77,6 +78,78 @@
     
     .parts-list-scrollable::-webkit-scrollbar-thumb:hover {
       background: var(--text);
+    }
+    
+    /* Weekly days boxes */
+    .weekly-day-box {
+      padding: 16px;
+      border-radius: 8px;
+      text-align: center;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      cursor: pointer;
+      border: 2px solid transparent;
+    }
+    
+    .weekly-day-box:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .weekly-day-box.best {
+      background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+      color: white;
+      border-color: #059669;
+    }
+    
+    .weekly-day-box.good {
+      background: linear-gradient(135deg, #fbbf24 0%, #fcd34d 100%);
+      color: #78350f;
+      border-color: #f59e0b;
+    }
+    
+    .weekly-day-box.moderate {
+      background: linear-gradient(135deg, #f97316 0%, #fb923c 100%);
+      color: white;
+      border-color: #ea580c;
+    }
+    
+    .weekly-day-box.worst {
+      background: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
+      color: white;
+      border-color: #dc2626;
+    }
+    
+    .weekly-day-name {
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+      opacity: 0.9;
+    }
+    
+    .weekly-day-date {
+      font-size: 0.75rem;
+      margin-bottom: 8px;
+      opacity: 0.8;
+    }
+    
+    .weekly-day-amount {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+    
+    @media (max-width: 768px) {
+      #weekly-days-grid {
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)) !important;
+      }
+      
+      .weekly-day-box {
+        padding: 12px;
+      }
+      
+      .weekly-day-amount {
+        font-size: 1rem;
+      }
     }
   </style>
 </head>
@@ -131,6 +204,13 @@
       </div>
     </section>
     
+    <!-- Weekly Days Overview -->
+    <section id="weekly-days-overview" style="margin-bottom:24px;">
+      <div id="weekly-days-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px;">
+        <!-- Days will be populated by JavaScript -->
+      </div>
+    </section>
+    
     <!-- Two-panel layout: Revenue Overview + Ordered Parts -->
     <div class="revenue-panels-container">
       <!-- Weekly Revenue Overview Panel (now 50% width) -->
@@ -138,6 +218,9 @@
         <h2>Weekly Revenue Overview</h2>
         <div id="week-selector" style="margin-bottom:16px;"></div>
         <div id="revenue-totals" class="grid cols-2" style="margin-bottom:16px;"></div>
+        <div style="display:flex; flex-direction:column; align-items:center; margin-top:24px;">
+          <canvas id="revenue-breakdown-chart" style="max-width:320px; max-height:320px;"></canvas>
+        </div>
       </section>
       
       <!-- Ordered Parts Panel (new) -->
