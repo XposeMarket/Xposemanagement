@@ -163,6 +163,12 @@ module.exports = async function handler(req, res) {
     const results = { email: null, sms: null };
     
     // Check if invoice is already paid
+    console.log('[SendInvoice] Invoice status check:', {
+      invoiceId,
+      status: invoice.status,
+      statusType: typeof invoice.status,
+      isPaid: invoice.status && invoice.status.toLowerCase() === 'paid'
+    });
     const isPaid = invoice.status && invoice.status.toLowerCase() === 'paid';
 
     // Send Email via Resend
