@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>View Invoice</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .public-invoice-container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .invoice-error {
+      text-align: center;
+      padding: 60px 20px;
+      background: var(--card);
+      border-radius: 12px;
+      margin: 40px auto;
+      max-width: 500px;
+    }
+    .invoice-error h2 {
+      color: #ef4444;
+      margin-bottom: 16px;
+    }
+    .invoice-error p {
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+    .invoice-loading {
+      text-align: center;
+      padding: 80px 20px;
+    }
+    .invoice-loading .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid var(--line);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .invoice-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    .shop-info {
+      background: var(--card);
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+    }
+    .shop-info img {
+      max-height: 60px;
+      margin-bottom: 10px;
+    }
+    .invoice-meta {
+      text-align: right;
+    }
+    .invoice-meta h1 {
+      margin: 0 0 8px 0;
+      font-size: 1.5rem;
+    }
+    .invoice-meta .status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .invoice-meta .status.paid {
+      background: #10b981;
+      color: white;
+    }
+    .invoice-meta .status.open, .invoice-meta .status.unpaid {
+      background: #f59e0b;
+      color: white;
+    }
+    .customer-info {
+      background: var(--card);
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      margin-bottom: 24px;
+    }
+    .customer-info h3 {
+      margin: 0 0 12px 0;
+      font-size: 1rem;
+      color: var(--muted);
+    }
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 24px;
+    }
+    .items-table th {
+      text-align: left;
+      padding: 12px;
+      background: var(--bg);
+      border-bottom: 2px solid var(--line);
+      font-weight: 600;
+    }
+    .items-table td {
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .items-table .price-col, .items-table .qty-col, .items-table .total-col {
+      text-align: right;
+    }
+    .invoice-totals {
+      max-width: 300px;
+      margin-left: auto;
+      background: var(--card);
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+    }
+    .invoice-totals .row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .invoice-totals .row:last-child {
+      border-bottom: none;
+    }
+    .invoice-totals .grand-total {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+    .powered-by {
+      text-align: center;
+      margin-top: 40px;
+      padding: 20px;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+    .powered-by img {
+      height: 24px;
+      vertical-align: middle;
+      margin-left: 8px;
+    }
+    @media (max-width: 600px) {
+      .invoice-header {
+        flex-direction: column;
+      }
+      .invoice-meta {
+        text-align: left;
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="public-invoice-container">
+    <!-- Loading State -->
+    <div id="loadingState" class="invoice-loading">
+      <div class="spinner"></div>
+      <p>Loading invoice...</p>
+    </div>
+
+    <!-- Error State -->
+    <div id="errorState" class="invoice-error" style="display: none;">
+      <h2>⚠️ Invoice Not Found</h2>
+      <p id="errorMessage">This invoice link is invalid or has expired.</p>
+      <a href="/" class="btn primary">Go to Homepage</a>
+    </div>
+
+    <!-- Invoice Content -->
+    <div id="invoiceContent" style="display: none;">
+      <div class="invoice-header">
+        <div class="shop-info">
+          <img id="shopLogo" src="" alt="Shop Logo" style="display: none;">
+          <div id="shopName" style="font-weight: 700; font-size: 1.25rem;"></div>
+          <div id="shopAddress"></div>
+          <div id="shopPhone"></div>
+          <div id="shopEmail"></div>
+        </div>
+        <div class="invoice-meta">
+          <h1>Invoice #<span id="invoiceNumber"></span></h1>
+          <div><strong>Date:</strong> <span id="invoiceDate"></span></div>
+          <div><strong>Due:</strong> <span id="invoiceDue"></span></div>
+          <div style="margin-top: 8px;">
+            <span id="invoiceStatus" class="status"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="customer-info">
+        <h3>Bill To</h3>
+        <div id="customerName" style="font-weight: 600;"></div>
+        <div id="customerVehicle"></div>
+      </div>
+
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th class="qty-col">Qty</th>
+            <th class="price-col">Price</th>
+            <th class="total-col">Total</th>
+          </tr>
+        </thead>
+        <tbody id="invoiceItems"></tbody>
+      </table>
+
+      <div class="invoice-totals">
+        <div class="row">
+          <span>Subtotal</span>
+          <span id="subtotal">$0.00</span>
+        </div>
+        <div class="row" id="taxRow">
+          <span>Tax (<span id="taxRate">0</span>%)</span>
+          <span id="taxAmount">$0.00</span>
+        </div>
+        <div class="row" id="discountRow" style="display: none;">
+          <span>Discount</span>
+          <span id="discountAmount">-$0.00</span>
+        </div>
+        <div class="row grand-total">
+          <span>Total</span>
+          <span id="grandTotal">$0.00</span>
+        </div>
+      </div>
+
+      <div id="paidInfo" style="display: none; margin-top: 20px; padding: 16px; background: #d1fae5; border-radius: 8px; text-align: center;">
+        <strong>✓ Paid on <span id="paidDate"></span></strong>
+      </div>
+    </div>
+
+    <div class="powered-by">
+      Powered by <a href="https://xposemanagement.com" target="_blank">Xpose Management</a>
+      <img src="assets/XposeManagementCRMlogo.png" alt="Xpose Management">
+    </div>
+  </main>
+
+  <script src="vendor/supabase.umd.js"></script>
+  <script>
+    // Supabase configuration (public anon key - safe for client-side)
+    const SUPABASE_URL = 'https://hxwufjzyhtwveyxbkkya.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4d3Vmanp5aHR3dmV5eGJra3lhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI3MjU0MjAsImV4cCI6MjA3ODMwMTQyMH0.nN7MGoYyqwhonOSPBJlFEZoZrOEAIRP79l43FZK5nh8';
+
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // DOM Elements
+    const loadingState = document.getElementById('loadingState');
+    const errorState = document.getElementById('errorState');
+    const errorMessage = document.getElementById('errorMessage');
+    const invoiceContent = document.getElementById('invoiceContent');
+
+    // Get token from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+
+    // Initialize
+    async function init() {
+      if (!token) {
+        showError('No invoice token provided. Please use the link from your email or SMS.');
+        return;
+      }
+
+      try {
+        // Validate token using the Supabase function
+        const { data: tokenData, error: tokenError } = await supabase
+          .rpc('validate_invoice_token', { token_value: token });
+
+        if (tokenError) {
+          console.error('Token validation error:', tokenError);
+          showError('Unable to validate invoice link. Please try again later.');
+          return;
+        }
+
+        if (!tokenData || tokenData.length === 0 || !tokenData[0].valid) {
+          if (tokenData && tokenData[0]?.expired) {
+            showError('This invoice link has expired. Please contact the business for a new link.');
+          } else {
+            showError('This invoice link is invalid or has already been used.');
+          }
+          return;
+        }
+
+        const { invoice_id, shop_id } = tokenData[0];
+
+        // Fetch invoice data from the data table
+        const { data: shopData, error: dataError } = await supabase
+          .from('data')
+          .select('invoices, settings')
+          .eq('shop_id', shop_id)
+          .single();
+
+        if (dataError || !shopData) {
+          console.error('Data fetch error:', dataError);
+          showError('Unable to load invoice data. Please try again later.');
+          return;
+        }
+
+        // Find the specific invoice
+        const invoices = shopData.invoices || [];
+        const invoice = invoices.find(inv => inv.id === invoice_id);
+
+        if (!invoice) {
+          showError('Invoice not found. It may have been deleted.');
+          return;
+        }
+
+        // Fetch shop info
+        const { data: shop, error: shopError } = await supabase
+          .from('shops')
+          .select('name, logo, phone, email, street, city, state, zipcode')
+          .eq('id', shop_id)
+          .single();
+
+        if (shopError) {
+          console.warn('Shop fetch warning:', shopError);
+        }
+
+        // Render the invoice
+        renderInvoice(invoice, shop, shopData.settings);
+
+        // Mark token as used (optional - for tracking)
+        await supabase
+          .from('invoice_tokens')
+          .update({ used_at: new Date().toISOString() })
+          .eq('token', token);
+
+      } catch (err) {
+        console.error('Unexpected error:', err);
+        showError('An unexpected error occurred. Please try again later.');
+      }
+    }
+
+    function showError(message) {
+      loadingState.style.display = 'none';
+      errorMessage.textContent = message;
+      errorState.style.display = 'block';
+    }
+
+    function renderInvoice(invoice, shop, settings) {
+      loadingState.style.display = 'none';
+      invoiceContent.style.display = 'block';
+
+      // Shop info
+      if (shop) {
+        if (shop.logo) {
+          document.getElementById('shopLogo').src = shop.logo;
+          document.getElementById('shopLogo').style.display = 'block';
+        }
+        document.getElementById('shopName').textContent = shop.name || 'Business';
+        
+        const addressParts = [];
+        if (shop.street) addressParts.push(shop.street);
+        if (shop.city) addressParts.push(shop.city);
+        if (shop.state) addressParts.push(shop.state);
+        if (shop.zipcode) addressParts.push(shop.zipcode);
+        document.getElementById('shopAddress').textContent = addressParts.join(', ');
+        
+        document.getElementById('shopPhone').textContent = shop.phone || '';
+        document.getElementById('shopEmail').textContent = shop.email || '';
+      }
+
+      // Invoice meta
+      document.getElementById('invoiceNumber').textContent = invoice.number || invoice.id;
+      document.getElementById('invoiceDate').textContent = invoice.created_at 
+        ? new Date(invoice.created_at).toLocaleDateString() 
+        : 'N/A';
+      document.getElementById('invoiceDue').textContent = invoice.due || 'Upon Receipt';
+      
+      const statusEl = document.getElementById('invoiceStatus');
+      const status = (invoice.status || 'open').toLowerCase();
+      statusEl.textContent = status;
+      statusEl.className = 'status ' + status;
+
+      // Customer info
+      const customerName = (invoice.customer_first || invoice.customer_last)
+        ? `${invoice.customer_first || ''} ${invoice.customer_last || ''}`.trim()
+        : invoice.customer || 'Customer';
+      document.getElementById('customerName').textContent = customerName;
+      document.getElementById('customerVehicle').textContent = invoice.vehicle || '';
+
+      // Items
+      const itemsBody = document.getElementById('invoiceItems');
+      const items = invoice.items || [];
+      let subtotal = 0;
+
+      items.forEach(item => {
+        const qty = Number(item.qty) || 1;
+        const price = Number(item.price) || 0;
+        const total = qty * price;
+        subtotal += total;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${escapeHtml(item.name || 'Item')}</td>
+          <td class="qty-col">${qty}</td>
+          <td class="price-col">$${price.toFixed(2)}</td>
+          <td class="total-col">$${total.toFixed(2)}</td>
+        `;
+        itemsBody.appendChild(tr);
+      });
+
+      // Totals
+      const taxRate = Number(invoice.tax_rate) || 0;
+      const discount = Number(invoice.discount) || 0;
+      const taxAmount = subtotal * (taxRate / 100);
+      const discountAmount = subtotal * (discount / 100);
+      const grandTotal = subtotal + taxAmount - discountAmount;
+
+      document.getElementById('subtotal').textContent = `$${subtotal.toFixed(2)}`;
+      document.getElementById('taxRate').textContent = taxRate;
+      document.getElementById('taxAmount').textContent = `$${taxAmount.toFixed(2)}`;
+      document.getElementById('grandTotal').textContent = `$${grandTotal.toFixed(2)}`;
+
+      if (taxRate === 0) {
+        document.getElementById('taxRow').style.display = 'none';
+      }
+
+      if (discount > 0) {
+        document.getElementById('discountRow').style.display = 'flex';
+        document.getElementById('discountAmount').textContent = `-$${discountAmount.toFixed(2)}`;
+      }
+
+      // Paid info
+      if (status === 'paid' && invoice.paid_date) {
+        document.getElementById('paidInfo').style.display = 'block';
+        document.getElementById('paidDate').textContent = new Date(invoice.paid_date).toLocaleDateString();
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // Start loading
+    init();
+  </script>
+</body>
+</html>

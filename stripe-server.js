@@ -1344,6 +1344,282 @@ app.post('/api/search-dealers', async (req, res) => {
   }
 });
 
+// ===========================
+// Send Invoice Route (Email/SMS)
+// ===========================
+
+app.post('/api/send-invoice', async (req, res) => {
+  console.log('[SendInvoice] Request received:', JSON.stringify(req.body, null, 2));
+  
+  try {
+    const { 
+      invoiceId, 
+      shopId, 
+      sendEmail, 
+      sendSms, 
+      customerEmail, 
+      customerPhone,
+      customerName 
+    } = req.body;
+
+    // Validate required fields
+    if (!invoiceId || !shopId) {
+      return res.status(400).json({ error: 'invoiceId and shopId are required' });
+    }
+
+    if (!sendEmail && !sendSms) {
+      return res.status(400).json({ error: 'At least one of sendEmail or sendSms must be true' });
+    }
+
+    if (sendEmail && !customerEmail) {
+      return res.status(400).json({ error: 'customerEmail is required when sendEmail is true' });
+    }
+
+    if (sendSms && !customerPhone) {
+      return res.status(400).json({ error: 'customerPhone is required when sendSms is true' });
+    }
+
+    // Initialize Supabase
+    const { createClient } = require('@supabase/supabase-js');
+    const crypto = require('crypto');
+    
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('[SendInvoice] Missing Supabase credentials');
+      return res.status(500).json({ error: 'Server configuration error: Missing Supabase credentials' });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Verify the invoice exists in the data table
+    const { data: shopData, error: dataError } = await supabase
+      .from('data')
+      .select('invoices')
+      .eq('shop_id', shopId)
+      .single();
+
+    if (dataError || !shopData) {
+      console.error('[SendInvoice] Error fetching shop data:', dataError);
+      return res.status(404).json({ error: 'Shop not found' });
+    }
+
+    const invoices = shopData.invoices || [];
+    const invoice = invoices.find(inv => inv.id === invoiceId);
+
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    // Get shop info for branding
+    const { data: shop, error: shopError } = await supabase
+      .from('shops')
+      .select('name, phone, email')
+      .eq('id', shopId)
+      .single();
+
+    if (shopError) {
+      console.error('[SendInvoice] Error fetching shop:', shopError);
+    }
+
+    const shopName = shop?.name || 'Our Business';
+    const shopPhone = shop?.phone || '';
+    const shopEmail = shop?.email || '';
+
+    // Generate secure token
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30); // 30 days
+
+    // Store token in invoice_tokens table
+    const sentVia = [];
+    if (sendEmail) sentVia.push('email');
+    if (sendSms) sentVia.push('sms');
+
+    const { error: tokenError } = await supabase
+      .from('invoice_tokens')
+      .insert({
+        token,
+        invoice_id: invoiceId,
+        shop_id: shopId,
+        expires_at: expiresAt.toISOString(),
+        sent_via: sentVia,
+        recipient_email: customerEmail || null,
+        recipient_phone: customerPhone || null
+      });
+
+    if (tokenError) {
+      console.error('[SendInvoice] Error creating token:', tokenError);
+      return res.status(500).json({ error: 'Failed to create invoice token: ' + tokenError.message });
+    }
+
+    // Build the public invoice URL
+    const baseUrl = process.env.APP_BASE_URL || 'https://xpose.management';
+    const invoiceUrl = `${baseUrl}/public-invoice.html?token=${token}`;
+
+    // Calculate invoice total
+    const invoiceTotal = (invoice.items || []).reduce((sum, item) => {
+      return sum + (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
+    }, 0);
+
+    const results = { email: null, sms: null };
+
+    // Send Email via Resend
+    if (sendEmail && customerEmail) {
+      const resendKey = process.env.RESEND_API_KEY;
+      if (!resendKey) {
+        results.email = { success: false, error: 'RESEND_API_KEY not configured' };
+        console.warn('[SendInvoice] RESEND_API_KEY not configured');
+      } else {
+        try {
+          const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+    <h1 style="color: white; margin: 0; font-size: 28px;">${shopName}</h1>
+    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0;">Invoice #${invoice.number || invoiceId.slice(0, 8)}</p>
+  </div>
+  
+  <div style="background: #f8f9fa; padding: 30px; border: 1px solid #e9ecef; border-top: none;">
+    <p style="font-size: 16px; margin-bottom: 20px;">Hi ${customerName || 'Valued Customer'},</p>
+    
+    <p>Please find your invoice attached below. Click the button to view the full details.</p>
+    
+    <div style="background: white; border-radius: 8px; padding: 20px; margin: 20px 0; border: 1px solid #e9ecef;">
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Invoice Number:</td>
+          <td style="padding: 8px 0; text-align: right; font-weight: 600;">#${invoice.number || invoiceId.slice(0, 8)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Date:</td>
+          <td style="padding: 8px 0; text-align: right;">${new Date(invoice.date || Date.now()).toLocaleDateString()}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #666;">Due Date:</td>
+          <td style="padding: 8px 0; text-align: right;">${invoice.due ? new Date(invoice.due).toLocaleDateString() : 'Upon Receipt'}</td>
+        </tr>
+        <tr style="border-top: 2px solid #667eea;">
+          <td style="padding: 12px 0; font-weight: 600; font-size: 18px;">Total Due:</td>
+          <td style="padding: 12px 0; text-align: right; font-weight: 700; font-size: 20px; color: #667eea;">$${invoiceTotal.toFixed(2)}</td>
+        </tr>
+      </table>
+    </div>
+    
+    <div style="text-align: center; margin: 30px 0;">
+      <a href="${invoiceUrl}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">View Invoice</a>
+    </div>
+    
+    <p style="color: #666; font-size: 14px; margin-top: 30px;">
+      If you have any questions, please contact us${shopPhone ? ' at ' + shopPhone : ''}${shopEmail ? ' or ' + shopEmail : ''}.
+    </p>
+  </div>
+  
+  <div style="text-align: center; padding: 20px; color: #999; font-size: 12px;">
+    <p>This invoice was sent by ${shopName}</p>
+    <p>This link will expire in 30 days.</p>
+  </div>
+</body>
+</html>`;
+
+          const fetch = require('node-fetch');
+          const emailResponse = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${resendKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              from: `${shopName} <invoices@xpose.management>`,
+              to: [customerEmail],
+              subject: `Invoice #${invoice.number || invoiceId.slice(0, 8)} from ${shopName}`,
+              html: emailHtml
+            })
+          });
+
+          const emailResult = await emailResponse.json();
+          
+          if (emailResponse.ok) {
+            results.email = { success: true, messageId: emailResult.id };
+            console.log('[SendInvoice] Email sent successfully:', emailResult.id);
+          } else {
+            results.email = { success: false, error: emailResult.message || 'Failed to send email' };
+            console.error('[SendInvoice] Email failed:', emailResult);
+          }
+        } catch (emailErr) {
+          results.email = { success: false, error: emailErr.message };
+          console.error('[SendInvoice] Email error:', emailErr);
+        }
+      }
+    }
+
+    // Send SMS via Twilio
+    if (sendSms && customerPhone) {
+      const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+      const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+      
+      if (!twilioSid || !twilioToken) {
+        results.sms = { success: false, error: 'Twilio not configured' };
+        console.warn('[SendInvoice] Twilio not configured');
+      } else {
+        try {
+          // Get shop's Twilio number
+          const { data: twilioNumber, error: twilioError } = await supabase
+            .from('shop_twilio_numbers')
+            .select('phone_number')
+            .eq('shop_id', shopId)
+            .single();
+
+          if (twilioError || !twilioNumber) {
+            results.sms = { success: false, error: 'No Twilio number configured for this shop' };
+            console.error('[SendInvoice] No Twilio number for shop:', twilioError);
+          } else {
+            const twilio = require('twilio')(twilioSid, twilioToken);
+            
+            const smsBody = `${shopName}: Your invoice #${invoice.number || invoiceId.slice(0, 8)} for $${invoiceTotal.toFixed(2)} is ready. View it here: ${invoiceUrl}`;
+            
+            const message = await twilio.messages.create({
+              body: smsBody,
+              from: twilioNumber.phone_number,
+              to: customerPhone
+            });
+
+            results.sms = { success: true, messageSid: message.sid };
+            console.log('[SendInvoice] SMS sent successfully:', message.sid);
+          }
+        } catch (smsErr) {
+          results.sms = { success: false, error: smsErr.message };
+          console.error('[SendInvoice] SMS error:', smsErr);
+        }
+      }
+    }
+
+    // Determine overall success
+    const emailOk = !sendEmail || (results.email && results.email.success);
+    const smsOk = !sendSms || (results.sms && results.sms.success);
+    const success = emailOk && smsOk;
+
+    console.log('[SendInvoice] Complete. Success:', success, 'Results:', results);
+
+    return res.json({
+      success,
+      invoiceUrl,
+      token,
+      results
+    });
+
+  } catch (error) {
+    console.error('[SendInvoice] Unexpected error:', error);
+    return res.status(500).json({ error: 'Internal server error: ' + error.message });
+  }
+});
+
 // Twilio Messaging Routes
 // ===========================
 

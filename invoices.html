@@ -6,8 +6,13 @@
   .modal-body { padding:12px 14px; }
   .modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 14px; border-top:1px solid var(--border,#e5e5e5); }
   .hidden { display:none; }
+  .notification { position:fixed; top:20px; right:20px; padding:12px 20px; border-radius:8px; color:#fff; font-weight:500; z-index:1000; transition:opacity 0.3s; }
+  .notification.hidden { opacity:0; pointer-events:none; }
 </style>
 </head><body>
+<!-- Toast notification -->
+<div id="notification" class="notification hidden"></div>
+
 <header class="top">
   <div class="container row top row">
     <a class="brand" href="dashboard.html" aria-label="Home">
@@ -185,6 +190,50 @@
     <div class="modal-foot">
       <button id="confirmPayCancel" class="btn">Cancel</button>
       <button id="confirmPayConfirm" class="btn info">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Send Invoice Modal -->
+<div id="sendInvoiceModal" class="modal-backdrop hidden" onclick="closeSendInvoiceModal()">
+  <div class="modal-card" onclick="event.stopPropagation()" style="max-width:480px">
+    <div class="modal-head">
+      <h3>📤 Send Invoice</h3>
+      <button onclick="closeSendInvoiceModal()" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:16px;color:var(--muted);">Send invoice #<span id="sendInvNumber"></span> to the customer:</p>
+      
+      <div style="margin-bottom:16px;">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--line);">
+          <input type="checkbox" id="sendEmailCheckbox" checked style="width:20px;height:20px;">
+          <div>
+            <strong>📧 Email Invoice</strong>
+            <div id="sendEmailAddress" style="font-size:0.875rem;color:var(--muted);"></div>
+          </div>
+        </label>
+      </div>
+      
+      <div style="margin-bottom:16px;">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--line);">
+          <input type="checkbox" id="sendSmsCheckbox" checked style="width:20px;height:20px;">
+          <div>
+            <strong>📱 Text Invoice</strong>
+            <div id="sendSmsPhone" style="font-size:0.875rem;color:var(--muted);"></div>
+          </div>
+        </label>
+      </div>
+
+      <div id="sendInvoiceNoContact" style="display:none;padding:12px;background:#fef3c7;border-radius:8px;color:#92400e;margin-bottom:16px;">
+        <strong>⚠️ No contact info found</strong>
+        <p style="margin:8px 0 0;font-size:0.875rem;">Add customer email or phone to send invoice.</p>
+      </div>
+
+      <div id="sendInvoiceStatus" style="display:none;padding:12px;border-radius:8px;margin-bottom:16px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button id="sendInvSkip" class="btn" onclick="closeSendInvoiceModal()">Skip</button>
+      <button id="sendInvBtn" class="btn primary">Send Invoice</button>
     </div>
   </div>
 </div>

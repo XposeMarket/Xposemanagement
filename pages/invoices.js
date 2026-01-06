@@ -1463,6 +1463,239 @@ function setupInvoices() {
     renderInvoices();
     renderPrevInvoices();
     showNotification('Invoice marked as paid!');
+    
+    // Show send invoice modal after marking as paid
+    showSendInvoiceModal(inv);
+  }
+
+  // ============================================
+  // SEND INVOICE VIA EMAIL/SMS
+  // ============================================
+  
+  // Store current invoice for send modal
+  let currentSendInvoice = null;
+
+  // Show send invoice modal after checkout
+  async function showSendInvoiceModal(inv) {
+    currentSendInvoice = inv;
+    const modal = document.getElementById('sendInvoiceModal');
+    if (!modal) return;
+
+    // Update invoice number display
+    const invNumberEl = document.getElementById('sendInvNumber');
+    if (invNumberEl) invNumberEl.textContent = inv.number || inv.id;
+
+    // Try to get customer contact info
+    let customerEmail = '';
+    let customerPhone = '';
+    let customerName = '';
+
+    // Build customer name
+    if (inv.customer_first || inv.customer_last) {
+      customerName = `${inv.customer_first || ''} ${inv.customer_last || ''}`.trim();
+    }
+
+    // Try to look up customer email/phone from customers table
+    if (supabase && inv.customer_id) {
+      try {
+        const { data: customer } = await supabase
+          .from('customers')
+          .select('email, phone, customer_first, customer_last')
+          .eq('id', inv.customer_id)
+          .single();
+        
+        if (customer) {
+          customerEmail = customer.email || '';
+          customerPhone = customer.phone || '';
+          if (!customerName && (customer.customer_first || customer.customer_last)) {
+            customerName = `${customer.customer_first || ''} ${customer.customer_last || ''}`.trim();
+          }
+        }
+      } catch (e) {
+        console.warn('[SendInvoice] Could not fetch customer:', e);
+      }
+    }
+
+    // Also try to get contact from appointment/job
+    if (!customerEmail || !customerPhone) {
+      if (inv.appointment_id) {
+        const appt = appointments.find(a => a.id === inv.appointment_id);
+        if (appt) {
+          if (!customerEmail && appt.email) customerEmail = appt.email;
+          if (!customerPhone && appt.phone) customerPhone = appt.phone;
+        }
+      }
+    }
+
+    // Update UI
+    const emailCheckbox = document.getElementById('sendEmailCheckbox');
+    const smsCheckbox = document.getElementById('sendSmsCheckbox');
+    const emailAddressEl = document.getElementById('sendEmailAddress');
+    const smsPhoneEl = document.getElementById('sendSmsPhone');
+    const noContactEl = document.getElementById('sendInvoiceNoContact');
+    const statusEl = document.getElementById('sendInvoiceStatus');
+    const sendBtn = document.getElementById('sendInvBtn');
+
+    // Reset status
+    if (statusEl) {
+      statusEl.style.display = 'none';
+      statusEl.innerHTML = '';
+    }
+
+    // Email option
+    if (customerEmail) {
+      if (emailCheckbox) emailCheckbox.disabled = false;
+      if (emailCheckbox) emailCheckbox.checked = true;
+      if (emailAddressEl) emailAddressEl.textContent = customerEmail;
+    } else {
+      if (emailCheckbox) emailCheckbox.disabled = true;
+      if (emailCheckbox) emailCheckbox.checked = false;
+      if (emailAddressEl) emailAddressEl.textContent = 'No email on file';
+    }
+
+    // SMS option
+    if (customerPhone) {
+      if (smsCheckbox) smsCheckbox.disabled = false;
+      if (smsCheckbox) smsCheckbox.checked = true;
+      if (smsPhoneEl) smsPhoneEl.textContent = customerPhone;
+    } else {
+      if (smsCheckbox) smsCheckbox.disabled = true;
+      if (smsCheckbox) smsCheckbox.checked = false;
+      if (smsPhoneEl) smsPhoneEl.textContent = 'No phone on file';
+    }
+
+    // Show warning if no contact info
+    if (!customerEmail && !customerPhone) {
+      if (noContactEl) noContactEl.style.display = 'block';
+      if (sendBtn) sendBtn.disabled = true;
+    } else {
+      if (noContactEl) noContactEl.style.display = 'none';
+      if (sendBtn) sendBtn.disabled = false;
+    }
+
+    // Store contact info for sending
+    modal.dataset.email = customerEmail;
+    modal.dataset.phone = customerPhone;
+    modal.dataset.customerName = customerName;
+
+    // Wire up send button
+    if (sendBtn) {
+      sendBtn.onclick = () => sendInvoiceToCustomer();
+    }
+
+    // Show modal
+    modal.classList.remove('hidden');
+  }
+
+  // Close send invoice modal
+  window.closeSendInvoiceModal = function() {
+    const modal = document.getElementById('sendInvoiceModal');
+    if (modal) modal.classList.add('hidden');
+    currentSendInvoice = null;
+  };
+
+  // Send invoice via API
+  async function sendInvoiceToCustomer() {
+    if (!currentSendInvoice) return;
+
+    const modal = document.getElementById('sendInvoiceModal');
+    const sendBtn = document.getElementById('sendInvBtn');
+    const statusEl = document.getElementById('sendInvoiceStatus');
+    const emailCheckbox = document.getElementById('sendEmailCheckbox');
+    const smsCheckbox = document.getElementById('sendSmsCheckbox');
+
+    const sendEmail = emailCheckbox?.checked && !emailCheckbox?.disabled;
+    const sendSms = smsCheckbox?.checked && !smsCheckbox?.disabled;
+
+    if (!sendEmail && !sendSms) {
+      if (statusEl) {
+        statusEl.style.display = 'block';
+        statusEl.style.background = '#fef3c7';
+        statusEl.style.color = '#92400e';
+        statusEl.innerHTML = 'Please select at least one delivery method.';
+      }
+      return;
+    }
+
+    // Show loading state
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      sendBtn.textContent = 'Sending...';
+    }
+    if (statusEl) {
+      statusEl.style.display = 'block';
+      statusEl.style.background = '#e0f2fe';
+      statusEl.style.color = '#0369a1';
+      statusEl.innerHTML = '⏳ Sending invoice...';
+    }
+
+    try {
+      // Always use Vercel server for send-invoice (has Twilio/Resend credentials)
+      // Same pattern as messages-backend.js
+      const API_URL = 'https://xpose-stripe-server.vercel.app';
+      
+      const response = await fetch(`${API_URL}/api/send-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoiceId: currentSendInvoice.id,
+          shopId: shopId,
+          sendEmail,
+          sendSms,
+          customerEmail: modal.dataset.email || null,
+          customerPhone: modal.dataset.phone || null,
+          customerName: modal.dataset.customerName || 'Customer'
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        if (statusEl) {
+          statusEl.style.background = '#d1fae5';
+          statusEl.style.color = '#065f46';
+          let msg = '✅ Invoice sent successfully!';
+          if (result.results?.email?.success && result.results?.sms?.success) {
+            msg = '✅ Invoice sent via email and SMS!';
+          } else if (result.results?.email?.success) {
+            msg = '✅ Invoice sent via email!';
+          } else if (result.results?.sms?.success) {
+            msg = '✅ Invoice sent via SMS!';
+          }
+          statusEl.innerHTML = msg;
+        }
+        // Auto-close after success
+        setTimeout(() => {
+          closeSendInvoiceModal();
+        }, 2000);
+      } else {
+        // Partial success or failure
+        if (statusEl) {
+          statusEl.style.background = '#fef3c7';
+          statusEl.style.color = '#92400e';
+          let msg = '⚠️ ';
+          if (result.results?.email && !result.results.email.success) {
+            msg += `Email failed: ${result.results.email.error}. `;
+          }
+          if (result.results?.sms && !result.results.sms.success) {
+            msg += `SMS failed: ${result.results.sms.error}. `;
+          }
+          statusEl.innerHTML = msg || 'Failed to send invoice.';
+        }
+      }
+    } catch (error) {
+      console.error('[SendInvoice] Error:', error);
+      if (statusEl) {
+        statusEl.style.background = '#fee2e2';
+        statusEl.style.color = '#991b1b';
+        statusEl.innerHTML = `❌ Error: ${error.message || 'Failed to send invoice'}`;
+      }
+    } finally {
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = 'Send Invoice';
+      }
+    }
   }
 
   // Mark invoice unpaid - FIXED to update Supabase
