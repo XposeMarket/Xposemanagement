@@ -44,18 +44,14 @@
       to { transform: rotate(360deg); }
     }
     .invoice-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
       margin-bottom: 30px;
-      flex-wrap: wrap;
-      gap: 20px;
     }
     .shop-info {
       background: var(--card);
       padding: 16px;
       border-radius: 8px;
       border: 1px solid var(--line);
+      margin-bottom: 24px;
     }
     .shop-info img {
       max-height: 60px;
@@ -178,13 +174,6 @@
     <!-- Invoice Content -->
     <div id="invoiceContent" style="display: none;">
       <div class="invoice-header">
-        <div class="shop-info">
-          <img id="shopLogo" src="" alt="Shop Logo" style="display: none;">
-          <div id="shopName" style="font-weight: 700; font-size: 1.25rem;"></div>
-          <div id="shopAddress"></div>
-          <div id="shopPhone"></div>
-          <div id="shopEmail"></div>
-        </div>
         <div class="invoice-meta">
           <h1>Invoice #<span id="invoiceNumber"></span></h1>
           <div><strong>Date:</strong> <span id="invoiceDate"></span></div>
@@ -199,6 +188,14 @@
         <h3>Bill To</h3>
         <div id="customerName" style="font-weight: 600;"></div>
         <div id="customerVehicle"></div>
+      </div>
+
+      <div class="shop-info">
+        <img id="shopLogo" src="" alt="Shop Logo" style="display: none;">
+        <div id="shopName" style="font-weight: 700; font-size: 1.25rem;"></div>
+        <div id="shopAddress"></div>
+        <div id="shopPhone"></div>
+        <div id="shopEmail"></div>
       </div>
 
       <table class="items-table">
@@ -386,26 +383,93 @@
       document.getElementById('customerName').textContent = customerName;
       document.getElementById('customerVehicle').textContent = invoice.vehicle || '';
 
-      // Items
+      // Items - Grouped rendering like invoice.html
       const itemsBody = document.getElementById('invoiceItems');
       const items = invoice.items || [];
       let subtotal = 0;
 
-      items.forEach(item => {
-        const qty = Number(item.qty) || 1;
-        const price = Number(item.price) || 0;
-        const total = qty * price;
-        subtotal += total;
+      // Categorize items
+      const partItems = [];
+      const laborItems = [];
+      const serviceItems = [];
+      const partLaborGroups = [];
 
+      for (const itm of items) {
+        const name = (itm.name || '').toLowerCase();
+        const type = (itm.type || '').toLowerCase();
+
+        // Priority 1: Explicit service type
+        if (type === 'service') {
+          serviceItems.push(itm);
+          continue;
+        }
+
+        // Priority 2: Labor (by naming or type)
+        const isLabor = type === 'labor' || name.startsWith('labor:') || name.startsWith('labor -');
+        if (isLabor) {
+          laborItems.push(itm);
+          continue;
+        }
+
+        // Priority 3: Part
+        const isPart = name.startsWith('part:') || name.startsWith('part -') || type === 'part' || itm.part_number || typeof itm.cost_price !== 'undefined';
+        if (isPart) {
+          partItems.push(itm);
+          continue;
+        }
+
+        // Default to part
+        partItems.push(itm);
+      }
+
+      // Render Parts
+      if (partItems.length) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${escapeHtml(item.name || 'Item')}</td>
-          <td class="qty-col">${qty}</td>
-          <td class="price-col">$${price.toFixed(2)}</td>
-          <td class="total-col">$${total.toFixed(2)}</td>
-        `;
+        tr.innerHTML = `<td colspan="4" style="font-weight:bold;background:var(--line);color:var(--text);padding:8px;">Parts</td>`;
         itemsBody.appendChild(tr);
-      });
+        for (const itm of partItems) {
+          const qty = Number(itm.qty) || 0;
+          const price = Number(itm.price) || 0;
+          const total = qty * price;
+          subtotal += total;
+          const trPart = document.createElement('tr');
+          trPart.innerHTML = `<td>${itm.name}</td><td style="text-align:center">${qty}</td><td style="text-align:right">$${price.toFixed(2)}</td><td style="text-align:right">$${total.toFixed(2)}</td>`;
+          itemsBody.appendChild(trPart);
+        }
+      }
+
+      // Render Labor
+      if (laborItems.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="4" style="font-weight:bold;background:var(--line);color:var(--text);padding:8px;">Labor</td>`;
+        itemsBody.appendChild(tr);
+        for (const itm of laborItems) {
+          const qty = Number(itm.qty) || 0;
+          const price = Number(itm.price) || 0;
+          const total = qty * price;
+          subtotal += total;
+          const trLabor = document.createElement('tr');
+          let displayLaborName = itm.name ? `Labor - ${itm.name}` : 'Labor';
+          trLabor.innerHTML = `<td>${displayLaborName}</td><td style="text-align:center">${qty}</td><td style="text-align:right">$${price.toFixed(2)}</td><td style="text-align:right">$${total.toFixed(2)}</td>`;
+          itemsBody.appendChild(trLabor);
+        }
+      }
+
+      // Render Services
+      if (serviceItems.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td colspan="4" style="font-weight:bold;background:var(--line);color:var(--text);padding:8px;">Services</td>`;
+        itemsBody.appendChild(tr);
+        for (const itm of serviceItems) {
+          const qty = Number(itm.qty) || 0;
+          const price = Number(itm.price) || 0;
+          const total = qty * price;
+          subtotal += total;
+          const trService = document.createElement('tr');
+          trService.innerHTML = `<td>${itm.name}</td><td style="text-align:center">${qty}</td><td style="text-align:right">$${price.toFixed(2)}</td><td style="text-align:right">$${total.toFixed(2)}</td>`;
+          itemsBody.appendChild(trService);
+        }
+      }
 
       // Totals
       const taxRate = Number(invoice.tax_rate) || 0;
