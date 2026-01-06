@@ -75,19 +75,36 @@ module.exports = async function handler(req, res) {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Verify the invoice exists
-    const { data: shopData, error: dataError } = await supabase
-      .from('data')
-      .select('invoices, settings')
+    // First, try to get invoice from invoices table (has most up-to-date status)
+    const { data: invoiceRow, error: invoiceError } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('id', invoiceId)
       .eq('shop_id', shopId)
       .single();
 
-    if (dataError || !shopData) {
-      console.error('Failed to fetch shop data:', dataError);
-      return res.status(404).json({ error: 'Shop data not found' });
-    }
+    let invoice = null;
+    
+    if (invoiceRow) {
+      // Use invoice from invoices table (has current status)
+      invoice = invoiceRow;
+      console.log('[SendInvoice] Using invoice from invoices table with status:', invoice.status);
+    } else {
+      // Fallback to data table JSONB
+      const { data: shopData, error: dataError } = await supabase
+        .from('data')
+        .select('invoices, settings')
+        .eq('shop_id', shopId)
+        .single();
 
-    const invoice = (shopData.invoices || []).find(inv => inv.id === invoiceId);
+      if (dataError || !shopData) {
+        console.error('Failed to fetch shop data:', dataError);
+        return res.status(404).json({ error: 'Shop data not found' });
+      }
+
+      invoice = (shopData.invoices || []).find(inv => inv.id === invoiceId);
+      console.log('[SendInvoice] Using invoice from data JSONB with status:', invoice?.status);
+    }
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
     }
