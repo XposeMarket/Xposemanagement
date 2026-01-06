@@ -108,6 +108,14 @@ module.exports = async function handler(req, res) {
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
     }
+    
+    console.log('[SendInvoice] Invoice loaded:', {
+      id: invoice.id,
+      number: invoice.number,
+      status: invoice.status,
+      statusExists: 'status' in invoice,
+      allKeys: Object.keys(invoice)
+    });
 
     // Get shop info for the email
     const { data: shop, error: shopError } = await supabase
