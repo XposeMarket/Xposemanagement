@@ -144,6 +144,9 @@ module.exports = async function handler(req, res) {
     const grandTotal = subtotal + taxAmount - discountAmount;
 
     const results = { email: null, sms: null };
+    
+    // Check if invoice is already paid
+    const isPaid = invoice.status && invoice.status.toLowerCase() === 'paid';
 
     // Send Email via Resend
     if (sendEmail && customerEmail) {
@@ -157,8 +160,13 @@ module.exports = async function handler(req, res) {
             invoiceNumber: invoice.number || invoice.id,
             grandTotal: grandTotal.toFixed(2),
             invoiceUrl,
-            shopLogo: shop?.logo
+            shopLogo: shop?.logo,
+            isPaid: isPaid
           });
+          
+          const emailSubject = isPaid 
+            ? `Paid Invoice #${invoice.number || invoice.id} - Thank You!`
+            : `Invoice #${invoice.number || invoice.id} from ${shopName}`;
 
           const emailResponse = await fetch('https://api.resend.com/emails', {
             method: 'POST',
@@ -169,7 +177,7 @@ module.exports = async function handler(req, res) {
             body: JSON.stringify({
               from: `${shopName} <invoices@xposemanagement.com>`,
               to: [customerEmail],
-              subject: `Invoice #${invoice.number || invoice.id} from ${shopName}`,
+              subject: emailSubject,
               html: emailHtml
             })
           });
@@ -208,7 +216,9 @@ module.exports = async function handler(req, res) {
             .single();
 
           if (twilioNumber?.phone_number) {
-            const smsBody = `${shopName}: Your invoice #${invoice.number || invoice.id} for $${grandTotal.toFixed(2)} is ready. View it here: ${invoiceUrl}`;
+            const smsBody = isPaid
+              ? `${shopName}: Your Invoice #${invoice.number || invoice.id} has been paid, thank you! You can view your paid invoice below: ${invoiceUrl}`
+              : `${shopName}: Your invoice #${invoice.number || invoice.id} for $${grandTotal.toFixed(2)} is ready. View it here: ${invoiceUrl}`;
 
             // Format phone number to E.164
             let toPhone = customerPhone.replace(/\D/g, '');
@@ -273,7 +283,7 @@ module.exports = async function handler(req, res) {
 /**
  * Build HTML email content
  */
-function buildEmailHtml({ shopName, customerName, invoiceNumber, grandTotal, invoiceUrl, shopLogo }) {
+function buildEmailHtml({ shopName, customerName, invoiceNumber, grandTotal, invoiceUrl, shopLogo, isPaid = false }) {
   const logoHtml = shopLogo 
     ? `<img src="${shopLogo}" alt="${shopName}" style="max-height: 60px; margin-bottom: 20px;">`
     : '';
@@ -306,7 +316,7 @@ function buildEmailHtml({ shopName, customerName, invoiceNumber, grandTotal, inv
                 Hi ${customerName},
               </p>
               <p style="margin: 0 0 30px; font-size: 16px; color: #333;">
-                Thank you for your business! Your invoice is ready for viewing.
+                ${isPaid ? 'Your invoice has been paid - thank you for your business!' : 'Thank you for your business! Your invoice is ready for viewing.'}
               </p>
               
               <!-- Invoice Summary Box -->
@@ -324,8 +334,8 @@ function buildEmailHtml({ shopName, customerName, invoiceNumber, grandTotal, inv
                         </td>
                       </tr>
                       <tr>
-                        <td style="font-size: 14px; color: #666;">Amount Due</td>
-                        <td align="right" style="font-size: 24px; font-weight: 700; color: #1e40af;">$${grandTotal}</td>
+                        <td style="font-size: 14px; color: #666;">${isPaid ? 'Amount Paid' : 'Amount Due'}</td>
+                        <td align="right" style="font-size: 24px; font-weight: 700; color: ${isPaid ? '#10b981' : '#1e40af'};">$${grandTotal}</td>
                       </tr>
                     </table>
                   </td>

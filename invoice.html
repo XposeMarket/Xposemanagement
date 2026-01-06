@@ -1035,7 +1035,8 @@ import { getShopData } from './helpers/storage.js';
               shop_id: shopId,
               items: invoice.items || [],
               tax_rate: invoice.tax_rate || 0,
-              discount: invoice.discount || 0
+              discount: invoice.discount || 0,
+              status: invoice.status || 'unpaid'
             };
             
             console.log('[SendInvoice] Built complete invoice object:', inv);
