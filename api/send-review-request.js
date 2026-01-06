@@ -130,58 +130,60 @@ module.exports = async (req, res) => {
 
     // Send via SMS if requested
     if (sendSms && customerPhone) {
-      try {
-        // Get Twilio credentials for this shop
-        const { data: twilioData } = await supabase
-          .from('shop_twilio_numbers')
-          .select('*')
-          .eq('shop_id', shopId)
-          .eq('active', true)
-          .limit(1);
+      const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+      const twilioAuth = process.env.TWILIO_AUTH_TOKEN;
+      
+      if (twilioSid && twilioAuth) {
+        try {
+          // Get the shop's Twilio number (same query as send-invoice.js)
+          const { data: twilioNumber } = await supabase
+            .from('shop_twilio_numbers')
+            .select('phone_number')
+            .eq('shop_id', shopId)
+            .single();
 
-        if (!twilioData || twilioData.length === 0) {
-          results.sms.error = 'No active Twilio number configured for this shop';
-          console.error('[ReviewRequest] No Twilio number found for shop:', shopId);
-        } else {
-          const twilioConfig = twilioData[0];
-          const accountSid = twilioConfig.account_sid || process.env.TWILIO_ACCOUNT_SID;
-          const authToken = twilioConfig.auth_token || process.env.TWILIO_AUTH_TOKEN;
-          const fromNumber = twilioConfig.phone_number;
+          if (twilioNumber?.phone_number) {
+            // Format phone number to E.164
+            let toPhone = customerPhone.replace(/\D/g, '');
+            if (toPhone.length === 10) toPhone = '1' + toPhone;
+            if (!toPhone.startsWith('+')) toPhone = '+' + toPhone;
 
-          if (!accountSid || !authToken || !fromNumber) {
-            results.sms.error = 'Twilio credentials incomplete';
-            console.error('[ReviewRequest] Twilio credentials incomplete');
-          } else {
-            const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
-            const twilioAuth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+            const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`;
+            const auth = Buffer.from(`${twilioSid}:${twilioAuth}`).toString('base64');
 
             const smsResponse = await fetch(twilioUrl, {
               method: 'POST',
               headers: {
-                'Authorization': `Basic ${twilioAuth}`,
+                'Authorization': `Basic ${auth}`,
                 'Content-Type': 'application/x-www-form-urlencoded'
               },
               body: new URLSearchParams({
-                To: customerPhone,
-                From: fromNumber,
+                To: toPhone,
+                From: twilioNumber.phone_number,
                 Body: message
               })
             });
 
-            results.sms.sent = true;
+            const smsResult = await smsResponse.json();
+
             if (smsResponse.ok) {
-              results.sms.success = true;
-              console.log('[ReviewRequest] SMS sent successfully to:', customerPhone);
+              results.sms = { success: true, sent: true, sid: smsResult.sid };
+              console.log('[ReviewRequest] SMS sent successfully:', smsResult.sid);
             } else {
-              const errorData = await smsResponse.json().catch(() => ({}));
-              results.sms.error = errorData.message || 'SMS send failed';
-              console.error('[ReviewRequest] SMS send failed:', errorData);
+              results.sms = { success: false, sent: true, error: smsResult.message || 'SMS send failed' };
+              console.error('[ReviewRequest] SMS send failed:', smsResult);
             }
+          } else {
+            results.sms = { success: false, sent: false, error: 'No Twilio number configured for this shop' };
+            console.warn('[ReviewRequest] No Twilio number for shop:', shopId);
           }
+        } catch (e) {
+          results.sms = { success: false, sent: false, error: e.message };
+          console.error('[ReviewRequest] SMS error:', e);
         }
-      } catch (e) {
-        results.sms.error = e.message;
-        console.error('[ReviewRequest] SMS error:', e);
+      } else {
+        results.sms = { success: false, sent: false, error: 'Twilio credentials not configured' };
+        console.error('[ReviewRequest] Twilio credentials missing in environment');
       }
     }
 
