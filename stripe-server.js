@@ -1393,20 +1393,37 @@ app.post('/api/send-invoice', async (req, res) => {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Verify the invoice exists in the data table
-    const { data: shopData, error: dataError } = await supabase
-      .from('data')
-      .select('invoices')
+    // First, try to get invoice from invoices table (has most up-to-date status)
+    const { data: invoiceRow, error: invoiceError } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('id', invoiceId)
       .eq('shop_id', shopId)
       .single();
 
-    if (dataError || !shopData) {
-      console.error('[SendInvoice] Error fetching shop data:', dataError);
-      return res.status(404).json({ error: 'Shop not found' });
-    }
+    let invoice = null;
+    
+    if (invoiceRow) {
+      // Use invoice from invoices table (has current status)
+      invoice = invoiceRow;
+      console.log('[SendInvoice] Using invoice from invoices table with status:', invoice.status);
+    } else {
+      // Fallback to data table JSONB
+      const { data: shopData, error: dataError } = await supabase
+        .from('data')
+        .select('invoices')
+        .eq('shop_id', shopId)
+        .single();
 
-    const invoices = shopData.invoices || [];
-    const invoice = invoices.find(inv => inv.id === invoiceId);
+      if (dataError || !shopData) {
+        console.error('[SendInvoice] Error fetching shop data:', dataError);
+        return res.status(404).json({ error: 'Shop not found' });
+      }
+
+      const invoices = shopData.invoices || [];
+      invoice = invoices.find(inv => inv.id === invoiceId);
+      console.log('[SendInvoice] Using invoice from data JSONB with status:', invoice?.status);
+    }
 
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
@@ -1477,8 +1494,15 @@ app.post('/api/send-invoice', async (req, res) => {
       invoiceTotal,
       invoiceData: { tax_rate: invoice.tax_rate, discount: invoice.discount, items: invoice.items?.length }
     });
+    
+    // Check if invoice is paid
+    const isPaid = invoice.status && invoice.status.toLowerCase() === 'paid';
+    console.log('[SendInvoice] Invoice paid status:', { status: invoice.status, isPaid });
 
     const results = { email: null, sms: null };
+    
+    // Check if invoice is already paid
+    const isPaid = invoice.status && invoice.status.toLowerCase() === 'paid';
 
     // Send Email via Resend
     if (sendEmail && customerEmail) {
@@ -1597,7 +1621,9 @@ app.post('/api/send-invoice', async (req, res) => {
           } else {
             const twilio = require('twilio')(twilioSid, twilioToken);
             
-            const smsBody = `${shopName}: Your invoice #${invoice.number || invoiceId.slice(0, 8)} for $${invoiceTotal.toFixed(2)} is ready. View it here: ${invoiceUrl}`;
+            const smsBody = isPaid
+              ? `${shopName}: Your Invoice #${invoice.number || invoiceId.slice(0, 8)} has been paid, thank you! You can view your paid invoice below: ${invoiceUrl}`
+              : `${shopName}: Your invoice #${invoice.number || invoiceId.slice(0, 8)} for $${invoiceTotal.toFixed(2)} is ready. View it here: ${invoiceUrl}`;
             
             const message = await twilio.messages.create({
               body: smsBody,
