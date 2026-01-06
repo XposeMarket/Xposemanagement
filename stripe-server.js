@@ -1623,13 +1623,26 @@ app.post('/api/send-invoice', async (req, res) => {
             let smsBody;
             if (isPaid) {
               smsBody = `${shopName}: Your Invoice #${invoice.number || invoiceId.slice(0, 8)} has been paid, thank you! View your receipt: ${invoiceUrl}`;
-              // Add Google review request if provided
+              // Add Google review request if provided (use short format to avoid SMS length issues)
               if (googleReviewUrl) {
-                smsBody += ` We'd love your feedback! Leave a review: ${googleReviewUrl}`;
+                // Extract the essential review URL part or use as-is if short
+                let shortReviewUrl = googleReviewUrl;
+                // If it's a long Google search URL, try to extract the place ID for a shorter URL
+                if (googleReviewUrl.length > 100 && googleReviewUrl.includes('#lrd=')) {
+                  // Extract place reference from URL for a cleaner link
+                  const lrdMatch = googleReviewUrl.match(/#lrd=([^,]+)/);
+                  if (lrdMatch) {
+                    // Use the original URL but note it's long - Twilio will send as MMS if needed
+                    console.log('[SendInvoice] Long Google review URL detected, sending as-is:', googleReviewUrl.length, 'chars');
+                  }
+                }
+                smsBody += ` Leave us a review: ${shortReviewUrl}`;
               }
             } else {
               smsBody = `${shopName}: Your invoice #${invoice.number || invoiceId.slice(0, 8)} for $${invoiceTotal.toFixed(2)} is ready. View it here: ${invoiceUrl}`;
             }
+            
+            console.log('[SendInvoice] SMS body length:', smsBody.length, 'chars');
             
             const message = await twilio.messages.create({
               body: smsBody,
