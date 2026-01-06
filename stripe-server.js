@@ -1622,24 +1622,28 @@ app.post('/api/send-invoice', async (req, res) => {
             // Build SMS message - include Google review link for paid invoices if provided
             let smsBody;
             if (isPaid) {
-              smsBody = `${shopName}: Your Invoice #${invoice.number || invoiceId.slice(0, 8)} has been paid, thank you! View your receipt: ${invoiceUrl}`;
-              // Add Google review request if provided (use short format to avoid SMS length issues)
+              smsBody = `${shopName}: Invoice #${invoice.number || invoiceId.slice(0, 8)} paid! Receipt: ${invoiceUrl}`;
+              
+              // Add Google review request if provided
               if (googleReviewUrl) {
-                // Extract the essential review URL part or use as-is if short
+                // Shorten long Google URLs to avoid carrier blocking
                 let shortReviewUrl = googleReviewUrl;
-                // If it's a long Google search URL, try to extract the place ID for a shorter URL
-                if (googleReviewUrl.length > 100 && googleReviewUrl.includes('#lrd=')) {
-                  // Extract place reference from URL for a cleaner link
-                  const lrdMatch = googleReviewUrl.match(/#lrd=([^,]+)/);
-                  if (lrdMatch) {
-                    // Use the original URL but note it's long - Twilio will send as MMS if needed
-                    console.log('[SendInvoice] Long Google review URL detected, sending as-is:', googleReviewUrl.length, 'chars');
+                if (googleReviewUrl.length > 80) {
+                  try {
+                    console.log('[SendInvoice] Shortening long Google review URL...');
+                    const tinyResponse = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(googleReviewUrl)}`);
+                    if (tinyResponse.ok) {
+                      shortReviewUrl = await tinyResponse.text();
+                      console.log('[SendInvoice] Shortened URL:', shortReviewUrl);
+                    }
+                  } catch (e) {
+                    console.warn('[SendInvoice] URL shortening failed, using original:', e.message);
                   }
                 }
-                smsBody += ` Leave us a review: ${shortReviewUrl}`;
+                smsBody += ` Leave a review: ${shortReviewUrl}`;
               }
             } else {
-              smsBody = `${shopName}: Your invoice #${invoice.number || invoiceId.slice(0, 8)} for $${invoiceTotal.toFixed(2)} is ready. View it here: ${invoiceUrl}`;
+              smsBody = `${shopName}: Invoice #${invoice.number || invoiceId.slice(0, 8)} for $${invoiceTotal.toFixed(2)} is ready: ${invoiceUrl}`;
             }
             
             console.log('[SendInvoice] SMS body length:', smsBody.length, 'chars');
