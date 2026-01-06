@@ -393,8 +393,54 @@
       const laborItems = [];
       const serviceItems = [];
       const partLaborGroups = [];
+      const usedIndexes = new Set();
 
-      for (const itm of items) {
+      // 1. First pass: Detect Part+Labor groups by groupId
+      for (let i = 0; i < items.length; i++) {
+        if (usedIndexes.has(i)) continue;
+        const itm = items[i];
+        if (itm.groupId) {
+          const linkedIdx = items.findIndex((it, idx) => idx !== i && it.groupId === itm.groupId);
+          if (linkedIdx !== -1 && !usedIndexes.has(linkedIdx)) {
+            const linkedItem = items[linkedIdx];
+            const isPart = itm.type === 'part' || (itm.name || '').toLowerCase().startsWith('part:') || 
+                          itm.part_number || typeof itm.cost_price !== 'undefined';
+            if (isPart) {
+              partLaborGroups.push([itm, linkedItem]);
+            } else {
+              partLaborGroups.push([linkedItem, itm]);
+            }
+            usedIndexes.add(i);
+            usedIndexes.add(linkedIdx);
+            continue;
+          }
+        }
+
+        // 2. Sequential Part+Labor detection
+        const isPartByType = (itm.type === 'part');
+        const isPartByName = (itm.name || '').toLowerCase().trim().startsWith('part:');
+        if (isPartByType || isPartByName) {
+          for (let j = i + 1; j < items.length && j <= i + 2; j++) {
+            if (usedIndexes.has(j)) continue;
+            const nextItem = items[j];
+            const nextName = (nextItem.name || '').toLowerCase().trim();
+            const isLaborByType = (nextItem.type === 'labor');
+            const isLaborByName = nextName.startsWith('labor') || nextName.startsWith('labor:') || 
+                nextName.includes('labor for') || nextName.includes('installation');
+            if (isLaborByType || isLaborByName) {
+              partLaborGroups.push([itm, nextItem]);
+              usedIndexes.add(i);
+              usedIndexes.add(j);
+              break;
+            }
+          }
+        }
+      }
+
+      // 3. Second pass: Classify remaining items
+      for (let i = 0; i < items.length; i++) {
+        if (usedIndexes.has(i)) continue;
+        const itm = items[i];
         const name = (itm.name || '').toLowerCase();
         const type = (itm.type || '').toLowerCase();
 
@@ -405,14 +451,16 @@
         }
 
         // Priority 2: Labor (by naming or type)
-        const isLabor = type === 'labor' || name.startsWith('labor:') || name.startsWith('labor -');
+        const isLabor = type === 'labor' || name.startsWith('labor:') || name.startsWith('labor -') ||
+                        name.startsWith('labor ') || name.includes(' labor');
         if (isLabor) {
           laborItems.push(itm);
           continue;
         }
 
         // Priority 3: Part
-        const isPart = name.startsWith('part:') || name.startsWith('part -') || type === 'part' || itm.part_number || typeof itm.cost_price !== 'undefined';
+        const isPart = name.startsWith('part:') || name.startsWith('part -') || type === 'part' || 
+                      itm.part_number || typeof itm.cost_price !== 'undefined';
         if (isPart) {
           partItems.push(itm);
           continue;
@@ -420,6 +468,52 @@
 
         // Default to part
         partItems.push(itm);
+      }
+
+      // Render Part+Labor groups (P+R)
+      if (partLaborGroups.length) {
+        for (const [part, labor] of partLaborGroups) {
+          let groupTitle = (part.groupName && part.groupName.trim()) || 
+                          (labor.groupName && labor.groupName.trim()) || 
+                          (part.name.replace(/^part:/i, '').trim() + ' P+R');
+          
+          // Group header
+          const trHeader = document.createElement('tr');
+          trHeader.innerHTML = `<td colspan="4" style="font-weight:bold;background:var(--line);color:var(--text);padding:8px;">${groupTitle}</td>`;
+          itemsBody.appendChild(trHeader);
+          
+          // Part row
+          let partQty = Number(part.qty) || 0;
+          let partPrice = Number(part.price) || 0;
+          let partTotal = partQty * partPrice;
+          subtotal += partTotal;
+          let displayPartName = part.name.replace(/^part:/i, '').trim() || 'Part';
+          const trPart = document.createElement('tr');
+          trPart.innerHTML = `<td style="padding-left:20px;">${displayPartName}</td><td style="text-align:center">${partQty}</td><td style="text-align:right">$${partPrice.toFixed(2)}</td><td style="text-align:right">$${partTotal.toFixed(2)}</td>`;
+          itemsBody.appendChild(trPart);
+          
+          // Labor row
+          let laborQty = Number(labor.qty) || 0;
+          let laborPrice = Number(labor.price) || 0;
+          let laborTotal = laborQty * laborPrice;
+          subtotal += laborTotal;
+          let displayLaborName = labor.name.replace(/^labor:/i, '').trim() || `Labor (${laborQty} hr${laborQty !== 1 ? 's' : ''})`;
+          displayLaborName = `Labor - ${displayLaborName}`;
+          const trLabor = document.createElement('tr');
+          trLabor.innerHTML = `<td style="padding-left:20px;">${displayLaborName}</td><td style="text-align:center">${laborQty}</td><td style="text-align:right">$${laborPrice.toFixed(2)}</td><td style="text-align:right">$${laborTotal.toFixed(2)}</td>`;
+          itemsBody.appendChild(trLabor);
+          
+          // Subtotal row for this group
+          const groupSubtotal = partTotal + laborTotal;
+          const trSubtotal = document.createElement('tr');
+          trSubtotal.innerHTML = `<td colspan="3" style="text-align:right;padding-right:10px;font-weight:500;font-style:italic;">Subtotal</td><td style="text-align:right;font-weight:500;">$${groupSubtotal.toFixed(2)}</td>`;
+          itemsBody.appendChild(trSubtotal);
+          
+          // Spacer row
+          const trSpacer = document.createElement('tr');
+          trSpacer.innerHTML = `<td colspan="4" style="height:8px;"></td>`;
+          itemsBody.appendChild(trSpacer);
+        }
       }
 
       // Render Parts
