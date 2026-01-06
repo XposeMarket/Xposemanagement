@@ -287,21 +287,8 @@ module.exports = async function handler(req, res) {
                 await new Promise(resolve => setTimeout(resolve, 5000));
                 
                 try {
-                  // Shorten long Google URLs
-                  let shortReviewUrl = googleReviewUrl;
-                  if (googleReviewUrl.length > 80) {
-                    try {
-                      const tinyResponse = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(googleReviewUrl)}`);
-                      if (tinyResponse.ok) {
-                        shortReviewUrl = await tinyResponse.text();
-                        console.log('✅ Shortened review URL:', shortReviewUrl);
-                      }
-                    } catch (e) {
-                      console.warn('⚠️ URL shortening failed:', e.message);
-                    }
-                  }
-                  
-                  const reviewBody = `Thanks for choosing ${shopName}! We'd love your feedback. Please leave us a review: ${shortReviewUrl}`;
+                  // Use original Google URL - shortened URLs trigger spam filters
+                  const reviewBody = `${shopName}: Thank you! If you have a moment, we'd appreciate your feedback: ${googleReviewUrl} Reply STOP to opt out`;
                   console.log('📱 Sending review SMS, length:', reviewBody.length, 'chars');
                   
                   const reviewResponse = await fetch(twilioUrl, {
