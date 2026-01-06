@@ -1,7 +1,10 @@
 // Vercel Serverless Function: Send Google Review Request
 // Sends SMS and/or email asking customer to leave a Google review
+// Version: 2.0.0 - Fixed Twilio lookup to match send-invoice.js
 
 module.exports = async (req, res) => {
+  console.log('[ReviewRequest] v2.0.0 - Function invoked');
+  
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -20,7 +23,7 @@ module.exports = async (req, res) => {
   try {
     const { invoiceId, shopId, customerEmail, customerPhone, customerName, googleReviewUrl, sendEmail, sendSms } = req.body;
 
-    console.log('[ReviewRequest] Incoming request:', { invoiceId, shopId, customerEmail, customerPhone, googleReviewUrl, sendEmail, sendSms });
+    console.log('[ReviewRequest] v2 Incoming request:', { invoiceId, shopId, customerEmail, customerPhone, googleReviewUrl, sendEmail, sendSms });
 
     if (!googleReviewUrl) {
       return res.status(400).json({ error: 'Google Business URL is required' });
