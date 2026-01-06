@@ -1619,35 +1619,17 @@ app.post('/api/send-invoice', async (req, res) => {
           } else {
             const twilio = require('twilio')(twilioSid, twilioToken);
             
-            // Build SMS message - include Google review link for paid invoices if provided
+            // Build invoice SMS message
             let smsBody;
             if (isPaid) {
-              smsBody = `${shopName}: Invoice #${invoice.number || invoiceId.slice(0, 8)} paid! Receipt: ${invoiceUrl}`;
-              
-              // Add Google review request if provided
-              if (googleReviewUrl) {
-                // Shorten long Google URLs to avoid carrier blocking
-                let shortReviewUrl = googleReviewUrl;
-                if (googleReviewUrl.length > 80) {
-                  try {
-                    console.log('[SendInvoice] Shortening long Google review URL...');
-                    const tinyResponse = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(googleReviewUrl)}`);
-                    if (tinyResponse.ok) {
-                      shortReviewUrl = await tinyResponse.text();
-                      console.log('[SendInvoice] Shortened URL:', shortReviewUrl);
-                    }
-                  } catch (e) {
-                    console.warn('[SendInvoice] URL shortening failed, using original:', e.message);
-                  }
-                }
-                smsBody += ` Leave a review: ${shortReviewUrl}`;
-              }
+              smsBody = `${shopName}: Your Invoice #${invoice.number || invoiceId.slice(0, 8)} has been paid. Thank you! View your receipt: ${invoiceUrl}`;
             } else {
-              smsBody = `${shopName}: Invoice #${invoice.number || invoiceId.slice(0, 8)} for $${invoiceTotal.toFixed(2)} is ready: ${invoiceUrl}`;
+              smsBody = `${shopName}: Your invoice #${invoice.number || invoiceId.slice(0, 8)} for $${invoiceTotal.toFixed(2)} is ready: ${invoiceUrl}`;
             }
             
             console.log('[SendInvoice] SMS body length:', smsBody.length, 'chars');
             
+            // Send invoice SMS
             const message = await twilio.messages.create({
               body: smsBody,
               from: twilioNumber.phone_number,
@@ -1655,6 +1637,44 @@ app.post('/api/send-invoice', async (req, res) => {
             });
 
             results.sms = { success: true, messageSid: message.sid };
+            console.log('[SendInvoice] SMS sent successfully:', message.sid);
+            
+            // If paid invoice with Google review URL, send review request as separate SMS after delay
+            if (isPaid && googleReviewUrl) {
+              console.log('[SendInvoice] Waiting 5 seconds before sending review request...');
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              
+              try {
+                // Shorten long Google URLs
+                let shortReviewUrl = googleReviewUrl;
+                if (googleReviewUrl.length > 80) {
+                  try {
+                    const tinyResponse = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(googleReviewUrl)}`);
+                    if (tinyResponse.ok) {
+                      shortReviewUrl = await tinyResponse.text();
+                      console.log('[SendInvoice] Shortened review URL:', shortReviewUrl);
+                    }
+                  } catch (e) {
+                    console.warn('[SendInvoice] URL shortening failed:', e.message);
+                  }
+                }
+                
+                const reviewBody = `Hi! Thanks for choosing ${shopName}. We'd love your feedback! Please leave us a review: ${shortReviewUrl}`;
+                console.log('[SendInvoice] Review SMS length:', reviewBody.length, 'chars');
+                
+                const reviewMsg = await twilio.messages.create({
+                  body: reviewBody,
+                  from: twilioNumber.phone_number,
+                  to: customerPhone
+                });
+                
+                results.reviewSms = { success: true, messageSid: reviewMsg.sid };
+                console.log('[SendInvoice] Review SMS sent successfully:', reviewMsg.sid);
+              } catch (reviewErr) {
+                results.reviewSms = { success: false, error: reviewErr.message };
+                console.error('[SendInvoice] Review SMS error:', reviewErr);
+              }
+            }
             console.log('[SendInvoice] SMS sent successfully:', message.sid);
           }
         } catch (smsErr) {
