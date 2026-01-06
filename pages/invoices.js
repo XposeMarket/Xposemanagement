@@ -1578,6 +1578,37 @@ function setupInvoices() {
     modal.dataset.phone = customerPhone;
     modal.dataset.customerName = customerName;
 
+    // Google Review option - only show for PAID invoices
+    const googleReviewContainer = document.getElementById('googleReviewContainer');
+    const googleReviewCheckbox = document.getElementById('sendGoogleReviewCheckbox');
+    const isPaid = inv.status === 'paid';
+    
+    if (googleReviewContainer && isPaid) {
+      // Fetch shop's Google Business URL
+      try {
+        const { data: shopData } = await supabase
+          .from('shops')
+          .select('google_business_url')
+          .eq('id', shopId)
+          .single();
+        
+        if (shopData?.google_business_url) {
+          googleReviewContainer.style.display = 'block';
+          modal.dataset.googleReviewUrl = shopData.google_business_url;
+          if (googleReviewCheckbox) googleReviewCheckbox.checked = true;
+        } else {
+          googleReviewContainer.style.display = 'none';
+          modal.dataset.googleReviewUrl = '';
+        }
+      } catch (e) {
+        console.warn('[SendInvoice] Could not fetch Google Business URL:', e);
+        googleReviewContainer.style.display = 'none';
+      }
+    } else if (googleReviewContainer) {
+      googleReviewContainer.style.display = 'none';
+      modal.dataset.googleReviewUrl = '';
+    }
+
     // Wire up send button
     if (sendBtn) {
       sendBtn.onclick = () => sendInvoiceToCustomer();
@@ -1603,9 +1634,11 @@ function setupInvoices() {
     const statusEl = document.getElementById('sendInvoiceStatus');
     const emailCheckbox = document.getElementById('sendEmailCheckbox');
     const smsCheckbox = document.getElementById('sendSmsCheckbox');
+    const googleReviewCheckbox = document.getElementById('sendGoogleReviewCheckbox');
 
     const sendEmail = emailCheckbox?.checked && !emailCheckbox?.disabled;
     const sendSms = smsCheckbox?.checked && !smsCheckbox?.disabled;
+    const sendGoogleReview = googleReviewCheckbox?.checked && modal.dataset.googleReviewUrl;
 
     if (!sendEmail && !sendSms) {
       if (statusEl) {
@@ -1644,7 +1677,8 @@ function setupInvoices() {
           sendSms,
           customerEmail: modal.dataset.email || null,
           customerPhone: modal.dataset.phone || null,
-          customerName: modal.dataset.customerName || 'Customer'
+          customerName: modal.dataset.customerName || 'Customer',
+          googleReviewUrl: sendGoogleReview ? modal.dataset.googleReviewUrl : null
         })
       });
 

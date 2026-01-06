@@ -1359,7 +1359,8 @@ app.post('/api/send-invoice', async (req, res) => {
       sendSms, 
       customerEmail, 
       customerPhone,
-      customerName 
+      customerName,
+      googleReviewUrl  // Optional - for paid invoices to include review request
     } = req.body;
 
     // Validate required fields
@@ -1618,9 +1619,17 @@ app.post('/api/send-invoice', async (req, res) => {
           } else {
             const twilio = require('twilio')(twilioSid, twilioToken);
             
-            const smsBody = isPaid
-              ? `${shopName}: Your Invoice #${invoice.number || invoiceId.slice(0, 8)} has been paid, thank you! You can view your paid invoice below: ${invoiceUrl}`
-              : `${shopName}: Your invoice #${invoice.number || invoiceId.slice(0, 8)} for $${invoiceTotal.toFixed(2)} is ready. View it here: ${invoiceUrl}`;
+            // Build SMS message - include Google review link for paid invoices if provided
+            let smsBody;
+            if (isPaid) {
+              smsBody = `${shopName}: Your Invoice #${invoice.number || invoiceId.slice(0, 8)} has been paid, thank you! View your receipt: ${invoiceUrl}`;
+              // Add Google review request if provided
+              if (googleReviewUrl) {
+                smsBody += ` We'd love your feedback! Leave a review: ${googleReviewUrl}`;
+              }
+            } else {
+              smsBody = `${shopName}: Your invoice #${invoice.number || invoiceId.slice(0, 8)} for $${invoiceTotal.toFixed(2)} is ready. View it here: ${invoiceUrl}`;
+            }
             
             const message = await twilio.messages.create({
               body: smsBody,
