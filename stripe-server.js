@@ -1500,9 +1500,6 @@ app.post('/api/send-invoice', async (req, res) => {
     console.log('[SendInvoice] Invoice paid status:', { status: invoice.status, isPaid });
 
     const results = { email: null, sms: null };
-    
-    // Check if invoice is already paid
-    const isPaid = invoice.status && invoice.status.toLowerCase() === 'paid';
 
     // Send Email via Resend
     if (sendEmail && customerEmail) {
