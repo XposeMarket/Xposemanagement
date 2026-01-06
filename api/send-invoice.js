@@ -46,7 +46,8 @@ module.exports = async function handler(req, res) {
       sendSms, 
       customerEmail, 
       customerPhone,
-      customerName 
+      customerName,
+      googleReviewUrl  // Optional - for paid invoices to include review request
     } = req.body;
 
     // Validate required fields
@@ -279,6 +280,56 @@ module.exports = async function handler(req, res) {
             if (smsResponse.ok) {
               results.sms = { success: true, sid: smsResult.sid };
               console.log('✅ Invoice SMS sent:', smsResult.sid);
+              
+              // If paid invoice with Google review URL, send review SMS after delay
+              if (isPaid && googleReviewUrl) {
+                console.log('⏳ Waiting 5 seconds before sending review SMS...');
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                
+                try {
+                  // Shorten long Google URLs
+                  let shortReviewUrl = googleReviewUrl;
+                  if (googleReviewUrl.length > 80) {
+                    try {
+                      const tinyResponse = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(googleReviewUrl)}`);
+                      if (tinyResponse.ok) {
+                        shortReviewUrl = await tinyResponse.text();
+                        console.log('✅ Shortened review URL:', shortReviewUrl);
+                      }
+                    } catch (e) {
+                      console.warn('⚠️ URL shortening failed:', e.message);
+                    }
+                  }
+                  
+                  const reviewBody = `Thanks for choosing ${shopName}! We'd love your feedback. Please leave us a review: ${shortReviewUrl}`;
+                  console.log('📱 Sending review SMS, length:', reviewBody.length, 'chars');
+                  
+                  const reviewResponse = await fetch(twilioUrl, {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Basic ${auth}`,
+                      'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: new URLSearchParams({
+                      To: toPhone,
+                      From: twilioNumber.phone_number,
+                      Body: reviewBody
+                    })
+                  });
+                  
+                  const reviewResult = await reviewResponse.json();
+                  if (reviewResponse.ok) {
+                    results.reviewSms = { success: true, sid: reviewResult.sid };
+                    console.log('✅ Review SMS sent:', reviewResult.sid);
+                  } else {
+                    results.reviewSms = { success: false, error: reviewResult.message };
+                    console.error('❌ Review SMS failed:', reviewResult);
+                  }
+                } catch (reviewErr) {
+                  results.reviewSms = { success: false, error: reviewErr.message };
+                  console.error('❌ Review SMS error:', reviewErr);
+                }
+              }
             } else {
               results.sms = { success: false, error: smsResult.message || 'SMS failed' };
               console.error('❌ SMS send failed:', smsResult);
