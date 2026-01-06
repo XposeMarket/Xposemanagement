@@ -1458,10 +1458,25 @@ app.post('/api/send-invoice', async (req, res) => {
     const baseUrl = process.env.APP_BASE_URL || 'https://xpose.management';
     const invoiceUrl = `${baseUrl}/public-invoice.html?token=${token}`;
 
-    // Calculate invoice total
-    const invoiceTotal = (invoice.items || []).reduce((sum, item) => {
-      return sum + (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
+    // Calculate invoice total (subtotal + tax - discount)
+    const subtotal = (invoice.items || []).reduce((sum, item) => {
+      return sum + (parseFloat(item.price) || 0) * (parseInt(item.quantity || item.qty) || 1);
     }, 0);
+    const taxRate = parseFloat(invoice.tax_rate) || 0;
+    const discountRate = parseFloat(invoice.discount) || 0;
+    const tax = subtotal * (taxRate / 100);
+    const discount = subtotal * (discountRate / 100);
+    const invoiceTotal = subtotal + tax - discount;
+    
+    console.log('[SendInvoice] Calculation:', { 
+      subtotal, 
+      taxRate, 
+      discountRate, 
+      tax, 
+      discount, 
+      invoiceTotal,
+      invoiceData: { tax_rate: invoice.tax_rate, discount: invoice.discount, items: invoice.items?.length }
+    });
 
     const results = { email: null, sms: null };
 

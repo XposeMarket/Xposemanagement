@@ -6,6 +6,7 @@
     { "source": "/health", "destination": "/api" },
     { "source": "/webhook", "destination": "/api" },
     { "source": "/stripe/:path*", "destination": "/api" },
-    { "source": "/api/search-dealers", "destination": "/api/search-dealers" }
+    { "source": "/api/search-dealers", "destination": "/api/search-dealers" },
+    { "source": "/api/send-invoice", "destination": "/api/send-invoice" }
   ]
 }
