@@ -181,16 +181,22 @@ function renderWeeklyDaysOverview(currentWeek, invoices, appointments, jobs) {
     });
   });
   
-  // Find min and max revenue for color coding
-  const revenues = days.map(d => d.revenue);
-  const maxRevenue = Math.max(...revenues);
-  const minRevenue = Math.min(...revenues);
+  // Filter out days with no revenue for color coding
+  const daysWithRevenue = days.filter(d => d.revenue > 0);
+  
+  // Find min and max revenue for color coding (only for days with revenue)
+  const revenues = daysWithRevenue.map(d => d.revenue);
+  const maxRevenue = revenues.length > 0 ? Math.max(...revenues) : 0;
+  const minRevenue = revenues.length > 0 ? Math.min(...revenues) : 0;
   const range = maxRevenue - minRevenue;
   
   // Assign color class based on revenue
   days.forEach(day => {
-    if (range === 0) {
-      // All days have same revenue
+    // Days with no revenue get no color class (will use default theme colors)
+    if (day.revenue === 0) {
+      day.colorClass = '';
+    } else if (daysWithRevenue.length === 1 || range === 0) {
+      // Only one day has revenue or all revenue days have same amount
       day.colorClass = 'good';
     } else if (day.revenue === maxRevenue) {
       day.colorClass = 'best';
