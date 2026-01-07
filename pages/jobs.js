@@ -27,6 +27,8 @@ let allStaff = []; // shop_staff rows (for assignment lookups)
 // Track if current user is staff (not admin)
 let isStaffUser = false;
 let currentStaffUserId = null;
+// Draft for newly-created or selected service to be used in add-flow
+let newServiceDraft = null;
 // Sorting state for jobs tables
 let jobSortCol = 'created_at';
 let jobSortDir = 'desc';
@@ -1322,12 +1324,11 @@ async function updateJobStatus(jobId, newStatus) {
         created_at: new Date().toISOString()
       };
     }
-    // ...existing code...
-  // Make it global for onclick
-  window.closeStatusModal = closeStatusModal;
-  window.openLaborModal = openLaborModal;
-  window.closeRemoveModal = closeRemoveModal;
-  // `openLaborModal` is exposed above and used directly by other components.
+    // Make it global for onclick
+    window.closeStatusModal = closeStatusModal;
+    window.openLaborModal = openLaborModal;
+    window.closeRemoveModal = closeRemoveModal;
+    // `openLaborModal` is exposed above and used directly by other components.
   } else {
     if (!['in_progress', 'awaiting_parts'].includes(newStatus)) {
       // If status is not active, remove from jobs page (stays in appointments)
@@ -2367,49 +2368,21 @@ async function handleServiceSelection(service, serviceModal) {
       return;
     }
     
-    // Get or create invoice for this appointment
-    let invoice = await getInvoiceForAppointment(appointment.id);
-    if (!invoice) {
-      invoice = await createInvoiceForAppointment(appointment);
-    }
-    
-    if (!invoice) {
-      showNotification('Could not create invoice', 'error');
-      return;
-    }
-    
-    // Add service as a line item to the invoice
+    // Instead of adding immediately, open the Customize Service flow so user can add parts/labor or skip.
     const serviceName = service.name || service;
     const servicePrice = parseFloat(service.price) || 0;
-    
-    const serviceItem = {
-      id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      name: serviceName,
-      qty: 1,
-      price: servicePrice,
-      type: 'service'
-    };
-    
-    invoice.items = invoice.items || [];
-    invoice.items.push(serviceItem);
-    
-    // Save invoice
-    await saveInvoice(invoice);
-    
-    console.log('Service added to invoice:', serviceItem);
-    
-    // Close modals
+
+    newServiceDraft = { name: serviceName, price: servicePrice, type: 'service', qty: 1 };
+
+    // Close service modal and any parts modal overlay, then show the add-flow modal
     closeServiceModal();
     const partsModal = document.getElementById('partsModal');
     const partsOverlay = document.getElementById('partsModalOverlay');
-    if (partsModal) {
-      partsModal.classList.add('hidden');
-    }
-    if (partsOverlay) {
-      partsOverlay.style.display = 'none';
-    }
-    
-    showNotification(`Service "${serviceName}" added to invoice`, 'success');
+    if (partsModal) partsModal.classList.add('hidden');
+    if (partsOverlay) partsOverlay.style.display = 'none';
+
+    const flow = document.getElementById('serviceAddFlowModal');
+    if (flow) flow.classList.remove('hidden');
   } catch (error) {
     console.error('Error adding service:', error);
     showNotification('Failed to add service', 'error');
@@ -2613,7 +2586,213 @@ async function setupJobs() {
   window.openLaborModal = openLaborModal;
   window.openServiceModal = openServiceModal;
   window.closeServiceModal = closeServiceModal;
+
+  function initJobsDOMBindings() {
+    // New service draft used across the add-flow (module-level `newServiceDraft` is used)
+
+    // 'Other' input + confirm in service modal (inline add)
+    const otherServiceInput = document.getElementById('otherServiceInput');
+    const otherServiceConfirm = document.getElementById('otherServiceConfirm');
+    const otherServiceRate = document.getElementById('otherServiceRate');
+    console.log('[jobs] DOMContentLoaded: otherServiceInput=', !!otherServiceInput, 'otherServiceConfirm=', !!otherServiceConfirm, 'otherServiceRate=', !!otherServiceRate);
+    if (otherServiceConfirm && otherServiceInput) {
+      // When user clicks the checkmark, show a small confirm modal asking whether to save this service.
+      otherServiceConfirm.addEventListener('click', async () => {
+        const name = otherServiceInput.value.trim();
+        const price = parseFloat((otherServiceRate && otherServiceRate.value) || 0) || 0;
+        if (!name) { alert('Please enter a service name.'); return; }
+
+        // Append the service in the UI immediately so it appears like regular services
+        const serviceContainer = document.getElementById('serviceOptionsContainer');
+        if (serviceContainer) {
+          const svc = { name, price };
+          const btn = document.createElement('button');
+          btn.className = 'btn';
+          btn.type = 'button';
+          btn.style.textAlign = 'left';
+          btn.style.display = 'flex';
+          btn.style.justifyContent = 'space-between';
+          btn.style.alignItems = 'center';
+          btn.innerHTML = `\n              <span>${svc.name}</span>\n              <span style="font-size: 0.9rem; color: var(--muted);">$${parseFloat(svc.price||0).toFixed(2)}</span>\n            `;
+          btn.addEventListener('click', () => handleServiceSelection(svc, document.getElementById('serviceModal')));
+          serviceContainer.appendChild(btn);
+        }
+
+        // Prepare draft used by the add-flow
+        newServiceDraft = { name, price, type: 'service', qty: 1 };
+        // Close service modal and show the save-confirm modal
+        document.getElementById('serviceModal').classList.add('hidden');
+        const confirmModal = document.getElementById('saveServiceConfirmModal');
+        if (confirmModal) {
+          confirmModal.classList.remove('hidden');
+
+          // Wire buttons (overwrite previous handlers safely)
+          const yes = document.getElementById('saveServiceYesBtn');
+          const no = document.getElementById('saveServiceNoBtn');
+
+          yes.onclick = async () => {
+            try {
+              await addServiceToSettings(name, price);
+              showNotification('Service saved to settings', 'success');
+            } catch (e) {
+              console.error('[jobs] Failed to save service:', e);
+              showNotification('Failed to save service', 'error');
+            }
+            confirmModal.classList.add('hidden');
+            document.getElementById('serviceAddFlowModal').classList.remove('hidden');
+          };
+
+          no.onclick = () => {
+            // Do not persist, just proceed to add-flow
+            confirmModal.classList.add('hidden');
+            document.getElementById('serviceAddFlowModal').classList.remove('hidden');
+          };
+        } else {
+          // Fallback: directly open add-flow
+          document.getElementById('serviceAddFlowModal').classList.remove('hidden');
+        }
+      });
+    }
+
+    // Close new service modal (kept for compatibility)
+    window.closeNewServiceModal = function() {
+      document.getElementById('newServiceModal').classList.add('hidden');
+      document.getElementById('serviceModal').classList.remove('hidden');
+    };
+
+    // Close service add flow modal
+    window.closeServiceAddFlowModal = function() {
+      document.getElementById('serviceAddFlowModal').classList.add('hidden');
+    };
+
+    // Handle Add in new service modal (legacy path)
+    const confirmAddServiceBtn = document.getElementById('confirmAddServiceBtn');
+    if (confirmAddServiceBtn) {
+      confirmAddServiceBtn.addEventListener('click', async () => {
+        const name = document.getElementById('newServiceName').value.trim();
+        const rate = parseFloat(document.getElementById('newServiceRate').value);
+        if (!name || isNaN(rate)) {
+          alert('Please enter a service name and rate.');
+          return;
+        }
+        newServiceDraft = { name, price: rate, type: 'service', qty: 1 };
+        document.getElementById('newServiceModal').classList.add('hidden');
+        document.getElementById('serviceAddFlowModal').classList.remove('hidden');
+      });
+    }
+
+    // Handle Add Parts to Service
+    document.getElementById('addPartsToServiceBtn').addEventListener('click', () => {
+      // Open partPricingModal for custom part
+      if (window.partPricingModal) {
+        // Hide the service flow and open the part pricing modal; do NOT auto-reshow the flow here.
+        document.getElementById('serviceAddFlowModal').classList.add('hidden');
+        window.partPricingModal.show({ manual_entry: true, name: '', part_name: '', part_number: '', id: 'manual' }, null, null);
+      } else {
+        // Fallback: just hide the service flow
+        document.getElementById('serviceAddFlowModal').classList.add('hidden');
+      }
+    });
+    // Run bindings immediately (invoked after function ends)
+
+    // Handle Add Labor to Service
+    document.getElementById('addLaborToServiceBtn').addEventListener('click', async () => {
+      // Hide the service flow and open the labor modal using openLaborModal so it populates rates
+      document.getElementById('serviceAddFlowModal').classList.add('hidden');
+      const partsHandler = window.partsModalHandler;
+      const jobId = partsHandler?.currentJob?.id || null;
+      // Show overlay and open labor modal (which populates rates)
+      try {
+        await openLaborModal(jobId);
+      } catch (e) {
+        console.error('[jobs] Failed to open labor modal:', e);
+        // Fallback: show modal directly
+        const overlay = document.getElementById('laborModalOverlay'); if (overlay) overlay.style.display = 'block';
+        const lm = document.getElementById('laborModal'); if (lm) { lm.classList.remove('hidden'); lm.style.display = 'block'; }
+      }
+    });
+
+    // Handle Skip & Add to Invoice
+    document.getElementById('skipToInvoiceBtn').addEventListener('click', async () => {
+      if (!newServiceDraft) return;
+      // Add the new service to the current job's invoice
+      const partsHandler = window.partsModalHandler;
+      if (!partsHandler || !partsHandler.currentJob) {
+        alert('No job selected');
+        return;
+      }
+      const currentJob = partsHandler.currentJob;
+      const appointment = allAppointments.find(a => a.id === currentJob.appointment_id);
+      if (!appointment) {
+        alert('Appointment not found');
+        return;
+      }
+      let invoice = await getInvoiceForAppointment(appointment.id);
+      if (!invoice) {
+        invoice = await createInvoiceForAppointment(appointment);
+      }
+      if (!invoice) {
+        alert('Could not create invoice');
+        return;
+      }
+      invoice.items = invoice.items || [];
+      invoice.items.push({ ...newServiceDraft, id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` });
+      await saveInvoice(invoice);
+      // Close the flow modal and notify
+      closeServiceAddFlowModal();
+      showNotification(`Service "${newServiceDraft.name}" added to invoice`, 'success');
+      newServiceDraft = null;
+    });
+
+  }
+
+  // Run bindings immediately
+  initJobsDOMBindings();
+
   console.log('✅ Jobs page setup complete');
+}
+
+// Persist a service preset into settings (data table) from Jobs page
+async function addServiceToSettings(name, price) {
+  if (!name) throw new Error('Name required');
+  try {
+    const supabase = getSupabaseClient();
+    const shopId = getCurrentShopId();
+    if (!supabase || !shopId) throw new Error('Supabase client or shop ID not available');
+
+    // Load current data from Supabase
+    const { data, error } = await supabase.from('data').select('*').eq('shop_id', shopId).single();
+    if (error && error.code !== 'PGRST116') throw error;
+
+    const settings = (data?.settings) || {};
+    settings.services = settings.services || [];
+    if (settings.services.some(s => s.name === name)) {
+      // Already exists - nothing to do
+      return true;
+    }
+
+    settings.services.push({ name: name, price: price });
+
+    const payload = {
+      shop_id: shopId,
+      settings: settings,
+      appointments: data?.appointments || [],
+      jobs: data?.jobs || [],
+      threads: data?.threads || [],
+      invoices: data?.invoices || [],
+      updated_at: new Date().toISOString()
+    };
+
+    const { error: upErr } = await supabase.from('data').upsert(payload, { onConflict: 'shop_id' });
+    if (upErr) throw upErr;
+
+    // notify other pages
+    window.dispatchEvent(new Event('xm_data_updated'));
+    return true;
+  } catch (ex) {
+    console.error('[jobs] addServiceToSettings failed:', ex);
+    throw ex;
+  }
 }
 
 export { setupJobs, saveJobs };

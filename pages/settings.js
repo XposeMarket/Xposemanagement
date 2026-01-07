@@ -155,6 +155,9 @@ function setupSettings() {
     renderServices();
     // Populate labor rates
     renderLaborRates();
+    
+    // Update Google Business UI
+    updateGoogleBusinessUI();
   }
   
   // Render services
@@ -487,7 +490,114 @@ function setupSettings() {
     }
   }
 
-  // In-page confirm helper (returns Promise<boolean>) using the page's confirm modal
+  
+  // Google Business Search Functions
+  function quickSearchGoogle() {
+    if (!shopData || !shopData.name) {
+      showNotification('Please enter a shop name first', 'error');
+      return;
+    }
+    
+    const shopName = shopData.name.trim();
+    const address = [shopData.street, shopData.city, shopData.state, shopData.zipcode]
+      .filter(Boolean)
+      .join(' ');
+    
+    // Open Google search in new tab
+    const query = encodeURIComponent(`${shopName} ${address}`);
+    window.open(`https://www.google.com/search?q=${query}`, '_blank');
+    
+    showNotification('Google search opened in new tab. Find your business and copy the review URL.', 'success');
+  }
+  
+  async function confirmGoogleBusiness(businessName, businessUrl) {
+    try {
+      if (supabase) {
+        // Save to shops table with defensive column handling
+        let payload = {
+          google_business_name: businessName,
+          google_business_url: businessUrl
+        };
+        
+        const maxRetries = 3;
+        let attempt = 0;
+        let lastError = null;
+        
+        while (attempt < maxRetries) {
+          attempt++;
+          const { error } = await supabase
+            .from('shops')
+            .update(payload)
+            .eq('id', currentShopId);
+          
+          if (!error) {
+            break; // Success!
+          }
+          
+          // Check if column doesn't exist
+          const msg = (error && error.message) || '';
+          const columnMatch = msg.match(/Could not find the '([^']+)' column of 'shops'/i) || 
+                            msg.match(/relation "shops" has no column named "([^\"]+)"/i);
+          
+          if (columnMatch && columnMatch[1]) {
+            console.warn('[Google Business] Column not found, removing from payload:', columnMatch[1]);
+            delete payload[columnMatch[1]];
+            lastError = error;
+            continue; // Retry without this column
+          }
+          
+          // Some other error - throw it
+          lastError = error;
+          break;
+        }
+        
+        if (lastError && Object.keys(payload).length === 0) {
+          throw new Error('Database does not support Google Business fields yet. Please contact support.');
+        }
+        
+        if (lastError && Object.keys(payload).length > 0) {
+          throw lastError;
+        }
+      } else {
+        // Save to localStorage
+        const shops = JSON.parse(localStorage.getItem('xm_shops') || '[]');
+        const shopIndex = shops.findIndex(s => s.id === currentShopId);
+        if (shopIndex !== -1) {
+          shops[shopIndex].google_business_name = businessName;
+          shops[shopIndex].google_business_url = businessUrl;
+          localStorage.setItem('xm_shops', JSON.stringify(shops));
+        }
+      }
+      
+      // Update shopData and UI
+      shopData.google_business_name = businessName;
+      shopData.google_business_url = businessUrl;
+      
+      updateGoogleBusinessUI();
+      showNotification('Google Business saved successfully!');
+    } catch (ex) {
+      console.error('Error saving Google Business:', ex);
+      showNotification('Failed to save. Please try again.', 'error');
+    }
+  }
+  
+  function updateGoogleBusinessUI() {
+    const infoDiv = document.getElementById('googleBusinessInfo');
+    const searchContainer = document.getElementById('googleSearchContainer');
+    const businessNameEl = document.getElementById('googleBusinessName');
+    const businessLinkEl = document.getElementById('googleBusinessLink');
+    
+    if (shopData?.google_business_name && shopData?.google_business_url) {
+      businessNameEl.textContent = shopData.google_business_name;
+      businessLinkEl.href = shopData.google_business_url;
+      infoDiv.style.display = 'block';
+      searchContainer.style.display = 'none';
+    } else {
+      infoDiv.style.display = 'none';
+      searchContainer.style.display = 'block';
+    }
+  }
+  
   function showConfirm(message, okText = 'OK', cancelText = 'Cancel') {
     return new Promise((resolve) => {
       const modal = document.getElementById('confirmModal');
@@ -548,6 +658,71 @@ function setupSettings() {
   const labAddBtn = document.getElementById('labAdd');
   if (labAddBtn) {
     labAddBtn.addEventListener('click', addLaborRate);
+  }
+  
+  // Google Business search event listeners
+  const quickSearchBtn = document.getElementById('quickSearchGoogle');
+  if (quickSearchBtn) {
+    quickSearchBtn.addEventListener('click', quickSearchGoogle);
+  }
+  
+  const changeGoogleBtn = document.getElementById('changeGoogleBusiness');
+  if (changeGoogleBtn) {
+    changeGoogleBtn.addEventListener('click', () => {
+      document.getElementById('googleBusinessInfo').style.display = 'none';
+      document.getElementById('googleSearchContainer').style.display = 'block';
+      document.getElementById('googleSearchResults').style.display = 'none';
+    });
+  }
+  
+  // Manual Google Business entry
+  const saveManualBtn = document.getElementById('saveManualGoogleBusiness');
+  if (saveManualBtn) {
+    saveManualBtn.addEventListener('click', async () => {
+      const businessName = document.getElementById('manualBusinessName')?.value?.trim();
+      const businessUrl = document.getElementById('manualGoogleUrl')?.value?.trim();
+      
+      if (!businessName || !businessUrl) {
+        showNotification('Please enter both business name and Google Maps URL', 'error');
+        return;
+      }
+      
+      // Validate URL contains google.com or goo.gl
+      if (!businessUrl.includes('google.com') && !businessUrl.includes('goo.gl')) {
+        showNotification('Please enter a valid Google Maps URL', 'error');
+        return;
+      }
+      
+      await confirmGoogleBusiness(businessName, businessUrl);
+      
+      // Clear inputs on success
+      document.getElementById('manualBusinessName').value = '';
+      document.getElementById('manualGoogleUrl').value = '';
+    });
+  }
+  
+  const addManualGoogleBtn = document.getElementById('addManualGoogle');
+  if (addManualGoogleBtn) {
+    addManualGoogleBtn.addEventListener('click', async () => {
+      const urlInput = document.getElementById('manualGoogleUrl');
+      const url = urlInput.value.trim();
+      
+      if (!url) {
+        showNotification('Please enter a Google Business URL', 'error');
+        return;
+      }
+      
+      if (!url.startsWith('http')) {
+        showNotification('Please enter a valid URL starting with http:// or https://', 'error');
+        return;
+      }
+      
+      // Extract business name from URL or use shop name as fallback
+      let businessName = shopData?.name || 'My Business';
+      
+      await confirmGoogleBusiness(businessName, url);
+      urlInput.value = '';
+    });
   }
   
   // Initial load

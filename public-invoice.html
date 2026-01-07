@@ -232,6 +232,14 @@
       <div id="paidInfo" style="display: none; margin-top: 20px; padding: 16px; background: #d1fae5; border-radius: 8px; text-align: center;">
         <strong>✓ Paid on <span id="paidDate"></span></strong>
       </div>
+
+      <div id="googleReviewSection" style="display: none; margin-top: 24px; padding: 20px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; border: 2px solid #f59e0b; text-align: center;">
+        <h3 style="margin: 0 0 12px 0; color: #92400e;">⭐ Share Your Feedback</h3>
+        <p style="margin: 0 0 16px 0; color: #92400e; font-size: 0.95rem;">We'd love to hear about your experience! Please take a moment to leave a review.</p>
+        <a id="googleReviewLink" href="#" target="_blank" style="display: inline-block; padding: 12px 28px; background: #f59e0b; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; transition: background 0.2s;">
+          📝 Leave a Google Review
+        </a>
+      </div>
     </div>
 
     <div class="powered-by">
@@ -590,6 +598,25 @@
       if (status === 'paid' && invoice.paid_date) {
         document.getElementById('paidInfo').style.display = 'block';
         document.getElementById('paidDate').textContent = new Date(invoice.paid_date).toLocaleDateString();
+        
+        // Fetch and display Google Business review URL if configured
+        try {
+          const { data: shopData } = await supabase
+            .from('shops')
+            .select('google_business_url')
+            .eq('id', shop_id)
+            .single();
+          
+          if (shopData?.google_business_url) {
+            const reviewSection = document.getElementById('googleReviewSection');
+            const reviewLink = document.getElementById('googleReviewLink');
+            reviewSection.style.display = 'block';
+            reviewLink.href = shopData.google_business_url;
+            console.log('✅ Google review link loaded');
+          }
+        } catch (e) {
+          console.warn('Could not load Google business URL:', e);
+        }
       }
     }
 

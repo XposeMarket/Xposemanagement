@@ -10,6 +10,14 @@ import { currentUser, currentShop, logout, toggleTheme, setThemeFromUser } from 
 import { byId, todayISO, addInvoiceCSS } from './helpers/utils.js';
 import { pageName, applyNavPermissions, enforcePageAccess, requireAuth, ensureSeed, showServerBanner } from './helpers/auth.js';
 import { initShopSwitcher } from './helpers/shop-switcher-ui.js';
+import { 
+  initializeShopConfig, 
+  getCurrentTerm, 
+  hasCurrentFeature,
+  currentUsesVehicles,
+  getCurrentIndustryType 
+} from './helpers/shop-config-loader.js';
+import { getSupabaseClient } from './helpers/supabase.js';
 
 import { setupLogin } from './pages/index.js';
 import { setupDashboard } from './pages/dashboard.js';
@@ -21,6 +29,92 @@ import { setupSettings } from './pages/settings.js';
 import { setupProfile } from './pages/profile.js';
 import { checkSubscriptionAccess } from './helpers/subscription-check-clean.js';
 import { setupInventory } from './inventory.js';
+
+/**
+ * Update navigation labels based on industry configuration
+ */
+function updateNavigationTerminology() {
+  console.log('🧭 Updating navigation terminology...');
+  
+  try {
+    const mainNav = document.getElementById('mainNav');
+    if (!mainNav) return;
+    
+    // Update Jobs link
+    const jobsLink = mainNav.querySelector('a[href="jobs.html"]');
+    if (jobsLink) {
+      jobsLink.textContent = getCurrentTerm('jobs');
+      console.log(`✅ Jobs → ${getCurrentTerm('jobs')}`);
+    }
+    
+    // Update Appointments link
+    const apptsLink = mainNav.querySelector('a[href="appointments.html"]');
+    if (apptsLink) {
+      apptsLink.textContent = getCurrentTerm('appointments');
+      console.log(`✅ Appointments → ${getCurrentTerm('appointments')}`);
+    }
+    
+    // Update Customers link
+    const custsLink = mainNav.querySelector('a[href="customers.html"]');
+    if (custsLink) {
+      custsLink.textContent = getCurrentTerm('clients');
+      console.log(`✅ Customers → ${getCurrentTerm('clients')}`);
+    }
+    
+    // Hide inventory link if not applicable
+    const inventoryLink = mainNav.querySelector('a[href="inventory.html"]');
+    if (inventoryLink && !hasCurrentFeature('inventory')) {
+      inventoryLink.style.display = 'none';
+    } else if (inventoryLink) {
+      inventoryLink.style.display = '';
+    }
+    
+    console.log('✅ Navigation terminology updated');
+  } catch (error) {
+    console.error('❌ Error updating navigation:', error);
+  }
+}
+
+/**
+ * Initialize industry configuration for current shop
+ */
+async function initializeIndustryConfig() {
+  console.log('🏗️ Initializing industry configuration...');
+  
+  try {
+    const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+    const shopId = session.shopId;
+    
+    if (!shopId) {
+      console.warn('⚠️ No shop ID found, skipping industry config');
+      return;
+    }
+    
+    const supabase = getSupabaseClient();
+    const { data: shopData, error } = await supabase
+      .from('shops')
+      .select('*')
+      .eq('id', shopId)
+      .single();
+    
+    if (error || !shopData) {
+      console.error('❌ Failed to load shop for industry config:', error);
+      return;
+    }
+    
+    console.log('🏪 Shop loaded:', shopData.name, '| Industry:', shopData.industry_type);
+    
+    // Initialize configuration
+    initializeShopConfig(shopData);
+    
+    // Update navigation with industry-specific terms
+    updateNavigationTerminology();
+    
+    console.log('✅ Industry configuration initialized successfully');
+  } catch (error) {
+    console.error('❌ Error initializing industry config:', error);
+  }
+}
 /**
  * Add admin link to navigation for multi-shop capable users
  * Shows for users with Local or Multi plans
@@ -333,6 +427,9 @@ async function __mainBase() {
       console.log('❌ Subscription check failed');
       return; // checkSubscriptionAccess will handle redirect
     }
+
+    // Initialize industry configuration for current shop
+    await initializeIndustryConfig();
 
     // Setup page based on route
     if (p === "dashboard") setupDashboard();

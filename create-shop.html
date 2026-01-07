@@ -24,11 +24,22 @@
           <input id="csName" required>
         </div>
         <div>
-          <label for="csType">Shop Type</label>
-          <select id="csType" required>
+          <label for="csIndustry">Industry Type</label>
+          <select id="csIndustry" required>
+            <option value="auto_shop">Auto Shop</option>
+            <option value="barbershop">Barbershop / Salon</option>
+            <option value="tattoo_studio">Tattoo & Piercing Studio</option>
+            <option value="nail_salon">Nail Salon / Spa</option>
+            <option value="other">Other Service Business</option>
+          </select>
+        </div>
+        <div id="autoShopTypeContainer" style="display:block">
+          <label for="csType">Shop Specialization</label>
+          <select id="csType">
             <option>Mechanic</option>
             <option>Body</option>
-            <option>Other</option>
+            <option>Performance</option>
+            <option>General Repair</option>
           </select>
         </div>
         <div style="grid-column:1/-1;display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">

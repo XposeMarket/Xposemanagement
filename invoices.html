@@ -85,7 +85,10 @@
         <h2 id="invTitle">New Invoice</h2>
         <div id="platformFeeDesc" style="font-size:0.85rem;color:var(--muted);">Platform fee: Stripe processing (2.7% + $0.05) + Xpose platform fee (2.3%)</div>
       </div>
-      <button id="closeInv" class="btn">Close</button>
+      <div style="display:flex;gap:8px;">
+        <button id="sendEstimateBtn" class="btn secondary" style="background:#8b5cf6;color:white;" title="Send estimate to customer for approval">📋 Send Estimate</button>
+        <button id="closeInv" class="btn">Close</button>
+      </div>
     </div>
     <div class="modal-body" style="max-height:60vh; overflow-y:auto">
       <div class="grid cols-2" style="margin-top:8px">
@@ -223,16 +226,6 @@
           </div>
         </label>
       </div>
-      
-      <div id="googleReviewContainer" style="margin-bottom:16px;display:none;">
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px;background:linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);border-radius:8px;border:1px solid #f59e0b;">
-          <input type="checkbox" id="sendGoogleReviewCheckbox" checked style="width:20px;height:20px;">
-          <div>
-            <strong>⭐ Request Google Review</strong>
-            <div style="font-size:0.875rem;color:#92400e;">Include review request with paid invoice</div>
-          </div>
-        </label>
-      </div>
 
       <div id="sendInvoiceNoContact" style="display:none;padding:12px;background:#fef3c7;border-radius:8px;color:#92400e;margin-bottom:16px;">
         <strong>⚠️ No contact info found</strong>
@@ -248,7 +241,11 @@
   </div>
 </div>
 
-<footer class="container">© Xpose Market</footer><script src="vendor/supabase.umd.js"></script><script type="module" src="app.js"></script><script src="multi-tenant.js"></script>
+<footer class="container">© Xpose Market</footer>
+<script src="vendor/supabase.umd.js"></script>
+<script src="components/partPricingModal.js"></script>
+<script type="module" src="app.js"></script>
+<script src="multi-tenant.js"></script>
 <script>
   // Check for #new hash to open modal
   if (window.location.hash === '#new') {

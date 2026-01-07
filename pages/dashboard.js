@@ -11,6 +11,13 @@ import { readLS, getShopData } from '../helpers/storage.js';
 import { getSupabaseClient } from '../helpers/supabase.js';
 import { byId, fmtMoney, formatTime12 } from '../helpers/utils.js';
 import { calcInvProfit } from '../helpers/invoices.js';
+import { 
+  initializeShopConfig, 
+  getCurrentTerm, 
+  hasCurrentFeature,
+  currentUsesVehicles,
+  updatePageTerminology 
+} from '../helpers/shop-config-loader.js';
 
 /**
  * Get current shop ID from session
@@ -31,6 +38,72 @@ function getCurrentShopId() {
 }
 
 /**
+ * Update dashboard terminology based on industry
+ */
+function updateDashboardTerminology() {
+  console.log('🏷️ Updating dashboard terminology...');
+  
+  try {
+    // Update page title
+    document.title = 'Dashboard';
+    
+    // Update sidebar headers
+    const activeJobsHeader = document.querySelector('.left-sidebar .card:nth-child(2) h3');
+    if (activeJobsHeader) {
+      const jobTerm = getCurrentTerm('jobs');
+      activeJobsHeader.innerHTML = `<a href="jobs.html" style="color:inherit">Active ${jobTerm}</a>`;
+    }
+    
+    // Update "Active Jobs" dropdown label
+    const jobViewToggle = byId('jobViewToggle');
+    if (jobViewToggle) {
+      const jobTerm = getCurrentTerm('job');
+      const options = jobViewToggle.options;
+      if (options[0]) options[0].text = `Active ${jobTerm}s`;
+      if (options[1]) options[1].text = 'In Progress';
+      if (options[2]) options[2].text = 'Awaiting Parts';
+    }
+    
+    // Update KPI labels
+    const kpiJobsLabel = document.querySelector('.kpi:nth-child(3) .notice');
+    if (kpiJobsLabel) {
+      kpiJobsLabel.textContent = `Active ${getCurrentTerm('jobs').toLowerCase()}`;
+    }
+    
+    // Update quick create buttons
+    const btnNewAppt = byId('btnNewAppt');
+    if (btnNewAppt) {
+      btnNewAppt.textContent = `+ ${getCurrentTerm('appointment')}`;
+      btnNewAppt.title = `Create new ${getCurrentTerm('appointment').toLowerCase()}`;
+    }
+    
+    const btnNewCust = byId('btnNewCust');
+    if (btnNewCust) {
+      btnNewCust.textContent = `+ ${getCurrentTerm('client')}`;
+      btnNewCust.title = `Create new ${getCurrentTerm('client').toLowerCase()}`;
+    }
+    
+    // Update day table headers based on industry
+    const dayTable = byId('dayTable');
+    if (dayTable) {
+      const headers = dayTable.querySelectorAll('thead th');
+      if (headers.length >= 3) {
+        headers[1].textContent = getCurrentTerm('client'); // Customer → Client
+        
+        // Show/hide vehicle column based on industry
+        if (!currentUsesVehicles()) {
+          headers[2].style.display = 'none'; // Hide Vehicle column
+        }
+      }
+    }
+    
+    console.log('✅ Dashboard terminology updated');
+  } catch (error) {
+    console.error('❌ Error updating dashboard terminology:', error);
+  }
+}
+
+/**
  * Setup dashboard - main entry point
  */
 async function setupDashboard() {
@@ -40,9 +113,34 @@ async function setupDashboard() {
   const shopId = getCurrentShopId();
   let data = {};
   
+  // ============================================================================
+  // LOAD SHOP AND INITIALIZE INDUSTRY CONFIGURATION
+  // ============================================================================
   if (shopId) {
     console.log('📦 Loading shop data for:', shopId);
     try {
+      // Load shop details to get industry_type
+      const supabase = getSupabaseClient();
+      const { data: shopData, error: shopError } = await supabase
+        .from('shops')
+        .select('*')
+        .eq('id', shopId)
+        .single();
+      
+      if (shopError) {
+        console.error('❌ Failed to load shop:', shopError);
+      } else {
+        console.log('✅ Shop loaded:', shopData.name, '| Industry:', shopData.industry_type);
+        
+        // Initialize industry configuration
+        initializeShopConfig(shopData);
+        console.log('✅ Industry config initialized');
+        
+        // Update page terminology based on industry
+        updateDashboardTerminology();
+      }
+      
+      // Load shop data (appointments, jobs, etc.)
       data = await getShopData(shopId);
       console.log('✅ Loaded data:', data);
       

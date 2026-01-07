@@ -135,6 +135,36 @@ WITH CHECK (
 */
 
 -- ============================================
+-- INVOICE_TOKENS TABLE POLICIES
+-- ============================================
+-- Note: Full policies are in migrations/003_create_invoice_tokens.sql
+-- These are additional staff policies if needed
+
+-- Staff can create invoice tokens for their shop
+CREATE POLICY "Staff can create invoice tokens"
+ON invoice_tokens
+FOR INSERT
+WITH CHECK (
+  shop_id IN (
+    SELECT shop_id 
+    FROM shop_staff 
+    WHERE auth_id::text = auth.uid()::text
+  )
+);
+
+-- Staff can view invoice tokens for their shop
+CREATE POLICY "Staff can view invoice tokens"
+ON invoice_tokens
+FOR SELECT
+USING (
+  shop_id IN (
+    SELECT shop_id 
+    FROM shop_staff 
+    WHERE auth_id::text = auth.uid()::text
+  )
+);
+
+-- ============================================
 -- NOTES
 -- ============================================
 -- These policies assume:
@@ -148,4 +178,4 @@ WITH CHECK (
 -- 3. Run the SQL
 -- 
 -- To view existing policies:
--- SELECT * FROM pg_policies WHERE tablename IN ('jobs', 'appointments');
+-- SELECT * FROM pg_policies WHERE tablename IN ('jobs', 'appointments', 'invoice_tokens');

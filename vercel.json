@@ -8,6 +8,7 @@
     { "source": "/stripe/:path*", "destination": "/api" },
     { "source": "/api/search-dealers", "destination": "/api/search-dealers" },
     { "source": "/api/send-invoice", "destination": "/api/send-invoice" },
-    { "source": "/api/send-review-request", "destination": "/api/send-review-request" }
+    { "source": "/api/send-review-request", "destination": "/api/send-review-request" },
+    { "source": "/api/send-tracking", "destination": "/api/send-tracking" }
   ]
 }

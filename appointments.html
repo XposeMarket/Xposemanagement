@@ -256,6 +256,8 @@
 </script>
 <script type="module" src="app.js"></script>
 <script src="multi-tenant.js"></script>
+<script src="helpers/tracking-code-generator.js"></script>
+<script src="helpers/appointment-tracker.js"></script>
 
 <!-- ===== Appointment Modal (Create/Edit unified) ===== -->
 <div id="apptModal" class="modal-backdrop hidden">
@@ -321,6 +323,18 @@
           </div>
         </div>
 
+        <!-- Tracking Code Display -->
+        <div id="trackingCodeSection" style="grid-column: 1 / -1; display: none;">
+          <label>Tracking Code</label>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <div id="trackingCodeDisplay" style="font-family: 'Courier New', monospace; font-size: 1.5rem; font-weight: 700; letter-spacing: 2px; padding: 8px 16px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; user-select: all; cursor: pointer;" title="Click to copy"></div>
+            <button type="button" id="copyTrackingCodeBtn" class="btn" style="padding: 8px 12px;" title="Copy to clipboard">
+              📋 Copy
+            </button>
+          </div>
+          <p style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">Give this code to customer for status tracking</p>
+        </div>
+
         <!-- Notes Section -->
         <div style="grid-column: 1 / -1;">
           <label>Notes</label>
@@ -338,8 +352,13 @@
       </form>
     </div>
     <div class="modal-foot">
-      <div style="display:flex; gap:8px; justify-content:flex-end;">
-        <button type="submit" form="apptForm" class="btn info">Save</button>
+      <div style="display:flex; gap:8px; justify-content:space-between; width:100%;">
+        <div style="display:flex; gap:8px;">
+          <button type="submit" form="apptForm" class="btn info">Save</button>
+          <button id="sendTrackingBtn" type="button" class="btn" style="background: #8b5cf6; color: white;" title="Send status tracker to customer">
+            📱 Send Tracker
+          </button>
+        </div>
         <button id="saveCustEdit" type="button" class="pill-save" title="Save customer for reuse">
           <span class="dot"></span> Save Customer
         </button>
@@ -363,6 +382,41 @@
     </div>
     <div class="modal-foot">
       <button type="submit" form="noteForm" class="btn info">Save Note</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Send Tracking Link Modal ===== -->
+<div id="sendTrackingModal" class="modal-backdrop hidden">
+  <div class="modal-card" style="max-width: 480px;">
+    <div class="modal-head">
+      <h3>📱 Send Status Tracker</h3>
+      <button type="button" class="btn" id="closeSendTrackingModal">Close</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin: 0 0 16px; color: var(--muted);">
+        Send a personalized tracking link via SMS to the customer's phone.
+      </p>
+      <div style="background: var(--bg); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+        <div style="font-weight: 600; margin-bottom: 8px; font-size: 1.1rem;" id="trackingCustomerName"></div>
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 1rem;">
+          <span style="font-size: 1.25rem;">📱</span>
+          <span id="trackingCustomerPhone" style="font-weight: 500;"></span>
+        </div>
+      </div>
+      <div style="background: #f0fdf4; border: 1px solid #10b981; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+        <div style="display: flex; align-items: flex-start; gap: 10px;">
+          <span style="font-size: 1.25rem;">✅</span>
+          <div style="font-size: 0.875rem; color: #166534;">
+            <strong>Personal Tracker Link</strong><br>
+            Customer will receive a direct link to view their vehicle status in real-time. No code entry needed!
+          </div>
+        </div>
+      </div>
+      <p id="trackingModalError" style="margin: 16px 0 0; padding: 12px; background: #fee2e2; color: #991b1b; border-radius: 6px; font-size: 0.875rem; display: none;"></p>
+    </div>
+    <div class="modal-foot">
+      <button type="button" id="confirmSendTracking" class="btn info" disabled>📱 Send SMS</button>
     </div>
   </div>
 </div>
@@ -616,5 +670,259 @@ import { upsertCustomerToSupabase } from './pages/appointments.js?v=1767390869';
     </div>
   </div>
 </div>
+
+<!-- ===== Send Tracking Link Functionality ===== -->
+<script>
+(function() {
+  const $ = (s) => document.querySelector(s);
+  
+  // Get Supabase client (same one used everywhere)
+  const SUPABASE_URL = 'https://hxwufjzyhtwveyxbkkya.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4d3Vmanp5aHR3dmV5eGJra3lhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI3MjU0MjAsImV4cCI6MjA3ODMwMTQyMH0.nN7MGoYyqwhonOSPBJlFEZoZrOEAIRP79l43FZK5nh8';
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  
+  let currentAppointment = null;
+  
+  // Show notification
+  function showNotification(message, isError = false) {
+    const notification = $('#notification');
+    if (!notification) return;
+    
+    notification.textContent = message;
+    notification.style.background = isError ? '#ef4444' : '#10b981';
+    notification.classList.remove('hidden');
+    
+    setTimeout(() => {
+      notification.classList.add('hidden');
+    }, 3000);
+  }
+  
+  // Get current shop ID - check multiple sources (same as rest of app)
+  function getCurrentShopId() {
+    try {
+      // First check xm_session in localStorage (this is where auth.js stores it)
+      const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+      if (session.shopId) {
+        return session.shopId;
+      }
+      
+      // Also check sessionStorage (some parts of app use this)
+      const sessionShopId = sessionStorage.getItem('shop_id');
+      if (sessionShopId) return sessionShopId;
+      
+      // Fallback to user's shop_id
+      const users = JSON.parse(localStorage.getItem('xm_users') || '[]');
+      const currentUser = users.find(u => u.id === session.user_id || u.email === session.email) || session.user || {};
+      if (currentUser.shop_id) return currentUser.shop_id;
+      
+      // Last resort - check xm_shops
+      const shops = JSON.parse(localStorage.getItem('xm_shops') || '[]');
+      if (shops.length > 0) return shops[0].id;
+      
+      return null;
+    } catch (e) {
+      console.error('Error getting shop ID:', e);
+      return null;
+    }
+  }
+  
+  // Open tracking modal (SMS only)
+  function openTrackingModal() {
+    const modal = $('#sendTrackingModal');
+    const confirmBtn = $('#confirmSendTracking');
+    const errorText = $('#trackingModalError');
+    
+    if (!modal) return;
+    
+    // Get customer info from form
+    const firstName = $('#apptForm [name="customer_first"]')?.value?.trim() || '';
+    const lastName = $('#apptForm [name="customer_last"]')?.value?.trim() || '';
+    const phone = $('#apptForm [name="phone"]')?.value?.trim() || '';
+    
+    const customerName = [firstName, lastName].filter(n => n).join(' ') || 'Customer';
+    
+    // Update modal content
+    $('#trackingCustomerName').textContent = customerName;
+    $('#trackingCustomerPhone').textContent = phone || 'No phone number';
+    
+    // Show error if no phone number
+    if (!phone) {
+      errorText.textContent = '⚠️ No phone number available. Please add a phone number to send the tracker.';
+      errorText.style.display = 'block';
+      confirmBtn.disabled = true;
+    } else {
+      errorText.style.display = 'none';
+      confirmBtn.disabled = false;
+    }
+    
+    // Store current data
+    currentAppointment = {
+      firstName,
+      lastName,
+      phone,
+      customerName
+    };
+    
+    modal.classList.remove('hidden');
+  }
+  
+  // Close tracking modal
+  function closeTrackingModal() {
+    const modal = $('#sendTrackingModal');
+    if (modal) {
+      modal.classList.add('hidden');
+    }
+  }
+  
+  // Send tracking link via SMS - calls the Vercel API (same as invoice sending)
+  async function sendTracking() {
+    const confirmBtn = $('#confirmSendTracking');
+    const errorText = $('#trackingModalError');
+    
+    if (!currentAppointment.phone) {
+      errorText.textContent = '⚠️ No phone number available.';
+      errorText.style.display = 'block';
+      return;
+    }
+    
+    errorText.style.display = 'none';
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = '📱 Sending...';
+    
+    try {
+      // Get appointment ID from modal
+      const appointmentId = window.currentEditingAppointmentId;
+      const shopId = getCurrentShopId();
+      
+      // Also get the tracking code that's being displayed (for debugging)
+      const displayedCode = $('#trackingCodeDisplay')?.textContent?.trim();
+      console.log('[SendTracking] Displayed tracking code:', displayedCode);
+      
+      if (!appointmentId) {
+        throw new Error('No appointment ID found. Please save the appointment first.');
+      }
+      
+      if (!shopId) {
+        throw new Error('No shop ID found. Please refresh the page.');
+      }
+      
+      // Call the Vercel API (same pattern as send-invoice)
+      const API_URL = 'https://xpose-stripe-server.vercel.app';
+      
+      console.log('[SendTracking] Calling API with:', { appointmentId, shopId, phone: currentAppointment.phone });
+      
+      const response = await fetch(`${API_URL}/api/send-tracking`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appointmentId,
+          shopId,
+          sendEmail: false,
+          sendSms: true,
+          customerEmail: null,
+          customerPhone: currentAppointment.phone,
+          customerName: currentAppointment.customerName,
+          trackingCode: displayedCode  // Pass the tracking code
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Tracking link sent successfully!');
+        console.log('🎫 Tracking code:', result.shortCode);
+        console.log('📱 Mobile URL:', result.mobileTrackingUrl);
+        
+        if (result.results?.sms?.success) {
+          showNotification('✅ Tracking link sent via SMS!');
+        } else if (result.results?.sms?.error) {
+          showNotification(`⚠️ SMS issue: ${result.results.sms.error}`, true);
+        } else {
+          showNotification('✅ Tracking link sent!');
+        }
+        closeTrackingModal();
+      } else {
+        // Handle partial failure
+        let errorMsg = 'Failed to send tracking link';
+        if (result.results?.sms?.error) {
+          errorMsg = result.results.sms.error;
+        } else if (result.error) {
+          errorMsg = result.error;
+        }
+        throw new Error(errorMsg);
+      }
+      
+    } catch (error) {
+      console.error('Error sending tracking link:', error);
+      errorText.textContent = `❌ ${error.message}`;
+      errorText.style.display = 'block';
+    } finally {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = '📱 Send SMS';
+    }
+  }
+  
+  // Event listeners
+  const sendTrackingBtn = $('#sendTrackingBtn');
+  if (sendTrackingBtn) {
+    sendTrackingBtn.addEventListener('click', openTrackingModal);
+  }
+  
+  // Copy tracking code button
+  const copyTrackingCodeBtn = $('#copyTrackingCodeBtn');
+  if (copyTrackingCodeBtn) {
+    copyTrackingCodeBtn.addEventListener('click', () => {
+      const codeDisplay = $('#trackingCodeDisplay');
+      if (codeDisplay && codeDisplay.textContent) {
+        navigator.clipboard.writeText(codeDisplay.textContent).then(() => {
+          copyTrackingCodeBtn.textContent = '✅ Copied!';
+          setTimeout(() => {
+            copyTrackingCodeBtn.textContent = '📋 Copy';
+          }, 2000);
+        }).catch(err => {
+          console.error('Failed to copy:', err);
+        });
+      }
+    });
+  }
+  
+  // Also copy when clicking the code itself
+  const trackingCodeDisplay = $('#trackingCodeDisplay');
+  if (trackingCodeDisplay) {
+    trackingCodeDisplay.addEventListener('click', () => {
+      if (trackingCodeDisplay.textContent) {
+        navigator.clipboard.writeText(trackingCodeDisplay.textContent).then(() => {
+          const originalText = trackingCodeDisplay.textContent;
+          trackingCodeDisplay.textContent = 'Copied!';
+          setTimeout(() => {
+            trackingCodeDisplay.textContent = originalText;
+          }, 1000);
+        });
+      }
+    });
+  }
+  
+  const closeSendTrackingBtn = $('#closeSendTrackingModal');
+  if (closeSendTrackingBtn) {
+    closeSendTrackingBtn.addEventListener('click', closeTrackingModal);
+  }
+  
+  const confirmSendTrackingBtn = $('#confirmSendTracking');
+  if (confirmSendTrackingBtn) {
+    confirmSendTrackingBtn.addEventListener('click', sendTracking);
+  }
+  
+  // Close modal on backdrop click
+  const trackingModal = $('#sendTrackingModal');
+  if (trackingModal) {
+    trackingModal.addEventListener('click', (e) => {
+      if (e.target === trackingModal) {
+        closeTrackingModal();
+      }
+    });
+  }
+})();
+</script>
+
 </body>
 </html>

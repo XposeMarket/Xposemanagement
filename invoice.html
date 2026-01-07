@@ -90,16 +90,6 @@
           </div>
         </label>
       </div>
-      
-      <div id="googleReviewContainer" style="margin-bottom:16px;display:none;">
-        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--line);">
-          <input type="checkbox" id="sendGoogleReviewCheckbox" style="width:20px;height:20px;">
-          <div>
-            <strong>⭐ Request Google Review</strong>
-            <div style="font-size:0.875rem;color:var(--muted);">Ask customer to leave a Google review</div>
-          </div>
-        </label>
-      </div>
 
       <div id="sendInvoiceNoContact" style="display:none;padding:12px;background:#fef3c7;border-radius:8px;color:#92400e;margin-bottom:16px;">
         <strong>⚠️ No contact info found</strong>
@@ -1167,28 +1157,8 @@ import { getShopData } from './helpers/storage.js';
           .eq('id', inv.shop_id)
           .single();
         
-        if (shopData?.google_business_url) {
-          hasGoogleBusiness = true;
-          // Store for later use
-          modal.dataset.googleReviewUrl = shopData.google_business_url;
-        }
       } catch (e) {
         console.warn('[SendInvoice] Could not check Google Business:', e);
-      }
-    }
-    
-    // Show/hide Google Review checkbox
-    const googleReviewContainer = document.getElementById('googleReviewContainer');
-    const googleReviewCheckbox = document.getElementById('sendGoogleReviewCheckbox');
-    if (googleReviewContainer) {
-      if (hasGoogleBusiness && (customerEmail || customerPhone)) {
-        googleReviewContainer.style.display = 'block';
-        if (googleReviewCheckbox) {
-          googleReviewCheckbox.checked = false;
-          googleReviewCheckbox.disabled = false;
-        }
-      } else {
-        googleReviewContainer.style.display = 'none';
       }
     }
 
@@ -1225,13 +1195,11 @@ import { getShopData } from './helpers/storage.js';
     const statusEl = document.getElementById('sendInvoiceStatus');
     const emailCheckbox = document.getElementById('sendEmailCheckbox');
     const smsCheckbox = document.getElementById('sendSmsCheckbox');
-    const googleReviewCheckbox = document.getElementById('sendGoogleReviewCheckbox');
 
     const sendEmail = emailCheckbox?.checked && !emailCheckbox?.disabled;
     const sendSms = smsCheckbox?.checked && !smsCheckbox?.disabled;
-    const sendGoogleReview = googleReviewCheckbox?.checked && !googleReviewCheckbox?.disabled;
 
-    console.log('[SendInvoice] sendEmail:', sendEmail, 'sendSms:', sendSms, 'sendGoogleReview:', sendGoogleReview);
+    console.log('[SendInvoice] sendEmail:', sendEmail, 'sendSms:', sendSms);
 
     if (!sendEmail && !sendSms) {
       console.warn('[SendInvoice] No delivery method selected');
@@ -1260,17 +1228,13 @@ import { getShopData } from './helpers/storage.js';
       // Always use Vercel server for send-invoice (has Twilio/Resend credentials)
       const API_URL = 'https://xpose-stripe-server.vercel.app';
       
-      // Include Google review URL if checkbox is checked (only for paid invoices)
-      const googleReviewUrl = sendGoogleReview ? modal.dataset.googleReviewUrl : null;
-      
       console.log('[SendInvoice] Sending to API:', API_URL, {
         invoiceId: modal.dataset.invoiceId,
         shopId: modal.dataset.shopId,
         sendEmail,
         sendSms,
         customerEmail: modal.dataset.email,
-        customerPhone: modal.dataset.phone,
-        googleReviewUrl: googleReviewUrl ? '(included)' : null
+        customerPhone: modal.dataset.phone
       });
 
       const response = await fetch(`${API_URL}/api/send-invoice`, {
@@ -1283,8 +1247,7 @@ import { getShopData } from './helpers/storage.js';
           sendSms,
           customerEmail: modal.dataset.email || null,
           customerPhone: modal.dataset.phone || null,
-          customerName: modal.dataset.customerName || 'Customer',
-          googleReviewUrl: googleReviewUrl
+          customerName: modal.dataset.customerName || 'Customer'
         })
       });
 
@@ -1303,11 +1266,6 @@ import { getShopData } from './helpers/storage.js';
             msg = '✅ Invoice sent via email!';
           } else if (result.results?.sms?.success) {
             msg = '✅ Invoice sent via SMS!';
-          }
-          
-          // Add review request status if applicable
-          if (googleReviewUrl) {
-            msg += ' ⭐ Review request included!';
           }
           
           statusEl.innerHTML = msg;

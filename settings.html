@@ -95,7 +95,51 @@ function showNotification(message, type = 'success') {
       </div>
     </div>
     <label>Shop Logo</label><input id="shopLogoFile" type="file" accept="image/*">
-    <button id="saveShop" class="btn info" style="margin-top:10px">Save</button>
+    
+    <!-- Google Business Search Section -->
+    <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--line);">
+      <h4 style="margin-bottom:12px;">🔍 Connect Your Google Business</h4>
+      <p style="font-size:0.875rem;color:var(--muted);margin-bottom:12px;">Link your Google Business profile to send review requests to customers.</p>
+      
+      <div id="googleBusinessInfo" style="display:none;padding:12px;background:var(--bg);border-radius:8px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span style="font-size:1.25rem;">✅</span>
+          <strong id="googleBusinessName">Business Name</strong>
+        </div>
+        <a id="googleBusinessLink" href="" target="_blank" style="font-size:0.875rem;color:var(--primary);text-decoration:none;">View on Google</a>
+        <button id="changeGoogleBusiness" class="btn" style="margin-top:8px;font-size:0.875rem;">Change</button>
+      </div>
+      
+      <div id="googleSearchContainer">
+        <!-- Primary: Manual Entry -->
+        <div style="padding:16px;background:var(--bg);border-radius:8px;margin-bottom:12px;">
+          <h5 style="margin:0 0 12px 0;font-size:0.9rem;">How to find your Google review link:</h5>
+          <ol style="font-size:0.875rem;color:var(--muted);margin:0 0 16px 0;padding-left:20px;">
+            <li style="margin-bottom:8px;"><strong>Click the Quick Search button below</strong> to open Google with your business info</li>
+            <li style="margin-bottom:8px;">Click on your business name in the search results</li>
+            <li style="margin-bottom:8px;">Click the "Reviews" tab</li>
+            <li style="margin-bottom:8px;">Click "Write a review" button</li>
+            <li style="margin-bottom:8px;">Copy the entire URL from your browser address bar</li>
+            <li style="margin-bottom:8px;">Paste it below and save</li>
+          </ol>
+          
+          <button id="quickSearchGoogle" class="btn primary" style="width:100%;margin-bottom:16px;font-size:1rem;padding:12px;">🔍 Quick Search - Open Google for My Business</button>
+          
+          <label style="font-size:0.875rem;font-weight:600;display:block;margin-bottom:6px;">Business Name</label>
+          <input id="manualBusinessName" placeholder="e.g., GR Automotive" style="margin-bottom:12px;">
+          
+          <label style="font-size:0.875rem;font-weight:600;display:block;margin-bottom:6px;">Google Review URL</label>
+          <input id="manualGoogleUrl" placeholder="Paste your Google review URL here" style="margin-bottom:8px;">
+          <p style="font-size:0.75rem;color:var(--muted);margin:0 0 12px 0;">
+            💡 URL should contain google.com/maps or google.com/search with #lrd=
+          </p>
+          
+          <button id="saveManualGoogleBusiness" class="btn info" style="width:100%;font-size:1rem;padding:12px;">💾 Save Google Business Info</button>
+        </div>
+      </div>
+    </div>
+    
+    <button id="saveShop" class="btn info" style="margin-top:16px">Save</button>
     <p id="shopSaved" class="notice"></p>
   </div>
 

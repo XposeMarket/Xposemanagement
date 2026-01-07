@@ -1,29 +1,21 @@
 /**
- * API: Send Invoice via Email and/or SMS
+ * API: Send Tracking Link via SMS and/or Email
  * 
- * Endpoint: POST /api/send-invoice
+ * Endpoint: POST /api/send-tracking
  * 
  * This endpoint:
- * 1. Validates the invoice exists and belongs to the shop
+ * 1. Validates the appointment exists and belongs to the shop
  * 2. Gets customer contact info (email/phone)
- * 3. Generates a secure token for public invoice viewing
+ * 3. Generates a secure token for public tracking
  * 4. Sends email via Resend API
- * 5. Sends SMS via Twilio
- * 
- * Required env vars:
- * - SUPABASE_URL
- * - SUPABASE_SERVICE_ROLE_KEY
- * - RESEND_API_KEY
- * - TWILIO_ACCOUNT_SID
- * - TWILIO_AUTH_TOKEN
- * - APP_BASE_URL (e.g., https://xposemanagement.com)
+ * 5. Sends SMS via Twilio (with link to mobile tracker)
  */
 
 const { createClient } = require('@supabase/supabase-js');
 const crypto = require('crypto');
 
 module.exports = async function handler(req, res) {
-  console.log('🔥🔥🔥 [SendInvoice v2.0] NEW CODE IS RUNNING! 🔥🔥🔥');
+  console.log('[SendTracking] API called');
   
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -40,18 +32,19 @@ module.exports = async function handler(req, res) {
 
   try {
     const { 
-      invoiceId, 
+      appointmentId, 
       shopId, 
       sendEmail, 
       sendSms, 
       customerEmail, 
       customerPhone,
-      customerName
+      customerName,
+      trackingCode  // The appointment's existing tracking code (from frontend)
     } = req.body;
 
     // Validate required fields
-    if (!invoiceId || !shopId) {
-      return res.status(400).json({ error: 'invoiceId and shopId are required' });
+    if (!appointmentId || !shopId) {
+      return res.status(400).json({ error: 'appointmentId and shopId are required' });
     }
 
     if (!sendEmail && !sendSms) {
@@ -77,49 +70,31 @@ module.exports = async function handler(req, res) {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // First, try to get invoice from invoices table (has most up-to-date status)
-    const { data: invoiceRow, error: invoiceError } = await supabase
-      .from('invoices')
-      .select('*')
-      .eq('id', invoiceId)
+    // Fetch appointment from data table
+    const { data: shopData, error: dataError } = await supabase
+      .from('data')
+      .select('appointments, customers')
       .eq('shop_id', shopId)
       .single();
 
-    let invoice = null;
-    
-    if (invoiceRow) {
-      // Use invoice from invoices table (has current status)
-      invoice = invoiceRow;
-      console.log('[SendInvoice] Using invoice from invoices table with status:', invoice.status);
-    } else {
-      // Fallback to data table JSONB
-      const { data: shopData, error: dataError } = await supabase
-        .from('data')
-        .select('invoices, settings')
-        .eq('shop_id', shopId)
-        .single();
-
-      if (dataError || !shopData) {
-        console.error('Failed to fetch shop data:', dataError);
-        return res.status(404).json({ error: 'Shop data not found' });
-      }
-
-      invoice = (shopData.invoices || []).find(inv => inv.id === invoiceId);
-      console.log('[SendInvoice] Using invoice from data JSONB with status:', invoice?.status);
+    if (dataError || !shopData) {
+      console.error('Failed to fetch shop data:', dataError);
+      return res.status(404).json({ error: 'Shop data not found' });
     }
-    if (!invoice) {
-      return res.status(404).json({ error: 'Invoice not found' });
+
+    const appointment = (shopData.appointments || []).find(apt => apt.id === appointmentId);
+
+    if (!appointment) {
+      return res.status(404).json({ error: 'Appointment not found' });
     }
-    
-    console.log('[SendInvoice] Invoice loaded:', {
-      id: invoice.id,
-      number: invoice.number,
-      status: invoice.status,
-      statusExists: 'status' in invoice,
-      allKeys: Object.keys(invoice)
+
+    console.log('[SendTracking] Appointment loaded:', {
+      id: appointment.id,
+      status: appointment.status,
+      vehicle: appointment.vehicle
     });
 
-    // Get shop info for the email
+    // Get shop info
     const { data: shop, error: shopError } = await supabase
       .from('shops')
       .select('name, phone, email, logo')
@@ -132,54 +107,115 @@ module.exports = async function handler(req, res) {
 
     const shopName = shop?.name || 'Business';
 
-    // Generate secure token
-    const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 30); // 30 days expiry
+    // Get vehicle info for better messaging
+    const customer = shopData.customers?.find(c => c.id === appointment.customer_id);
+    const vehicleInfo = customer?.vehicles?.find(v => v.id === appointment.vehicle_id);
+    const vehicleDisplay = vehicleInfo 
+      ? `${vehicleInfo.year || ''} ${vehicleInfo.make || ''} ${vehicleInfo.model || ''}`.trim()
+      : appointment.vehicle || 'your vehicle';
 
-    // Store token in database
-    const sentVia = [];
-    if (sendEmail) sentVia.push('email');
-    if (sendSms) sentVia.push('sms');
+    // Check for existing valid token first
+    let token;
+    let shortCode;
+    let isExistingToken = false;
+    
+    // Use the appointment's tracking code if provided
+    const appointmentTrackingCode = trackingCode || null;
+    
+    const { data: existingTokens, error: fetchTokenError } = await supabase
+      .from('appointment_tokens')
+      .select('token, short_code, expires_at')
+      .eq('appointment_id', appointmentId)
+      .eq('shop_id', shopId)
+      .gte('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1);
 
-    const { error: tokenError } = await supabase
-      .from('invoice_tokens')
-      .insert({
+    if (fetchTokenError) {
+      console.warn('Error checking for existing token:', fetchTokenError);
+    }
+
+    if (existingTokens && existingTokens.length > 0) {
+      // Reuse existing token
+      token = existingTokens[0].token;
+      shortCode = existingTokens[0].short_code;
+      isExistingToken = true;
+      console.log('[SendTracking] Reusing existing token for appointment:', appointmentId);
+      
+      // Update sent_via and recipient info on existing token
+      const sentVia = [];
+      if (sendEmail) sentVia.push('email');
+      if (sendSms) sentVia.push('sms');
+      
+      // Also update short_code if we have the appointment's tracking code and it differs
+      const updatePayload = {
+        sent_via: sentVia,
+        recipient_email: customerEmail || null,
+        recipient_phone: customerPhone || null
+      };
+      
+      // If the appointment has a tracking code and it's different from the stored short_code, update it
+      if (appointmentTrackingCode && appointmentTrackingCode !== shortCode) {
+        updatePayload.short_code = appointmentTrackingCode;
+        shortCode = appointmentTrackingCode;
+        console.log('[SendTracking] Updating short_code to match appointment tracking code:', appointmentTrackingCode);
+      }
+      
+      await supabase
+        .from('appointment_tokens')
+        .update(updatePayload)
+        .eq('token', token);
+    } else {
+      // Generate new secure token
+      token = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30); // 30 days expiry
+
+      // Store token in database
+      const sentVia = [];
+      if (sendEmail) sentVia.push('email');
+      if (sendSms) sentVia.push('sms');
+
+      // Use the appointment's tracking code as the short_code if provided
+      const insertPayload = {
         token,
-        invoice_id: invoiceId,
+        appointment_id: appointmentId,
         shop_id: shopId,
         expires_at: expiresAt.toISOString(),
         sent_via: sentVia,
         recipient_email: customerEmail || null,
         recipient_phone: customerPhone || null
-      });
+      };
+      
+      // If we have the appointment's tracking code, use it as the short_code
+      if (appointmentTrackingCode) {
+        insertPayload.short_code = appointmentTrackingCode;
+        console.log('[SendTracking] Using appointment tracking code as short_code:', appointmentTrackingCode);
+      }
 
-    if (tokenError) {
-      console.error('Failed to create token:', tokenError);
-      return res.status(500).json({ error: 'Failed to create invoice link' });
+      const { data: newTokenData, error: tokenError } = await supabase
+        .from('appointment_tokens')
+        .insert(insertPayload)
+        .select('short_code')
+        .single();
+
+      if (tokenError) {
+        console.error('Failed to create token:', tokenError);
+        return res.status(500).json({ error: 'Failed to create tracking link' });
+      }
+      
+      shortCode = newTokenData?.short_code || appointmentTrackingCode;
+      console.log('[SendTracking] Created new token for appointment:', appointmentId, 'with short_code:', shortCode);
     }
 
-    // Build invoice URL
+    // Build tracking URLs
     const baseUrl = process.env.APP_BASE_URL || 'https://xpose.management';
-    const invoiceUrl = `${baseUrl}/public-invoice.html?token=${token}`;
-
-    // Calculate invoice total for the message
-    const items = invoice.items || [];
-    const subtotal = items.reduce((sum, itm) => sum + ((itm.qty || 1) * (itm.price || 0)), 0);
-    const taxAmount = subtotal * ((invoice.tax_rate || 0) / 100);
-    const discountAmount = subtotal * ((invoice.discount || 0) / 100);
-    const grandTotal = subtotal + taxAmount - discountAmount;
+    // Email uses the regular tracker page
+    const trackingUrl = `${baseUrl}/public-tracking.html?token=${token}`;
+    // SMS uses the mobile-optimized tracker page (no code entry needed)
+    const mobileTrackingUrl = `${baseUrl}/public-tracking-mobile.html?token=${token}`;
 
     const results = { email: null, sms: null };
-    
-    // Check if invoice is already paid
-    console.log('[SendInvoice] Invoice status check:', {
-      invoiceId,
-      status: invoice.status,
-      statusType: typeof invoice.status,
-      isPaid: invoice.status && invoice.status.toLowerCase() === 'paid'
-    });
-    const isPaid = invoice.status && invoice.status.toLowerCase() === 'paid';
 
     // Send Email via Resend
     if (sendEmail && customerEmail) {
@@ -187,19 +223,17 @@ module.exports = async function handler(req, res) {
       
       if (resendKey) {
         try {
-          const emailHtml = buildEmailHtml({
+          const emailHtml = buildTrackingEmailHtml({
             shopName,
             customerName: customerName || 'Customer',
-            invoiceNumber: invoice.number || invoice.id,
-            grandTotal: grandTotal.toFixed(2),
-            invoiceUrl,
+            vehicleDisplay,
+            scheduledDate: appointment.date,
+            trackingUrl,
             shopLogo: shop?.logo,
-            isPaid: isPaid
+            status: appointment.status || 'scheduled'
           });
           
-          const emailSubject = isPaid 
-            ? `Paid Invoice #${invoice.number || invoice.id} - Thank You!`
-            : `Invoice #${invoice.number || invoice.id} from ${shopName}`;
+          const emailSubject = `Track Your ${vehicleDisplay} - ${shopName}`;
 
           const emailResponse = await fetch('https://api.resend.com/emails', {
             method: 'POST',
@@ -208,7 +242,7 @@ module.exports = async function handler(req, res) {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-              from: `${shopName} <noreply@invoices.xpose.management>`,
+              from: `${shopName} <service@xpose.management>`,
               to: [customerEmail],
               subject: emailSubject,
               html: emailHtml
@@ -219,7 +253,7 @@ module.exports = async function handler(req, res) {
           
           if (emailResponse.ok) {
             results.email = { success: true, id: emailResult.id };
-            console.log('✅ Invoice email sent:', emailResult.id);
+            console.log('✅ Tracking email sent:', emailResult.id);
           } else {
             results.email = { success: false, error: emailResult.message || 'Email failed' };
             console.error('❌ Email send failed:', emailResult);
@@ -234,7 +268,7 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // Send SMS via Twilio
+    // Send SMS via Twilio - uses mobile tracking URL
     if (sendSms && customerPhone) {
       const twilioSid = process.env.TWILIO_ACCOUNT_SID;
       const twilioAuth = process.env.TWILIO_AUTH_TOKEN;
@@ -249,9 +283,12 @@ module.exports = async function handler(req, res) {
             .single();
 
           if (twilioNumber?.phone_number) {
-            const smsBody = isPaid
-              ? `${shopName}: Your Invoice #${invoice.number || invoice.id} has been paid, thank you! You can view your paid invoice below: ${invoiceUrl}`
-              : `${shopName}: Your invoice #${invoice.number || invoice.id} for $${grandTotal.toFixed(2)} is ready. View it here: ${invoiceUrl}`;
+            const scheduledDate = appointment.preferred_date 
+              ? new Date(appointment.preferred_date).toLocaleDateString()
+              : 'soon';
+
+            // Use the mobile tracking URL for SMS (token-based, no code entry)
+            const smsBody = `${shopName}: Track your ${vehicleDisplay} status here: ${mobileTrackingUrl}`;
 
             // Format phone number to E.164
             let toPhone = customerPhone.replace(/\D/g, '');
@@ -278,7 +315,7 @@ module.exports = async function handler(req, res) {
 
             if (smsResponse.ok) {
               results.sms = { success: true, sid: smsResult.sid };
-              console.log('✅ Invoice SMS sent:', smsResult.sid);
+              console.log('✅ Tracking SMS sent:', smsResult.sid);
             } else {
               results.sms = { success: false, error: smsResult.message || 'SMS failed' };
               console.error('❌ SMS send failed:', smsResult);
@@ -302,28 +339,37 @@ module.exports = async function handler(req, res) {
     
     return res.status(success ? 200 : 207).json({
       success,
-      invoiceUrl,
+      trackingUrl,
+      mobileTrackingUrl,
       token,
+      shortCode,
+      isExistingToken,
       results
     });
 
   } catch (error) {
-    console.error('❌ Send invoice error:', error);
+    console.error('❌ Send tracking error:', error);
     return res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 };
 
 /**
- * Build HTML email content
+ * Build HTML email content for tracking link
  */
-function buildEmailHtml({ shopName, customerName, invoiceNumber, grandTotal, invoiceUrl, shopLogo, isPaid = false }) {
-  // Shop logo in header (your customer's logo)
+function buildTrackingEmailHtml({ shopName, customerName, vehicleDisplay, scheduledDate, trackingUrl, shopLogo, status }) {
   const logoHtml = shopLogo 
     ? `<img src="${shopLogo}" alt="${shopName}" style="max-height: 60px; margin-bottom: 20px;">`
     : '';
 
-  // Xpose Management logo URL
-  const xposeLogoUrl = 'https://xpose.management/assets/XposeManagementCRMlogo.png';
+  const formattedDate = scheduledDate 
+    ? new Date(scheduledDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    : 'soon';
+
+  const statusText = status === 'in-progress' 
+    ? 'is currently being serviced'
+    : status === 'completed'
+    ? 'service has been completed'
+    : `is scheduled for ${formattedDate}`;
 
   return `
 <!DOCTYPE html>
@@ -331,7 +377,7 @@ function buildEmailHtml({ shopName, customerName, invoiceNumber, grandTotal, inv
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Invoice from ${shopName}</title>
+  <title>Track Your Vehicle - ${shopName}</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 20px;">
@@ -340,7 +386,7 @@ function buildEmailHtml({ shopName, customerName, invoiceNumber, grandTotal, inv
         <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
           <!-- Header -->
           <tr>
-            <td style="padding: 30px; text-align: center; background-color: #1e40af;">
+            <td style="padding: 30px; text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
               ${logoHtml}
               <h1 style="margin: 0; color: #ffffff; font-size: 24px;">${shopName}</h1>
             </td>
@@ -353,28 +399,16 @@ function buildEmailHtml({ shopName, customerName, invoiceNumber, grandTotal, inv
                 Hi ${customerName},
               </p>
               <p style="margin: 0 0 30px; font-size: 16px; color: #333;">
-                ${isPaid ? 'Your invoice has been paid - thank you for your business!' : 'Thank you for your business! Your invoice is ready for viewing.'}
+                Your ${vehicleDisplay} ${statusText}. You can track the status of your vehicle in real-time using the link below.
               </p>
               
-              <!-- Invoice Summary Box -->
-              <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; border-radius: 8px; margin-bottom: 30px;">
+              <!-- Vehicle Info Box -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; margin-bottom: 30px;">
                 <tr>
-                  <td style="padding: 25px;">
-                    <table width="100%">
-                      <tr>
-                        <td style="font-size: 14px; color: #666;">Invoice Number</td>
-                        <td align="right" style="font-size: 16px; font-weight: 600; color: #333;">#${invoiceNumber}</td>
-                      </tr>
-                      <tr>
-                        <td colspan="2" style="padding: 10px 0;">
-                          <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0;">
-                        </td>
-                      </tr>
-                      <tr>
-                        <td style="font-size: 14px; color: #666;">${isPaid ? 'Amount Paid' : 'Amount Due'}</td>
-                        <td align="right" style="font-size: 24px; font-weight: 700; color: ${isPaid ? '#10b981' : '#1e40af'};">$${grandTotal}</td>
-                      </tr>
-                    </table>
+                  <td style="padding: 25px; color: white;">
+                    <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">Your Vehicle</div>
+                    <div style="font-size: 20px; font-weight: 700; margin-bottom: 12px;">${vehicleDisplay}</div>
+                    <div style="font-size: 14px; opacity: 0.9;">Status: ${status.replace('-', ' ').toUpperCase()}</div>
                   </td>
                 </tr>
               </table>
@@ -383,8 +417,8 @@ function buildEmailHtml({ shopName, customerName, invoiceNumber, grandTotal, inv
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                   <td align="center">
-                    <a href="${invoiceUrl}" style="display: inline-block; padding: 16px 40px; background-color: #1e40af; color: #ffffff; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600;">
-                      View Invoice
+                    <a href="${trackingUrl}" style="display: inline-block; padding: 16px 40px; background-color: #1e40af; color: #ffffff; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600;">
+                      Track Your Vehicle
                     </a>
                   </td>
                 </tr>
@@ -396,24 +430,12 @@ function buildEmailHtml({ shopName, customerName, invoiceNumber, grandTotal, inv
             </td>
           </tr>
           
-          <!-- Footer with Xpose Management Branding -->
+          <!-- Footer -->
           <tr>
             <td style="padding: 20px 30px; background-color: #f8fafc; border-top: 1px solid #e5e5e5;">
-              <!-- Xpose Management Logo -->
-              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 15px;">
-                <tr>
-                  <td align="center">
-                    <img src="${xposeLogoUrl}" alt="Xpose Management" style="height: 40px; width: auto;">
-                  </td>
-                </tr>
-              </table>
-              
-              <!-- Powered By Text -->
               <p style="margin: 0; font-size: 12px; color: #999; text-align: center;">
-                Powered by <a href="https://xpose.management" style="color: #1e40af; text-decoration: none; font-weight: 600;">Xpose Management</a>
-              </p>
-              <p style="margin: 8px 0 0; font-size: 11px; color: #bbb; text-align: center;">
-                Modern business management for automotive, service, and retail businesses
+                This tracking link was sent from ${shopName} via 
+                <a href="https://xpose.management" style="color: #1e40af;">Xpose Management</a>
               </p>
             </td>
           </tr>

@@ -1,3 +1,17 @@
+// Listen for partAdded event to refresh invoice modal UI
+window.addEventListener('partAdded', async (e) => {
+  // Try to get the jobId from the event, then find the invoice by appointment_id
+  const jobId = e.detail && e.detail.jobId;
+  if (!jobId) return;
+  // Find the job and its appointment
+  const job = (window.jobs || []).find(j => j.id === jobId);
+  if (!job || !job.appointment_id) return;
+  // Find the invoice for this appointment
+  const inv = (typeof invoices !== 'undefined' ? invoices : (window.invoices || [])).find(i => i.appointment_id === job.appointment_id);
+  if (inv && typeof openInvoiceModal === 'function') {
+    openInvoiceModal(inv);
+  }
+});
 
 // Modal for invoice actions (mobile) - must be global for row click
 window.openInvoiceActionsModal = function(inv) {
@@ -62,6 +76,7 @@ window.openInvoiceActionsModal = function(inv) {
  */
 
 import { getSupabaseClient } from '../helpers/supabase.js';
+import { createShopNotification } from '../helpers/shop-notifications.js';
 
 function setupInvoices() {
   // Helper to map invoice status to tag class for color
@@ -390,7 +405,14 @@ function setupInvoices() {
     const addPartEl = document.getElementById('addPart');
     const addLaborEl = document.getElementById('addLabor');
     const addServiceEl = document.getElementById('addService');
-    if (addPartEl) addPartEl.onclick = () => { inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'part' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
+    if (addPartEl) addPartEl.onclick = () => {
+      const job = (window.jobs || []).find(j => j.appointment_id === inv.appointment_id) || null;
+      if (window.partPricingModal) {
+        window.partPricingModal.show({ manual_entry: true, name: '' }, job ? job.id : null, job ? (job.vehicle || job.vehicle_display || null) : null);
+      } else {
+        inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'part' }); renderItems(inv.items); scrollInvoiceModalToBottom();
+      }
+    };
     if (addLaborEl) addLaborEl.onclick = () => { inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'labor' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
     if (addServiceEl) addServiceEl.onclick = () => { inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'service' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
 
@@ -454,7 +476,15 @@ function setupInvoices() {
     const addLaborBtn = document.getElementById('addLaborBtn');
     const addServiceBtn = document.getElementById('addServiceBtn');
     const cancelItemBtn = document.getElementById('cancelItemBtn');
-    if (addPartBtn) addPartBtn.onclick = () => { itemTypeModal.classList.add('hidden'); inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'part' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
+    if (addPartBtn) addPartBtn.onclick = () => {
+      const job = (window.jobs || []).find(j => j.appointment_id === inv.appointment_id) || null;
+      itemTypeModal.classList.add('hidden');
+      if (window.partPricingModal) {
+        window.partPricingModal.show({ manual_entry: true, name: '' }, job ? job.id : null, job ? (job.vehicle || job.vehicle_display || null) : null);
+      } else {
+        inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'part' }); renderItems(inv.items); scrollInvoiceModalToBottom();
+      }
+    };
     if (addLaborBtn) addLaborBtn.onclick = () => { itemTypeModal.classList.add('hidden'); inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'labor' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
     if (addServiceBtn) addServiceBtn.onclick = () => { itemTypeModal.classList.add('hidden'); inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'service' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
     if (cancelItemBtn) cancelItemBtn.onclick = () => { itemTypeModal.classList.add('hidden'); };
@@ -501,6 +531,117 @@ function setupInvoices() {
       document.getElementById('closeInv').onclick = () => {
         document.getElementById('invModal').classList.add('hidden');
       };
+      
+      // Send Estimate button
+      // WORKFLOW: 
+      // 1. Services/inventory can be added from Jobs or Invoice pages
+      // 2. They sit in the invoice with NO estimate_status (not blocking anything)
+      // 3. Staff clicks "Send Estimate" → items marked as estimate_status: 'pending'
+      // 4. Customer sees pending estimates on kiosk with Approve/Decline buttons
+      // 5. Customer approves → estimate_status: 'approved', shows in invoice total
+      // 6. Customer declines → item removed from invoice
+      // 7. IMPORTANT: estimate_status does NOT block checkout - invoices can be paid regardless
+      // 8. This system is ONLY for in-person customers at kiosks
+      const sendEstimateBtn = document.getElementById('sendEstimateBtn');
+      if (sendEstimateBtn) {
+        sendEstimateBtn.onclick = async () => {
+          console.log('📋 Send Estimate clicked');
+          
+          // Only allow sending estimates if invoice has an appointment_id
+          const aptId = document.getElementById('invAppt').value;
+          console.log('📋 Appointment ID:', aptId);
+          
+          if (!aptId) {
+            showNotification('This invoice must be linked to an appointment to send an estimate', 'warning');
+            return;
+          }
+          
+          // First, rebuild items from DOM to get current state
+          const priorItems = Array.isArray(inv.items) ? JSON.parse(JSON.stringify(inv.items)) : [];
+          const domRows = Array.from(document.querySelectorAll('#items .grid'));
+          console.log('📋 DOM rows found:', domRows.length);
+          
+          const currentItems = domRows.map(row => {
+            const rawNameEl = row.querySelector('.itm-name');
+            const rawSelect = row.querySelector('.itm-labor-select');
+            let rawName = '';
+            if (rawSelect) {
+              if (rawSelect.value && rawSelect.value !== '__custom__') {
+                rawName = rawSelect.value;
+              } else {
+                rawName = rawNameEl ? rawNameEl.value : (rawSelect ? rawSelect.value : '');
+              }
+            } else {
+              rawName = rawNameEl ? rawNameEl.value : '';
+            }
+            const name = (rawName || '').replace(/\s*-\s*\$\d+(?:\.\d+)?\/hr\s*$/i, '').trim();
+            const qty = parseFloat(row.querySelector('.itm-qty')?.value) || 1;
+            const priceRaw = row.querySelector('.itm-price')?.value;
+            const price = priceRaw === '' ? 0 : parseFloat(priceRaw) || 0;
+            const typeEl = row.querySelector('.itm-type');
+            const type = typeEl ? (typeEl.value || 'service') : 'service';
+
+            // Find matching prior item for existing estimate_status
+            let matched = priorItems.find(pi => (pi.name || '').toString().trim() === name);
+            
+            const item = { name, qty, price, type };
+            if (matched) {
+              if (matched.cost_price) item.cost_price = matched.cost_price;
+              if (matched.estimate_status) item.estimate_status = matched.estimate_status;
+              if (matched.estimate_sent_at) item.estimate_sent_at = matched.estimate_sent_at;
+              if (matched.estimate_approved_at) item.estimate_approved_at = matched.estimate_approved_at;
+            }
+            return item;
+          });
+          
+          console.log('📋 Current items from DOM:', currentItems);
+          
+          // Filter items - only services and inventory (no parts, no labor)
+          // Only send items that don't already have an estimate_status
+          const estimateItems = currentItems.filter(item => {
+            const itemType = (item.type || '').toLowerCase();
+            // Exclude parts and labor
+            if (itemType === 'part' || itemType === 'labor') return false;
+            // Already has estimate status? Skip
+            if (item.estimate_status) return false;
+            return true;
+          });
+          
+          console.log('📋 Estimate items to send:', estimateItems);
+          
+          if (estimateItems.length === 0) {
+            console.log('📋 No new estimate items to mark pending — opening send modal to allow resend');
+            showNotification('No new services or inventory items to send as estimate — opening send modal', 'info');
+            // Update inv.items from DOM so send modal has current data
+            inv.items = currentItems;
+            inv.appointment_id = aptId;
+            // Open the send invoice modal so user can send/resend
+            showSendInvoiceModal(inv);
+            return;
+          }
+          
+          // Mark items as pending estimate
+          estimateItems.forEach(item => {
+            item.estimate_status = 'pending';
+            item.estimate_sent_at = new Date().toISOString();
+          });
+          
+          console.log(`📤 Sending ${estimateItems.length} item(s) as estimate:`, estimateItems.map(i => ({name: i.name, type: i.type, status: i.estimate_status})));
+          
+          // Update inv.items with the marked items
+          inv.items = currentItems;
+          inv.appointment_id = aptId;
+          
+          // Save invoice directly to database without rebuilding from DOM
+          await saveInvoiceDirectly(inv);
+          
+          // Close the invoice modal
+          document.getElementById('invModal').classList.add('hidden');
+          
+          // NOW: Open the send invoice modal (same as invoice.html)
+          showSendInvoiceModal(inv);
+        };
+      }
       // Note: generic Add Item button removed; only Parts and Labor are allowed
   }
 
@@ -1129,6 +1270,69 @@ function setupInvoices() {
     }, 40);
   }
 
+  // Save invoice directly without rebuilding items from DOM
+  // Used for estimate sending where items already have estimate_status set
+  async function saveInvoiceDirectly(inv) {
+    console.log('[saveInvoiceDirectly] Saving invoice with items:', inv.items?.map(i => ({name: i.name, status: i.estimate_status})));
+    
+    inv.updated_at = new Date().toISOString();
+    
+    // Update invoice in global invoices array
+    const idx = invoices.findIndex(i => i.id === inv.id);
+    if (idx !== -1) {
+      invoices[idx] = { ...inv };
+    } else {
+      invoices.push({ ...inv });
+    }
+    
+    // Save to Supabase
+    if (supabase) {
+      // Get current data
+      const { data: currentData, error: fetchError } = await supabase
+        .from('data')
+        .select('*')
+        .eq('shop_id', shopId)
+        .single();
+      
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error('[saveInvoiceDirectly] Supabase fetch error:', fetchError);
+        throw fetchError;
+      }
+      
+      // Sanitize internal flags
+      const safeInvoices = (invoices || []).map(inv => ({
+        ...inv,
+        items: (inv.items || []).map(i => {
+          const copy = { ...i };
+          delete copy._attached;
+          delete copy._hasAttachedLabor;
+          return copy;
+        })
+      }));
+
+      const payload = {
+        shop_id: shopId,
+        invoices: safeInvoices,
+        appointments: currentData?.appointments || [],
+        jobs: currentData?.jobs || [],
+        settings: currentData?.settings || {},
+        threads: currentData?.threads || [],
+        updated_at: new Date().toISOString()
+      };
+      
+      const { error } = await supabase.from('data').upsert(payload, { onConflict: 'shop_id' });
+      if (error) {
+        console.error('[saveInvoiceDirectly] Error saving:', error);
+        alert('Error saving invoice: ' + error.message);
+        return;
+      }
+      console.log('[saveInvoiceDirectly] ✅ Saved to data table with estimate_status preserved');
+    }
+    
+    // Refresh UI
+    renderTable();
+  }
+
   // Save invoice (upserts to invoices table)
   async function saveInvoice(inv) {
     console.log('[saveInvoice] called with:', inv);
@@ -1238,6 +1442,18 @@ function setupInvoices() {
         if (matched) {
           if (typeof matched.cost_price !== 'undefined') item.cost_price = Number(matched.cost_price);
           else if (typeof matched.cost !== 'undefined') item.cost_price = Number(matched.cost);
+          // Preserve estimate_status and related fields
+          if (matched.estimate_status) item.estimate_status = matched.estimate_status;
+          if (matched.estimate_sent_at) item.estimate_sent_at = matched.estimate_sent_at;
+          if (matched.estimate_approved_at) item.estimate_approved_at = matched.estimate_approved_at;
+        } else {
+          // NEW ITEM - automatically mark as pending if it's a service or inventory (not part/labor)
+          const itemType = (type || '').toLowerCase();
+          if (itemType !== 'part' && itemType !== 'labor') {
+            item.estimate_status = 'pending';
+            item.estimate_sent_at = new Date().toISOString();
+            console.log(`🔔 New service/inventory item "${name}" marked as pending for customer approval`);
+          }
         }
         return item;
       });
@@ -1464,6 +1680,36 @@ function setupInvoices() {
     renderPrevInvoices();
     showNotification('Invoice marked as paid!');
     
+    // Create shop-wide notification and show immediate panel notification
+    try {
+      const authResp = supabase ? await supabase.auth.getUser() : null;
+      const authId = authResp?.data?.user?.id || authResp?.user?.id || null;
+      const relatedIdVal = (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inv.id)) ? inv.id : null;
+      const customerName = `${inv.customer_first || ''} ${inv.customer_last || ''}`.trim() || inv.customer || 'Customer';
+      await createShopNotification({
+        supabase: supabase,
+        shopId,
+        type: 'invoice_paid',
+        category: 'invoice',
+        title: `${customerName} — Invoice Paid`,
+        message: `Invoice #${inv.number || inv.id} for ${customerName} was marked as paid.`,
+        relatedId: relatedIdVal,
+        relatedType: 'invoice',
+        metadata: {
+          invoice_number: inv.number || inv.id,
+          customer: `${inv.customer_first || ''} ${inv.customer_last || ''}`.trim(),
+          amount: calcTotal(inv)
+        },
+        priority: 'normal',
+        createdBy: authId
+      });
+      if (window.addNotificationToPanel) {
+        window.addNotificationToPanel({ type: 'info', message: `${customerName} — Invoice marked as paid`, data: { invoiceId: inv.id } });
+      }
+    } catch (e) {
+      console.warn('[Invoices] createShopNotification failed:', e);
+    }
+
     // Show send invoice modal after marking as paid
     showSendInvoiceModal(inv);
   }
@@ -1578,37 +1824,6 @@ function setupInvoices() {
     modal.dataset.phone = customerPhone;
     modal.dataset.customerName = customerName;
 
-    // Google Review option - only show for PAID invoices
-    const googleReviewContainer = document.getElementById('googleReviewContainer');
-    const googleReviewCheckbox = document.getElementById('sendGoogleReviewCheckbox');
-    const isPaid = inv.status === 'paid';
-    
-    if (googleReviewContainer && isPaid) {
-      // Fetch shop's Google Business URL
-      try {
-        const { data: shopData } = await supabase
-          .from('shops')
-          .select('google_business_url')
-          .eq('id', shopId)
-          .single();
-        
-        if (shopData?.google_business_url) {
-          googleReviewContainer.style.display = 'block';
-          modal.dataset.googleReviewUrl = shopData.google_business_url;
-          if (googleReviewCheckbox) googleReviewCheckbox.checked = true;
-        } else {
-          googleReviewContainer.style.display = 'none';
-          modal.dataset.googleReviewUrl = '';
-        }
-      } catch (e) {
-        console.warn('[SendInvoice] Could not fetch Google Business URL:', e);
-        googleReviewContainer.style.display = 'none';
-      }
-    } else if (googleReviewContainer) {
-      googleReviewContainer.style.display = 'none';
-      modal.dataset.googleReviewUrl = '';
-    }
-
     // Wire up send button
     if (sendBtn) {
       sendBtn.onclick = () => sendInvoiceToCustomer();
@@ -1634,11 +1849,9 @@ function setupInvoices() {
     const statusEl = document.getElementById('sendInvoiceStatus');
     const emailCheckbox = document.getElementById('sendEmailCheckbox');
     const smsCheckbox = document.getElementById('sendSmsCheckbox');
-    const googleReviewCheckbox = document.getElementById('sendGoogleReviewCheckbox');
 
     const sendEmail = emailCheckbox?.checked && !emailCheckbox?.disabled;
     const sendSms = smsCheckbox?.checked && !smsCheckbox?.disabled;
-    const sendGoogleReview = googleReviewCheckbox?.checked && modal.dataset.googleReviewUrl;
 
     if (!sendEmail && !sendSms) {
       if (statusEl) {
@@ -1677,8 +1890,7 @@ function setupInvoices() {
           sendSms,
           customerEmail: modal.dataset.email || null,
           customerPhone: modal.dataset.phone || null,
-          customerName: modal.dataset.customerName || 'Customer',
-          googleReviewUrl: sendGoogleReview ? modal.dataset.googleReviewUrl : null
+          customerName: modal.dataset.customerName || 'Customer'
         })
       });
 
@@ -1812,6 +2024,36 @@ function setupInvoices() {
     renderInvoices();
     renderPrevInvoices();
     showNotification('Invoice marked as unpaid!');
+
+    // Create shop-wide notification and show immediate panel notification for reopened invoice
+    try {
+      const authResp = supabase ? await supabase.auth.getUser() : null;
+      const authId = authResp?.data?.user?.id || authResp?.user?.id || null;
+      const relatedIdVal = (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inv.id)) ? inv.id : null;
+      const customerName = `${inv.customer_first || ''} ${inv.customer_last || ''}`.trim() || inv.customer || 'Customer';
+      await createShopNotification({
+        supabase: supabase,
+        shopId,
+        type: 'invoice_reopened',
+        category: 'invoice',
+        title: `${customerName} — Invoice Reopened`,
+        message: `Invoice #${inv.number || inv.id} for ${customerName} was reopened/marked unpaid.`,
+        relatedId: relatedIdVal,
+        relatedType: 'invoice',
+        metadata: {
+          invoice_number: inv.number || inv.id,
+          customer: `${inv.customer_first || ''} ${inv.customer_last || ''}`.trim(),
+          amount: calcTotal(inv)
+        },
+        priority: 'normal',
+        createdBy: authId
+      });
+      if (window.addNotificationToPanel) {
+        window.addNotificationToPanel({ type: 'warning', message: `${customerName} — Invoice reopened`, data: { invoiceId: inv.id } });
+      }
+    } catch (e) {
+      console.warn('[Invoices] createShopNotification failed:', e);
+    }
   }
 
   // Open remove invoice modal
@@ -2154,3 +2396,458 @@ function setupInvoices() {
 }
 
 export { setupInvoices };
+
+// ============================================
+// MISSING INVOICE FUNCTIONS FOR PART PRICING MODAL
+// Called by partPricingModal.js
+// ============================================
+
+/**
+ * Get labor rates from settings
+ */
+function getLaborRates() {
+  try {
+    const data = JSON.parse(localStorage.getItem('xm_data') || '{}');
+    return (data.settings && data.settings.labor_rates) || [];
+  } catch (e) {
+    console.error('[getLaborRates] Error:', e);
+    return [];
+  }
+}
+
+/**
+ * Add a part to the currently open invoice
+ * Called from partPricingModal.js when user saves a part
+ * 
+ * @param {string|null} partId - Part ID if from inventory/catalog
+ * @param {string} name - Part name/description
+ * @param {number} quantity - Quantity
+ * @param {number} sellPrice - Sell price (what customer pays)
+ * @param {number} costPrice - Cost price (what shop pays)
+ * @param {string} groupName - P+R group title
+ * @param {boolean} inventoryAlreadyDeducted - Whether inventory was already deducted
+ * @returns {string} Invoice item ID (for labor tracking)
+ */
+window.addPartToInvoice = async function(partId, name, quantity, sellPrice, costPrice, groupName, inventoryAlreadyDeducted) {
+  console.log('[addPartToInvoice] called with:', { partId, name, quantity, sellPrice, costPrice, groupName });
+  
+  // Find the currently open invoice modal
+  const invModal = document.getElementById('invModal');
+  if (!invModal || invModal.classList.contains('hidden')) {
+    console.error('[addPartToInvoice] No invoice modal is currently open!');
+    try {
+      showNotification('Please open an invoice first', 'error');
+    } catch (e) {
+      alert('Please open an invoice first');
+    }
+    return null;
+  }
+  
+  // Get current invoice from modal title
+  const invTitle = document.getElementById('invTitle');
+  if (!invTitle) {
+    console.error('[addPartToInvoice] Cannot find invoice title element');
+    return null;
+  }
+  
+  // Find all invoice items currently in the DOM
+  const itemsDiv = document.getElementById('items');
+  if (!itemsDiv) {
+    console.error('[addPartToInvoice] Cannot find items container');
+    return null;
+  }
+  
+  // Create a unique ID for this invoice item
+  const itemId = `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  // Create the new invoice item row directly in the DOM
+  const block = document.createElement('div');
+  block.className = 'inv-item-block';
+  block.dataset.itemId = itemId;
+  
+  const meta = document.createElement('div');
+  meta.className = 'inv-item-meta';
+  const costTotal = quantity * costPrice;
+  if (costTotal > 0) {
+    meta.textContent = `Actual Part Price: $${costTotal.toFixed(2)}`;
+  } else {
+    meta.textContent = `Parts: $${(quantity * sellPrice).toFixed(2)}`;
+  }
+  
+  const row = document.createElement('div');
+  row.className = 'grid cols-3 item-row';
+  row.style.position = 'relative';
+  
+  // Name input
+  const nameInput = document.createElement('input');
+  nameInput.className = 'itm-name';
+  nameInput.value = groupName || name;
+  nameInput.placeholder = 'Part name/description';
+  
+  // Quantity input
+  const qtyInput = document.createElement('input');
+  qtyInput.type = 'number';
+  qtyInput.className = 'itm-qty';
+  qtyInput.value = quantity;
+  qtyInput.min = 0;
+  qtyInput.placeholder = 'Qty';
+  
+  // Price input
+  const priceInput = document.createElement('input');
+  priceInput.type = 'number';
+  priceInput.step = '0.01';
+  priceInput.className = 'itm-price';
+  priceInput.value = sellPrice;
+  priceInput.placeholder = 'Price';
+  
+  // Type (hidden)
+  const typeInput = document.createElement('input');
+  typeInput.type = 'hidden';
+  typeInput.className = 'itm-type';
+  typeInput.value = 'part';
+  
+  // Store cost price as data attribute
+  nameInput.dataset.costPrice = costPrice;
+  
+  row.appendChild(nameInput);
+  row.appendChild(qtyInput);
+  row.appendChild(priceInput);
+  row.appendChild(typeInput);
+  
+  // Add REMOVE button
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'btn small danger itm-remove inv-abs-remove';
+  removeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg>`;
+  removeBtn.style.position = 'absolute';
+  removeBtn.style.right = '0';
+  removeBtn.style.top = '50%';
+  removeBtn.style.transform = 'translateY(-50%)';
+  removeBtn.onclick = () => {
+    // Check if there's an attached labor row
+    const nextBlock = block.nextElementSibling;
+    // Build modal overlay matching app style
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    if (nextBlock && nextBlock.dataset.attachedTo === itemId) {
+      modal.innerHTML = `
+        <div class="modal-content card" style="max-width:420px;margin:18vh auto;padding:16px;">
+          <h3>Remove Part</h3>
+          <p style="margin:10px 0 0 0;">This part has attached labor. What would you like to remove?</p>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;">
+            <button class="btn" id="cancelPartRemove">Cancel</button>
+            <button class="btn danger" id="removePartOnly">Remove Part Only</button>
+            <button class="btn danger" id="removePartAndLabor">Remove Part + Labor</button>
+          </div>
+        </div>
+      `;
+    } else {
+      modal.innerHTML = `
+        <div class="modal-content card" style="max-width:420px;margin:18vh auto;padding:16px;">
+          <h3>Remove Part</h3>
+          <p style="margin:10px 0 0 0;">Remove this part?</p>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;">
+            <button class="btn" id="cancelPartRemove">Cancel</button>
+            <button class="btn danger" id="removePartOnly">Remove Part</button>
+          </div>
+        </div>
+      `;
+    }
+
+    document.body.appendChild(modal);
+    modal.classList.remove('hidden');
+
+    const removePartOnlyBtn = modal.querySelector('#removePartOnly');
+    const removePartAndLaborBtn = modal.querySelector('#removePartAndLabor');
+    const cancelBtn = modal.querySelector('#cancelPartRemove');
+
+    if (removePartOnlyBtn) {
+      removePartOnlyBtn.onclick = () => {
+        block.remove();
+        // If there's an attached labor block and we only asked to remove part, leave labor alone
+        modal.remove();
+      };
+    }
+    if (removePartAndLaborBtn) {
+      removePartAndLaborBtn.onclick = () => {
+        if (nextBlock && nextBlock.dataset.attachedTo === itemId) nextBlock.remove();
+        block.remove();
+        modal.remove();
+      };
+    }
+    if (cancelBtn) {
+      cancelBtn.onclick = () => modal.remove();
+    }
+  };
+  row.appendChild(removeBtn);
+  
+  // Add "+ Add Labor" button
+  const addLabor = document.createElement('button');
+  addLabor.type = 'button';
+  addLabor.className = 'add-labor-pill';
+  addLabor.textContent = '+ Add Labor';
+  addLabor.style.display = 'block';
+  addLabor.style.margin = '2px 0 0 0';
+  addLabor.onclick = () => {
+    if (typeof window.openLaborModal === 'function') {
+      window.openLaborModal(null, itemId, groupName || name);
+    }
+  };
+  
+  block.appendChild(meta);
+  block.appendChild(row);
+  block.appendChild(addLabor);
+  
+  // Append to items container
+  itemsDiv.appendChild(block);
+  
+  // Scroll to bottom
+  setTimeout(() => {
+    const modalBody = document.querySelector('#invModal .modal-body');
+    if (modalBody) {
+      modalBody.scrollTop = modalBody.scrollHeight - modalBody.clientHeight + 12;
+    }
+  }, 100);
+  
+  console.log('[addPartToInvoice] ✅ Added part to invoice:', { itemId, name: groupName || name });
+  
+  try {
+    showNotification('Part added to invoice!', 'success');
+  } catch (e) {
+    console.log('Part added to invoice!');
+  }
+  
+  return itemId;
+};
+
+/**
+ * Open labor modal to add labor to a specific part
+ * Called from partPricingModal.js after user clicks "Add Labor"
+ * 
+ * @param {string} jobId - Job ID (may be null)
+ * @param {string} invoiceItemId - Invoice item ID for the part
+ * @param {string} partName - Part name for display
+ */
+window.openLaborModal = function(jobId, invoiceItemId, partName) {
+  console.log('[openLaborModal] called with:', { jobId, invoiceItemId, partName });
+  
+  // Find the currently open invoice modal
+  const invModal = document.getElementById('invModal');
+  if (!invModal || invModal.classList.contains('hidden')) {
+    console.error('[openLaborModal] No invoice modal is currently open!');
+    try {
+      showNotification('Please open an invoice to add labor', 'error');
+    } catch (e) {
+      alert('Please open an invoice to add labor');
+    }
+    return;
+  }
+  
+  // Find the part item block by itemId
+  const partBlock = document.querySelector(`[data-item-id="${invoiceItemId}"]`);
+  if (!partBlock) {
+    console.error('[openLaborModal] Cannot find part block:', invoiceItemId);
+    return;
+  }
+  
+  // Get labor rates from settings
+  const laborRates = getLaborRates();
+  console.log('[openLaborModal] Labor rates:', laborRates);
+  
+  // Create labor item block
+  const laborBlock = document.createElement('div');
+  laborBlock.className = 'inv-item-block';
+  laborBlock.dataset.attachedTo = invoiceItemId;
+  laborBlock.style.paddingLeft = '18px';
+  
+  const meta = document.createElement('div');
+  meta.className = 'inv-item-meta';
+  meta.textContent = 'Labor: $0.00';
+  
+  const row = document.createElement('div');
+  row.className = 'grid cols-3 item-row';
+  row.style.position = 'relative';
+  
+  // Create labor rate SELECT dropdown
+  const laborSelect = document.createElement('select');
+  laborSelect.className = 'itm-labor-select';
+  
+  // Add placeholder option
+  const placeholderOpt = document.createElement('option');
+  placeholderOpt.value = '';
+  placeholderOpt.text = '-- select labor --';
+  placeholderOpt.disabled = true;
+  placeholderOpt.selected = true;
+  laborSelect.appendChild(placeholderOpt);
+  
+  // Add "Custom" option
+  const customOpt = document.createElement('option');
+  customOpt.value = '__custom__';
+  customOpt.text = 'Custom';
+  laborSelect.appendChild(customOpt);
+  
+  // Add all labor rates from settings
+  laborRates.forEach(rate => {
+    const opt = document.createElement('option');
+    opt.value = rate.name;
+    opt.dataset.rate = rate.rate;
+    opt.text = `${rate.name} - $${rate.rate}/hr`;
+    laborSelect.appendChild(opt);
+  });
+  
+  // Labor name input (hidden initially)
+  const nameInput = document.createElement('input');
+  nameInput.className = 'itm-name';
+  nameInput.value = '';
+  nameInput.placeholder = 'Labor name/description';
+  nameInput.style.display = 'none'; // Hidden until "Custom" is selected
+  
+  // Quantity input (hours)
+  const qtyInput = document.createElement('input');
+  qtyInput.type = 'number';
+  qtyInput.className = 'itm-qty';
+  qtyInput.value = 1;
+  qtyInput.min = 0;
+  qtyInput.step = 0.25;
+  qtyInput.placeholder = 'Hours';
+  
+  // Price input (hourly rate)
+  const priceInput = document.createElement('input');
+  priceInput.type = 'number';
+  priceInput.step = '0.01';
+  priceInput.className = 'itm-price';
+  priceInput.value = '';
+  priceInput.placeholder = 'Rate/hr';
+  
+  // Type (hidden)
+  const typeInput = document.createElement('input');
+  typeInput.type = 'hidden';
+  typeInput.className = 'itm-type';
+  typeInput.value = 'labor';
+  
+  // Handle labor rate selection
+  laborSelect.addEventListener('change', () => {
+    const selectedValue = laborSelect.value;
+    
+    if (selectedValue === '__custom__') {
+      // Show name input, hide select
+      laborSelect.style.display = 'none';
+      nameInput.style.display = '';
+      nameInput.value = '';
+      priceInput.value = '';
+      nameInput.focus();
+    } else if (selectedValue) {
+      // Preset selected - populate price
+      const selectedRate = laborRates.find(r => r.name === selectedValue);
+      if (selectedRate) {
+        nameInput.value = selectedRate.name;
+        priceInput.value = selectedRate.rate;
+        updateMeta();
+      }
+    }
+  });
+  
+  // Update meta when price/qty changes
+  const updateMeta = () => {
+    const qty = parseFloat(qtyInput.value) || 0;
+    const price = parseFloat(priceInput.value) || 0;
+    meta.textContent = `Labor: $${(qty * price).toFixed(2)}`;
+  };
+  qtyInput.addEventListener('input', updateMeta);
+  priceInput.addEventListener('input', updateMeta);
+  
+  row.appendChild(laborSelect);
+  row.appendChild(nameInput);
+  row.appendChild(qtyInput);
+  row.appendChild(priceInput);
+  row.appendChild(typeInput);
+  
+  // Add REMOVE button for labor
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'btn small danger itm-remove inv-abs-remove';
+  removeBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg>`;
+  removeBtn.style.position = 'absolute';
+  removeBtn.style.right = '0';
+  removeBtn.style.top = '50%';
+  removeBtn.style.transform = 'translateY(-50%)';
+  removeBtn.onclick = () => {
+    // Show modal asking if they want to remove just labor or both part+labor
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-content card" style="max-width:340px;margin:18vh auto;">
+        <h3>Remove Labor or Part + Labor?</h3>
+        <div style="margin:18px 0;">
+          <button class="btn danger" style="margin-bottom:10px;width:100%;" id="removeLaborOnly">Remove Labor Only</button>
+          <button class="btn danger" style="width:100%;" id="removePartAndLabor">Remove Part + Labor</button>
+        </div>
+        <button class="btn" id="cancelLaborRemove">Cancel</button>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.classList.remove('hidden');
+    
+    modal.querySelector('#removeLaborOnly').onclick = () => {
+      laborBlock.remove();
+      modal.remove();
+    };
+    
+    modal.querySelector('#removePartAndLabor').onclick = () => {
+      partBlock.remove();
+      laborBlock.remove();
+      modal.remove();
+    };
+    
+    modal.querySelector('#cancelLaborRemove').onclick = () => {
+      modal.remove();
+    };
+  };
+  row.appendChild(removeBtn);
+  
+  laborBlock.appendChild(meta);
+  laborBlock.appendChild(row);
+  
+  // Insert labor block after the part block
+  partBlock.parentNode.insertBefore(laborBlock, partBlock.nextSibling);
+  
+  // Hide the "+ Add Labor" button on the part since labor is now added
+  const addLaborBtn = partBlock.querySelector('.add-labor-pill');
+  if (addLaborBtn) {
+    addLaborBtn.style.display = 'none';
+  }
+  
+  // Scroll to the new labor item
+  setTimeout(() => {
+    const modalBody = document.querySelector('#invModal .modal-body');
+    if (modalBody) {
+      modalBody.scrollTop = modalBody.scrollHeight - modalBody.clientHeight + 12;
+    }
+  }, 150);
+  
+  console.log('[openLaborModal] ✅ Added labor row with dropdown after part');
+};
+
+// Helper function for showNotification (in case it doesn't exist)
+if (typeof window.showNotification !== 'function') {
+  window.showNotification = function(message, type = 'success') {
+    const notification = document.getElementById('notification');
+    if (!notification) {
+      console.warn('[showNotification] Notification element not found');
+      return;
+    }
+    
+    notification.textContent = message;
+    notification.className = 'notification';
+    
+    if (type === 'error') {
+      notification.style.background = '#ef4444';
+    } else {
+      notification.style.background = '#10b981';
+    }
+    
+    notification.classList.remove('hidden');
+    
+    setTimeout(() => {
+      notification.classList.add('hidden');
+    }, 3000);
+  };
+}
