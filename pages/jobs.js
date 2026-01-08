@@ -160,6 +160,7 @@ async function getCurrentUserWithRole() {
 
 /**
  * Load jobs from Supabase
+ * Also cleans up orphaned jobs (jobs without valid appointments)
  */
 async function loadJobs() {
   const shopId = getCurrentShopId();
@@ -172,10 +173,10 @@ async function loadJobs() {
   
   try {
     if (supabase) {
-      // Load from Supabase data table
+      // Load from Supabase data table - get both jobs AND appointments for orphan cleanup
       const { data, error } = await supabase
         .from('data')
-        .select('jobs')
+        .select('jobs, appointments')
         .eq('shop_id', shopId)
         .single();
       
@@ -185,6 +186,56 @@ async function loadJobs() {
       }
       
       let jobs = data?.jobs || [];
+      const appointments = data?.appointments || [];
+      
+      // Clean up orphaned jobs: remove jobs whose appointment_id doesn't exist in appointments
+      const appointmentIds = new Set(appointments.map(a => a.id));
+      const originalCount = jobs.length;
+      
+      jobs = jobs.filter(job => {
+        // Keep completed jobs regardless
+        if (job.status === 'completed') return true;
+        // Keep jobs with valid appointment references
+        if (job.appointment_id && appointmentIds.has(job.appointment_id)) return true;
+        // Keep jobs without appointment_id (edge case)
+        if (!job.appointment_id) return true;
+        // Remove orphaned jobs
+        console.log(`🧹 [Jobs] Removing orphaned job: ${job.id} (appointment ${job.appointment_id} not found)`);
+        return false;
+      });
+      
+      // If we removed orphaned jobs, save the cleaned data back
+      if (jobs.length !== originalCount) {
+        console.log(`🧹 [Jobs] Cleaned ${originalCount - jobs.length} orphaned job(s)`);
+        
+        // Update data table with cleaned jobs
+        const { error: updateError } = await supabase
+          .from('data')
+          .update({ 
+            jobs: jobs,
+            updated_at: new Date().toISOString()
+          })
+          .eq('shop_id', shopId);
+        
+        if (updateError) {
+          console.warn('[Jobs] Failed to save cleaned jobs:', updateError);
+        } else {
+          console.log('✅ [Jobs] Orphaned jobs cleaned from data table');
+        }
+        
+        // Also delete orphaned jobs from the standalone jobs table
+        const originalJobs = data?.jobs || [];
+        const orphanedJobIds = originalJobs
+          .filter(job => !jobs.some(j => j.id === job.id))
+          .map(job => job.id);
+        
+        if (orphanedJobIds.length > 0) {
+          for (const jobId of orphanedJobIds) {
+            await supabase.from('jobs').delete().eq('id', jobId);
+          }
+          console.log(`✅ [Jobs] Deleted ${orphanedJobIds.length} orphaned job(s) from jobs table`);
+        }
+      }
       // Fix customer names if customer_first looks like a UUID
       try {
         const { data: customers } = await supabase
