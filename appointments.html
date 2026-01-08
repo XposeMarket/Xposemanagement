@@ -806,7 +806,8 @@ import { upsertCustomerToSupabase } from './pages/appointments.js?v=1767390869';
         throw new Error('No shop ID found. Please refresh the page.');
       }
       
-      // Call the Vercel API (same pattern as send-invoice)
+      // Call the Vercel API - use stripe server like invoices do
+      // NOTE: You need to copy api/send-tracking.js to your xpose-stripe-server project!
       const API_URL = 'https://xpose-stripe-server.vercel.app';
       
       console.log('[SendTracking] Calling API with:', { appointmentId, shopId, phone: currentAppointment.phone });

@@ -349,7 +349,7 @@
       errorState.style.display = 'block';
     }
 
-    function renderInvoice(invoice, shop, settings) {
+    async function renderInvoice(invoice, shop, settings) {
       loadingState.style.display = 'none';
       invoiceContent.style.display = 'block';
 
@@ -601,19 +601,30 @@
         
         // Fetch and display Google Business review URL if configured
         try {
-          const { data: shopData } = await supabase
-            .from('shops')
-            .select('google_business_url')
-            .eq('id', shop_id)
-            .single();
+          const urlParams = new URLSearchParams(window.location.search);
+          const tokenVal = urlParams.get('token');
           
-          if (shopData?.google_business_url) {
-            const reviewSection = document.getElementById('googleReviewSection');
-            const reviewLink = document.getElementById('googleReviewLink');
-            reviewSection.style.display = 'block';
-            reviewLink.href = shopData.google_business_url;
-            console.log('✅ Google review link loaded');
+          // First get the shop_id from token validation result we already have
+          const { data: tokenInfo } = await supabase
+            .rpc('validate_invoice_token', { token_value: tokenVal });
+          
+          if (tokenInfo && tokenInfo[0]?.shop_id) {
+            const { data: shopDataForReview } = await supabase
+              .from('shops')
+              .select('google_business_url')
+              .eq('id', tokenInfo[0].shop_id)
+              .single();
+            
+            if (shopDataForReview?.google_business_url) {
+              const reviewSection = document.getElementById('googleReviewSection');
+              const reviewLink = document.getElementById('googleReviewLink');
+              reviewSection.style.display = 'block';
+              reviewLink.href = shopDataForReview.google_business_url;
+              console.log('✅ Google review link loaded');
+            }
           }
+          
+          
         } catch (e) {
           console.warn('Could not load Google business URL:', e);
         }

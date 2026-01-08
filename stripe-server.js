@@ -1891,6 +1891,291 @@ app.post('/api/send-review-request', async (req, res) => {
   }
 });
 
+// ===========================
+// Send Tracking Link Route (Email/SMS)
+// ===========================
+
+app.post('/api/send-tracking', async (req, res) => {
+  console.log('[SendTracking] Request received:', JSON.stringify(req.body, null, 2));
+  
+  try {
+    const { 
+      appointmentId, 
+      shopId, 
+      sendEmail, 
+      sendSms, 
+      customerEmail, 
+      customerPhone,
+      customerName,
+      trackingCode  // The appointment's existing tracking code (from frontend)
+    } = req.body;
+
+    // Validate required fields
+    if (!appointmentId || !shopId) {
+      return res.status(400).json({ error: 'appointmentId and shopId are required' });
+    }
+
+    if (!sendEmail && !sendSms) {
+      return res.status(400).json({ error: 'At least one of sendEmail or sendSms must be true' });
+    }
+
+    if (sendEmail && !customerEmail) {
+      return res.status(400).json({ error: 'customerEmail is required when sendEmail is true' });
+    }
+
+    if (sendSms && !customerPhone) {
+      return res.status(400).json({ error: 'customerPhone is required when sendSms is true' });
+    }
+
+    // Initialize Supabase
+    const { createClient } = require('@supabase/supabase-js');
+    const crypto = require('crypto');
+    
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('[SendTracking] Missing Supabase credentials');
+      return res.status(500).json({ error: 'Server configuration error' });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Fetch appointment from data table
+    const { data: shopData, error: dataError } = await supabase
+      .from('data')
+      .select('appointments, customers')
+      .eq('shop_id', shopId)
+      .single();
+
+    if (dataError || !shopData) {
+      console.error('[SendTracking] Failed to fetch shop data:', dataError);
+      return res.status(404).json({ error: 'Shop data not found' });
+    }
+
+    const appointment = (shopData.appointments || []).find(apt => apt.id === appointmentId);
+
+    if (!appointment) {
+      return res.status(404).json({ error: 'Appointment not found' });
+    }
+
+    console.log('[SendTracking] Appointment loaded:', {
+      id: appointment.id,
+      status: appointment.status,
+      vehicle: appointment.vehicle
+    });
+
+    // Get shop info
+    const { data: shop, error: shopError } = await supabase
+      .from('shops')
+      .select('name, phone, email, logo')
+      .eq('id', shopId)
+      .single();
+
+    if (shopError) {
+      console.warn('[SendTracking] Could not fetch shop info:', shopError);
+    }
+
+    const shopName = shop?.name || 'Business';
+
+    // Get vehicle info for better messaging
+    const customer = shopData.customers?.find(c => c.id === appointment.customer_id);
+    const vehicleInfo = customer?.vehicles?.find(v => v.id === appointment.vehicle_id);
+    const vehicleDisplay = vehicleInfo 
+      ? `${vehicleInfo.year || ''} ${vehicleInfo.make || ''} ${vehicleInfo.model || ''}`.trim()
+      : appointment.vehicle || 'your vehicle';
+
+    // Check for existing valid token first
+    let token;
+    let shortCode;
+    let isExistingToken = false;
+    
+    const appointmentTrackingCode = trackingCode || null;
+    
+    const { data: existingTokens, error: fetchTokenError } = await supabase
+      .from('appointment_tokens')
+      .select('token, short_code, expires_at')
+      .eq('appointment_id', appointmentId)
+      .eq('shop_id', shopId)
+      .gte('expires_at', new Date().toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (fetchTokenError) {
+      console.warn('[SendTracking] Error checking for existing token:', fetchTokenError);
+    }
+
+    if (existingTokens && existingTokens.length > 0) {
+      // Reuse existing token
+      token = existingTokens[0].token;
+      shortCode = existingTokens[0].short_code;
+      isExistingToken = true;
+      console.log('[SendTracking] Reusing existing token for appointment:', appointmentId);
+      
+      // Update sent_via and recipient info
+      const sentVia = [];
+      if (sendEmail) sentVia.push('email');
+      if (sendSms) sentVia.push('sms');
+      
+      const updatePayload = {
+        sent_via: sentVia,
+        recipient_email: customerEmail || null,
+        recipient_phone: customerPhone || null
+      };
+      
+      if (appointmentTrackingCode && appointmentTrackingCode !== shortCode) {
+        updatePayload.short_code = appointmentTrackingCode;
+        shortCode = appointmentTrackingCode;
+      }
+      
+      await supabase
+        .from('appointment_tokens')
+        .update(updatePayload)
+        .eq('token', token);
+    } else {
+      // Generate new secure token
+      token = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
+
+      const sentVia = [];
+      if (sendEmail) sentVia.push('email');
+      if (sendSms) sentVia.push('sms');
+
+      const insertPayload = {
+        token,
+        appointment_id: appointmentId,
+        shop_id: shopId,
+        expires_at: expiresAt.toISOString(),
+        sent_via: sentVia,
+        recipient_email: customerEmail || null,
+        recipient_phone: customerPhone || null
+      };
+      
+      if (appointmentTrackingCode) {
+        insertPayload.short_code = appointmentTrackingCode;
+      }
+
+      const { data: newTokenData, error: tokenError } = await supabase
+        .from('appointment_tokens')
+        .insert(insertPayload)
+        .select('short_code')
+        .single();
+
+      if (tokenError) {
+        console.error('[SendTracking] Failed to create token:', tokenError);
+        return res.status(500).json({ error: 'Failed to create tracking link' });
+      }
+      
+      shortCode = newTokenData?.short_code || appointmentTrackingCode;
+      console.log('[SendTracking] Created new token with short_code:', shortCode);
+    }
+
+    // Build tracking URLs
+    const baseUrl = process.env.APP_BASE_URL || 'https://xpose.management';
+    const trackingUrl = `${baseUrl}/public-tracking.html?token=${token}`;
+    const mobileTrackingUrl = `${baseUrl}/public-tracking-mobile.html?token=${token}`;
+
+    const results = { email: null, sms: null };
+
+    // Send SMS via Twilio
+    if (sendSms && customerPhone) {
+      const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+      const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+      
+      if (!twilioSid || !twilioToken) {
+        results.sms = { success: false, error: 'Twilio not configured' };
+        console.warn('[SendTracking] Twilio not configured');
+      } else {
+        try {
+          // Get shop's Twilio number
+          const { data: twilioNumber, error: twilioError } = await supabase
+            .from('shop_twilio_numbers')
+            .select('phone_number')
+            .eq('shop_id', shopId)
+            .single();
+
+          if (twilioError || !twilioNumber) {
+            results.sms = { success: false, error: 'No Twilio number configured for this shop' };
+            console.error('[SendTracking] No Twilio number for shop:', twilioError);
+          } else {
+            const twilio = require('twilio')(twilioSid, twilioToken);
+            
+            const smsBody = `${shopName}: Track your ${vehicleDisplay} status here: ${mobileTrackingUrl}`;
+            
+            const message = await twilio.messages.create({
+              body: smsBody,
+              from: twilioNumber.phone_number,
+              to: customerPhone
+            });
+
+            results.sms = { success: true, sid: message.sid };
+            console.log('[SendTracking] SMS sent successfully:', message.sid);
+          }
+        } catch (smsErr) {
+          results.sms = { success: false, error: smsErr.message };
+          console.error('[SendTracking] SMS error:', smsErr);
+        }
+      }
+    }
+
+    // Send Email via Resend (if requested)
+    if (sendEmail && customerEmail) {
+      const resendKey = process.env.RESEND_API_KEY;
+      if (!resendKey) {
+        results.email = { success: false, error: 'RESEND_API_KEY not configured' };
+      } else {
+        try {
+          const emailResponse = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${resendKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              from: `${shopName} <service@xpose.management>`,
+              to: [customerEmail],
+              subject: `Track Your ${vehicleDisplay} - ${shopName}`,
+              html: `<p>Hi ${customerName || 'there'},</p><p>Track your ${vehicleDisplay} status here: <a href="${trackingUrl}">${trackingUrl}</a></p><p>- ${shopName}</p>`
+            })
+          });
+
+          const emailResult = await emailResponse.json();
+          
+          if (emailResponse.ok) {
+            results.email = { success: true, id: emailResult.id };
+            console.log('[SendTracking] Email sent:', emailResult.id);
+          } else {
+            results.email = { success: false, error: emailResult.message || 'Email failed' };
+          }
+        } catch (emailErr) {
+          results.email = { success: false, error: emailErr.message };
+        }
+      }
+    }
+
+    const emailOk = !sendEmail || (results.email && results.email.success);
+    const smsOk = !sendSms || (results.sms && results.sms.success);
+    const success = emailOk && smsOk;
+
+    console.log('[SendTracking] Complete. Success:', success, 'Results:', results);
+
+    return res.json({
+      success,
+      trackingUrl,
+      mobileTrackingUrl,
+      token,
+      shortCode,
+      isExistingToken,
+      results
+    });
+
+  } catch (error) {
+    console.error('[SendTracking] Unexpected error:', error);
+    return res.status(500).json({ error: 'Internal server error: ' + error.message });
+  }
+});
+
 // Twilio Messaging Routes
 // ===========================
 
