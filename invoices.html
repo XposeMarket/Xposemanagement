@@ -263,4 +263,292 @@
     }
   })();
 </script>
+
+<!-- Send Invoice Modal Functions -->
+<script>
+  // Close Send Invoice Modal
+  window.closeSendInvoiceModal = function() {
+    const modal = document.getElementById('sendInvoiceModal');
+    if (modal) modal.classList.add('hidden');
+  };
+
+  // Show Send Invoice Modal - ALWAYS fetches FRESH customer data from Supabase
+  // Priority: 1) appointments table (source of truth) 2) jobs table 3) customers table (saved repeat customers only)
+  window.showSendInvoiceModal = async function(inv) {
+    console.log('[SendInvoice] showSendInvoiceModal called with invoice:', inv?.id);
+    const modal = document.getElementById('sendInvoiceModal');
+    if (!modal || !inv) {
+      console.warn('[SendInvoice] Modal or invoice missing - modal:', !!modal, 'inv:', !!inv);
+      return;
+    }
+
+    // ALWAYS fetch fresh customer data - prioritize appointments table (source of truth)
+    let customerEmail = '';
+    let customerPhone = '';
+    let customerName = '';
+
+    // Build customer name from invoice if available
+    if (inv.customer_first || inv.customer_last) {
+      customerName = `${inv.customer_first || ''} ${inv.customer_last || ''}`.trim();
+    }
+
+    const supabase = window._supabaseClient;
+    
+    // PRIORITY 1: Fetch from appointments table (PRIMARY source of truth for contact info)
+    // The appointments table stores customer contact info directly on each appointment
+    if (supabase && inv.appointment_id) {
+      try {
+        console.log('[SendInvoice] Fetching FRESH contact from appointments table for appointment_id:', inv.appointment_id);
+        const { data: appt, error } = await supabase
+          .from('appointments')
+          .select('email, phone, customer_first, customer_last')
+          .eq('id', inv.appointment_id)
+          .single();
+        
+        if (!error && appt) {
+          customerEmail = appt.email || '';
+          customerPhone = appt.phone || '';
+          if (!customerName && (appt.customer_first || appt.customer_last)) {
+            customerName = `${appt.customer_first || ''} ${appt.customer_last || ''}`.trim();
+          }
+          console.log('[SendInvoice] Got contact from appointments table - email:', customerEmail, 'phone:', customerPhone, 'name:', customerName);
+        } else if (error) {
+          console.warn('[SendInvoice] Error fetching appointment:', error);
+        }
+      } catch (e) {
+        console.warn('[SendInvoice] Could not fetch from appointments table:', e);
+      }
+    }
+    
+    // PRIORITY 2: Fallback to jobs table if appointment lookup failed or incomplete
+    if (supabase && inv.job_id && (!customerEmail || !customerPhone)) {
+      try {
+        console.log('[SendInvoice] Fallback: Fetching from jobs table for job_id:', inv.job_id);
+        const { data: job, error } = await supabase
+          .from('jobs')
+          .select('email, phone, customer_first, customer_last')
+          .eq('id', inv.job_id)
+          .single();
+        
+        if (!error && job) {
+          if (!customerEmail && job.email) customerEmail = job.email;
+          if (!customerPhone && job.phone) customerPhone = job.phone;
+          if (!customerName && (job.customer_first || job.customer_last)) {
+            customerName = `${job.customer_first || ''} ${job.customer_last || ''}`.trim();
+          }
+          console.log('[SendInvoice] Got contact from jobs table - email:', customerEmail, 'phone:', customerPhone);
+        }
+      } catch (e) {
+        console.warn('[SendInvoice] Could not fetch from jobs table:', e);
+      }
+    }
+    
+    // PRIORITY 3: Last resort fallback to customers table (only for saved repeat customers)
+    // Note: customers table is ONLY populated when user explicitly clicks "Save Customer"
+    if (supabase && inv.customer_id && (!customerEmail || !customerPhone)) {
+      try {
+        console.log('[SendInvoice] Last resort: Fetching from customers table for customer_id:', inv.customer_id);
+        const { data: customer, error } = await supabase
+          .from('customers')
+          .select('email, phone, customer_first, customer_last')
+          .eq('id', inv.customer_id)
+          .single();
+        
+        if (!error && customer) {
+          if (!customerEmail) customerEmail = customer.email || '';
+          if (!customerPhone) customerPhone = customer.phone || '';
+          if (!customerName && (customer.customer_first || customer.customer_last)) {
+            customerName = `${customer.customer_first || ''} ${customer.customer_last || ''}`.trim();
+          }
+          console.log('[SendInvoice] Got contact from customers table - email:', customerEmail, 'phone:', customerPhone);
+        }
+      } catch (e) {
+        console.warn('[SendInvoice] Could not fetch from customers table:', e);
+      }
+    }
+
+    console.log('[SendInvoice] Final customer contact info - email:', customerEmail, 'phone:', customerPhone, 'name:', customerName);
+
+    // Update UI elements
+    const emailCheckbox = document.getElementById('sendEmailCheckbox');
+    const smsCheckbox = document.getElementById('sendSmsCheckbox');
+    const emailAddressEl = document.getElementById('sendEmailAddress');
+    const smsPhoneEl = document.getElementById('sendSmsPhone');
+    const noContactEl = document.getElementById('sendInvoiceNoContact');
+    const statusEl = document.getElementById('sendInvoiceStatus');
+    const sendBtnModal = document.getElementById('sendInvBtn');
+
+    // Reset status
+    if (statusEl) {
+      statusEl.style.display = 'none';
+      statusEl.innerHTML = '';
+    }
+
+    // Email option
+    if (customerEmail) {
+      if (emailCheckbox) emailCheckbox.disabled = false;
+      if (emailCheckbox) emailCheckbox.checked = true;
+      if (emailAddressEl) emailAddressEl.textContent = customerEmail;
+    } else {
+      if (emailCheckbox) emailCheckbox.disabled = true;
+      if (emailCheckbox) emailCheckbox.checked = false;
+      if (emailAddressEl) emailAddressEl.textContent = 'No email on file';
+    }
+
+    // SMS option
+    if (customerPhone) {
+      if (smsCheckbox) smsCheckbox.disabled = false;
+      if (smsCheckbox) smsCheckbox.checked = true;
+      if (smsPhoneEl) smsPhoneEl.textContent = customerPhone;
+    } else {
+      if (smsCheckbox) smsCheckbox.disabled = true;
+      if (smsCheckbox) smsCheckbox.checked = false;
+      if (smsPhoneEl) smsPhoneEl.textContent = 'No phone on file';
+    }
+
+    // Show warning if no contact info
+    if (!customerEmail && !customerPhone) {
+      if (noContactEl) noContactEl.style.display = 'block';
+      if (sendBtnModal) sendBtnModal.disabled = true;
+    } else {
+      if (noContactEl) noContactEl.style.display = 'none';
+      if (sendBtnModal) sendBtnModal.disabled = false;
+    }
+
+    // Store data on modal for sending
+    modal.dataset.invoiceId = inv.id;
+    modal.dataset.shopId = inv.shop_id || (JSON.parse(localStorage.getItem('xm_session') || '{}').shopId || '');
+    modal.dataset.email = customerEmail;
+    modal.dataset.phone = customerPhone;
+    modal.dataset.customerName = customerName;
+
+    // Set invoice number in modal
+    const invNumberEl = document.getElementById('sendInvNumber');
+    if (invNumberEl) {
+      invNumberEl.textContent = inv.number || inv.id.slice(0, 8);
+    }
+
+    // Wire up send button
+    if (sendBtnModal) {
+      sendBtnModal.onclick = () => sendInvoiceFromModal();
+    }
+
+    // Show modal
+    modal.classList.remove('hidden');
+  };
+
+  // Send invoice from the modal
+  async function sendInvoiceFromModal() {
+    console.log('[SendInvoice] sendInvoiceFromModal called');
+    const modal = document.getElementById('sendInvoiceModal');
+    const sendBtnModal = document.getElementById('sendInvBtn');
+    const statusEl = document.getElementById('sendInvoiceStatus');
+    const emailCheckbox = document.getElementById('sendEmailCheckbox');
+    const smsCheckbox = document.getElementById('sendSmsCheckbox');
+
+    const sendEmail = emailCheckbox?.checked && !emailCheckbox?.disabled;
+    const sendSms = smsCheckbox?.checked && !smsCheckbox?.disabled;
+
+    console.log('[SendInvoice] sendEmail:', sendEmail, 'sendSms:', sendSms);
+
+    if (!sendEmail && !sendSms) {
+      console.warn('[SendInvoice] No delivery method selected');
+      if (statusEl) {
+        statusEl.style.display = 'block';
+        statusEl.style.background = '#fef3c7';
+        statusEl.style.color = '#92400e';
+        statusEl.innerHTML = 'Please select at least one delivery method.';
+      }
+      return;
+    }
+
+    // Show loading state
+    if (sendBtnModal) {
+      sendBtnModal.disabled = true;
+      sendBtnModal.textContent = 'Sending...';
+    }
+    if (statusEl) {
+      statusEl.style.display = 'block';
+      statusEl.style.background = '#e0f2fe';
+      statusEl.style.color = '#0369a1';
+      statusEl.innerHTML = '⏳ Sending invoice...';
+    }
+
+    try {
+      const API_URL = 'https://xpose-stripe-server.vercel.app';
+      
+      console.log('[SendInvoice] Sending to API:', API_URL, {
+        invoiceId: modal.dataset.invoiceId,
+        shopId: modal.dataset.shopId,
+        sendEmail,
+        sendSms,
+        customerEmail: modal.dataset.email,
+        customerPhone: modal.dataset.phone
+      });
+
+      const response = await fetch(`${API_URL}/api/send-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoiceId: modal.dataset.invoiceId,
+          shopId: modal.dataset.shopId,
+          sendEmail,
+          sendSms,
+          customerEmail: modal.dataset.email || null,
+          customerPhone: modal.dataset.phone || null,
+          customerName: modal.dataset.customerName || 'Customer'
+        })
+      });
+
+      console.log('[SendInvoice] API response status:', response.status);
+      const result = await response.json();
+      console.log('[SendInvoice] API result:', result);
+
+      if (result.success) {
+        if (statusEl) {
+          statusEl.style.background = '#d1fae5';
+          statusEl.style.color = '#065f46';
+          let msg = '✅ Invoice sent successfully!';
+          if (result.results?.email?.success && result.results?.sms?.success) {
+            msg = '✅ Invoice sent via email and SMS!';
+          } else if (result.results?.email?.success) {
+            msg = '✅ Invoice sent via email!';
+          } else if (result.results?.sms?.success) {
+            msg = '✅ Invoice sent via SMS!';
+          }
+          statusEl.innerHTML = msg;
+        }
+        // Auto-close after success
+        setTimeout(() => {
+          closeSendInvoiceModal();
+        }, 2500);
+      } else {
+        if (statusEl) {
+          statusEl.style.background = '#fef3c7';
+          statusEl.style.color = '#92400e';
+          let msg = '⚠️ ';
+          if (result.results?.email && !result.results.email.success) {
+            msg += `Email failed: ${result.results.email.error}. `;
+          }
+          if (result.results?.sms && !result.results.sms.success) {
+            msg += `SMS failed: ${result.results.sms.error}. `;
+          }
+          statusEl.innerHTML = msg || 'Failed to send invoice.';
+        }
+      }
+    } catch (error) {
+      console.error('[SendInvoice] Error:', error);
+      if (statusEl) {
+        statusEl.style.background = '#fee2e2';
+        statusEl.style.color = '#991b1b';
+        statusEl.innerHTML = `❌ Error: ${error.message || 'Failed to send invoice'}`;
+      }
+    } finally {
+      if (sendBtnModal) {
+        sendBtnModal.disabled = false;
+        sendBtnModal.textContent = 'Send Invoice';
+      }
+    }
+  }
+</script>
 </body></html>

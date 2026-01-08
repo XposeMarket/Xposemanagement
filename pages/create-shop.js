@@ -20,19 +20,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const supabase = getSupabaseClient();
 
   // Handle industry type selection to show/hide auto shop specialization
-  const industrySelect = document.getElementById('csIndustry');
+  // Only 'mechanic' industry is selectable, so always show specialization
   const autoShopTypeContainer = document.getElementById('autoShopTypeContainer');
-  
-  if (industrySelect && autoShopTypeContainer) {
-    industrySelect.addEventListener('change', function() {
-      const selectedIndustry = this.value;
-      // Only show shop specialization for auto shops
-      if (selectedIndustry === 'auto_shop') {
-        autoShopTypeContainer.style.display = 'block';
-      } else {
-        autoShopTypeContainer.style.display = 'none';
-      }
-    });
+  if (autoShopTypeContainer) {
+    autoShopTypeContainer.style.display = 'block';
   }
 
   // ============================================================================
@@ -92,7 +83,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const shopInsert = { 
           name: shopName, 
           type: shopType || 'Mechanic', 
-          industry_type: industryType || 'auto_shop',
+          industry_type: 'mechanic',
           zipcode: zipcode || '',
           street: street,
           city: city,
@@ -310,7 +301,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Collect form data
     const shopName = document.getElementById('csName').value.trim();
-    const industryType = document.getElementById('csIndustry').value.trim();
+    const industryType = 'mechanic';
     const shopType = document.getElementById('csType')?.value?.trim() || 'General';
     const shopLogoFile = document.getElementById('csLogo')?.files?.[0];
     const first = document.getElementById('csFirst').value.trim();
@@ -733,7 +724,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       // Store shop data in sessionStorage for after redirect
       sessionStorage.setItem('create_shop_name', shopName);
-      sessionStorage.setItem('create_shop_industry', industryType || 'auto_shop');
+      sessionStorage.setItem('create_shop_industry', 'mechanic');
       sessionStorage.setItem('create_shop_type', shopType || 'General');
       if (zipcode) sessionStorage.setItem('create_shop_zipcode', zipcode);
         if (street) sessionStorage.setItem('create_shop_street', street);

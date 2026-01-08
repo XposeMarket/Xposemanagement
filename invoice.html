@@ -974,7 +974,7 @@ import { getShopData } from './helpers/storage.js';
               throw new Error('Invoice not found');
             }
             
-            // Now fetch customer data
+            // Fetch customer data - prioritize appointments table (source of truth)
             let customerEmail = '';
             let customerPhone = '';
             let customerName = '';
@@ -984,9 +984,51 @@ import { getShopData } from './helpers/storage.js';
               customerName = `${invoice.customer_first || ''} ${invoice.customer_last || ''}`.trim();
             }
             
-            // Try to look up customer email/phone from customers table using invoice.customer_id
-            if (invoice.customer_id) {
-              console.log('[SendInvoice] Looking up customer:', invoice.customer_id);
+            // PRIORITY 1: Fetch from appointments table (PRIMARY source of truth)
+            // The appointments table stores customer contact info directly on each appointment
+            if (appointmentId) {
+              console.log('[SendInvoice] Fetching FRESH contact from appointments table:', appointmentId);
+              const { data: appt, error: apptError } = await supabase
+                .from('appointments')
+                .select('email, phone, customer_first, customer_last')
+                .eq('id', appointmentId)
+                .single();
+              
+              if (!apptError && appt) {
+                customerEmail = appt.email || '';
+                customerPhone = appt.phone || '';
+                if (!customerName && (appt.customer_first || appt.customer_last)) {
+                  customerName = `${appt.customer_first || ''} ${appt.customer_last || ''}`.trim();
+                }
+                console.log('[SendInvoice] Got contact from appointments table:', { customerEmail, customerPhone, customerName });
+              } else if (apptError) {
+                console.warn('[SendInvoice] Error fetching from appointments table:', apptError);
+              }
+            }
+            
+            // PRIORITY 2: Fallback to jobs table if appointment lookup failed or incomplete
+            if (jobId && (!customerEmail || !customerPhone)) {
+              console.log('[SendInvoice] Fallback: Fetching from jobs table:', jobId);
+              const { data: job, error: jobError } = await supabase
+                .from('jobs')
+                .select('email, phone, customer_first, customer_last')
+                .eq('id', jobId)
+                .single();
+              
+              if (!jobError && job) {
+                if (!customerEmail && job.email) customerEmail = job.email;
+                if (!customerPhone && job.phone) customerPhone = job.phone;
+                if (!customerName && (job.customer_first || job.customer_last)) {
+                  customerName = `${job.customer_first || ''} ${job.customer_last || ''}`.trim();
+                }
+                console.log('[SendInvoice] Got contact from jobs table:', { customerEmail, customerPhone });
+              }
+            }
+            
+            // PRIORITY 3: Last resort fallback to customers table (only for saved repeat customers)
+            // Note: customers table is ONLY populated when user explicitly clicks "Save Customer"
+            if (invoice.customer_id && (!customerEmail || !customerPhone)) {
+              console.log('[SendInvoice] Last resort: Fetching from customers table:', invoice.customer_id);
               const { data: customer, error: custError } = await supabase
                 .from('customers')
                 .select('email, phone, customer_first, customer_last')
@@ -994,35 +1036,12 @@ import { getShopData } from './helpers/storage.js';
                 .single();
               
               if (!custError && customer) {
-                customerEmail = customer.email || '';
-                customerPhone = customer.phone || '';
+                if (!customerEmail) customerEmail = customer.email || '';
+                if (!customerPhone) customerPhone = customer.phone || '';
                 if (!customerName && (customer.customer_first || customer.customer_last)) {
                   customerName = `${customer.customer_first || ''} ${customer.customer_last || ''}`.trim();
                 }
-                console.log('[SendInvoice] Got contact info from customers table:', { customerEmail, customerPhone, customerName });
-              } else {
-                console.warn('[SendInvoice] Error fetching customer:', custError);
-              }
-            }
-            
-            // Also try to get contact from appointment/job if still missing
-            if (!customerEmail || !customerPhone) {
-              if (appointmentId && data?.appointments) {
-                const appt = data.appointments.find(a => a.id === appointmentId);
-                if (appt) {
-                  if (!customerEmail && appt.email) customerEmail = appt.email;
-                  if (!customerPhone && appt.phone) customerPhone = appt.phone;
-                  console.log('[SendInvoice] Got contact info from appointment:', { customerEmail, customerPhone });
-                }
-              }
-              
-              if (jobId && data?.jobs && (!customerEmail || !customerPhone)) {
-                const job = data.jobs.find(j => j.id === jobId);
-                if (job) {
-                  if (!customerEmail && job.email) customerEmail = job.email;
-                  if (!customerPhone && job.phone) customerPhone = job.phone;
-                  console.log('[SendInvoice] Got contact info from job:', { customerEmail, customerPhone });
-                }
+                console.log('[SendInvoice] Got contact from customers table:', { customerEmail, customerPhone });
               }
             }
             
@@ -1066,39 +1085,97 @@ import { getShopData } from './helpers/storage.js';
       return;
     }
 
-    // Try to get customer contact info
-    let customerEmail = window.currentInvoiceEmail || '';
-    let customerPhone = window.currentInvoicePhone || '';
-    let customerName = window.currentInvoiceCustomerName || '';
+    // ALWAYS fetch fresh customer data - prioritize appointments table (source of truth)
+    let customerEmail = '';
+    let customerPhone = '';
+    let customerName = '';
 
-    console.log('[SendInvoice] Customer contact info - email:', customerEmail, 'phone:', customerPhone, 'name:', customerName);
-
-    // Build customer name from invoice if not already set
-    if (!customerName && (inv.customer_first || inv.customer_last)) {
+    // Build customer name from invoice if available
+    if (inv.customer_first || inv.customer_last) {
       customerName = `${inv.customer_first || ''} ${inv.customer_last || ''}`.trim();
     }
 
-    // Try to look up customer from Supabase
     const supabase = window._supabaseClient;
+    
+    // PRIORITY 1: Fetch from appointments table (PRIMARY source of truth for contact info)
+    // The appointments table stores customer contact info directly on each appointment
+    if (supabase && inv.appointment_id) {
+      try {
+        console.log('[SendInvoice] Fetching FRESH contact from appointments table for appointment_id:', inv.appointment_id);
+        const { data: appt, error } = await supabase
+          .from('appointments')
+          .select('email, phone, customer_first, customer_last')
+          .eq('id', inv.appointment_id)
+          .single();
+        
+        if (!error && appt) {
+          customerEmail = appt.email || '';
+          customerPhone = appt.phone || '';
+          if (!customerName && (appt.customer_first || appt.customer_last)) {
+            customerName = `${appt.customer_first || ''} ${appt.customer_last || ''}`.trim();
+          }
+          console.log('[SendInvoice] Got contact from appointments table - email:', customerEmail, 'phone:', customerPhone, 'name:', customerName);
+        } else if (error) {
+          console.warn('[SendInvoice] Error fetching appointment:', error);
+        }
+      } catch (e) {
+        console.warn('[SendInvoice] Could not fetch from appointments table:', e);
+      }
+    }
+    
+    // PRIORITY 2: Fallback to jobs table if appointment lookup failed or incomplete
+    if (supabase && inv.job_id && (!customerEmail || !customerPhone)) {
+      try {
+        console.log('[SendInvoice] Fallback: Fetching from jobs table for job_id:', inv.job_id);
+        const { data: job, error } = await supabase
+          .from('jobs')
+          .select('email, phone, customer_first, customer_last')
+          .eq('id', inv.job_id)
+          .single();
+        
+        if (!error && job) {
+          if (!customerEmail && job.email) customerEmail = job.email;
+          if (!customerPhone && job.phone) customerPhone = job.phone;
+          if (!customerName && (job.customer_first || job.customer_last)) {
+            customerName = `${job.customer_first || ''} ${job.customer_last || ''}`.trim();
+          }
+          console.log('[SendInvoice] Got contact from jobs table - email:', customerEmail, 'phone:', customerPhone);
+        }
+      } catch (e) {
+        console.warn('[SendInvoice] Could not fetch from jobs table:', e);
+      }
+    }
+    
+    // PRIORITY 3: Last resort fallback to customers table (only for saved repeat customers)
+    // Note: customers table is ONLY populated when user explicitly clicks "Save Customer"
     if (supabase && inv.customer_id && (!customerEmail || !customerPhone)) {
       try {
-        const { data: customer } = await supabase
+        console.log('[SendInvoice] Last resort: Fetching from customers table for customer_id:', inv.customer_id);
+        const { data: customer, error } = await supabase
           .from('customers')
           .select('email, phone, customer_first, customer_last')
           .eq('id', inv.customer_id)
           .single();
         
-        if (customer) {
-          customerEmail = customerEmail || customer.email || '';
-          customerPhone = customerPhone || customer.phone || '';
+        if (!error && customer) {
+          if (!customerEmail) customerEmail = customer.email || '';
+          if (!customerPhone) customerPhone = customer.phone || '';
           if (!customerName && (customer.customer_first || customer.customer_last)) {
             customerName = `${customer.customer_first || ''} ${customer.customer_last || ''}`.trim();
           }
+          console.log('[SendInvoice] Got contact from customers table - email:', customerEmail, 'phone:', customerPhone);
         }
       } catch (e) {
-        console.warn('[SendInvoice] Could not fetch customer:', e);
+        console.warn('[SendInvoice] Could not fetch from customers table:', e);
       }
     }
+
+    // Update the global cache with fresh data
+    window.currentInvoiceEmail = customerEmail;
+    window.currentInvoicePhone = customerPhone;
+    window.currentInvoiceCustomerName = customerName;
+
+    console.log('[SendInvoice] Final customer contact info - email:', customerEmail, 'phone:', customerPhone, 'name:', customerName);
 
     // Update UI elements
     const emailCheckbox = document.getElementById('sendEmailCheckbox');

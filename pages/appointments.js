@@ -2760,19 +2760,8 @@ async function saveEditedAppointment(e) {
     }
   }
 
-  // 🆕 Update customer in customers table (with vehicle)
-  await upsertCustomerToSupabase({
-    customer_first,
-    customer_last,
-    email: allAppointments[index].email,
-    phone: allAppointments[index].phone,
-    vehicle,
-    vehicle_year,
-    vehicle_make,
-    vehicle_model,
-    vin: allAppointments[index].vin,
-    notes: allAppointments[index].notes || ''
-  });
+  // NOTE: Customer upsert to customers table is handled by the "Save Customer" button only
+  // NOT by the regular save button
   // If there's an invoice linked to this appointment, ensure the service is added
   await addServiceToInvoice(currentApptId, allAppointments[index].service);
   
