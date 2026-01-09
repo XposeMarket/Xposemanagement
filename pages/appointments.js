@@ -1147,8 +1147,15 @@ async function getCurrentAuthId() {
 async function claimAppointment(appt) {
   try {
     const currentUser = await getCurrentUserWithRole();
-    if (!currentUser || !currentUser.id) {
+    if (!currentUser) {
       showNotification('Unable to claim: User not found', 'error');
+      return;
+    }
+    
+    // Use auth_id for consistent assignment tracking
+    const assignToId = currentUser.auth_id || currentUser.id;
+    if (!assignToId) {
+      showNotification('Unable to claim: User ID not found', 'error');
       return;
     }
     
@@ -1176,7 +1183,7 @@ async function claimAppointment(appt) {
           vehicle: appt.vehicle || '',
           service: appt.service || '',
           status: 'pending',
-          assigned_to: currentUser.id,
+          assigned_to: assignToId,
           parts: [],
           labor: [],
           notes: [],
@@ -1193,7 +1200,7 @@ async function claimAppointment(appt) {
           id: jobId,
           shop_id: shopId,
           appointment_id: appt.id,
-          assigned_to: currentUser.id,
+          assigned_to: assignToId,
           status: 'pending',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
@@ -1208,7 +1215,7 @@ async function claimAppointment(appt) {
         const { error: updateError } = await supabase
           .from('jobs')
           .update({ 
-            assigned_to: currentUser.id,
+            assigned_to: assignToId,
             updated_at: new Date().toISOString()
           })
           .eq('id', job.id);
@@ -1221,18 +1228,11 @@ async function claimAppointment(appt) {
         // Also update data table's jobs JSONB
         const jobIndex = jobs.findIndex(j => j.id === job.id);
         if (jobIndex >= 0) {
-          jobs[jobIndex].assigned_to = currentUser.id;
+          jobs[jobIndex].assigned_to = assignToId;
           jobs[jobIndex].updated_at = new Date().toISOString();
           await supabase.from('data').update({ jobs }).eq('shop_id', shopId);
         }
       }
-      
-      // Update local cache for immediate UI refresh
-      try {
-        const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
-        localData.jobs = jobs;
-        localStorage.setItem('xm_data', JSON.stringify(localData));
-      } catch (e) {}
       
       console.log('Job claimed in jobs table');
     } else {
@@ -1250,7 +1250,7 @@ async function claimAppointment(appt) {
           vehicle: appt.vehicle || '',
           service: appt.service || '',
           status: 'pending',
-          assigned_to: currentUser.id,
+          assigned_to: assignToId,
           parts: [],
           labor: [],
           notes: [],
@@ -1261,7 +1261,7 @@ async function claimAppointment(appt) {
       } else {
         const jobIndex = localData.jobs.findIndex(j => j.id === job.id);
         if (jobIndex >= 0) {
-          localData.jobs[jobIndex].assigned_to = currentUser.id;
+          localData.jobs[jobIndex].assigned_to = assignToId;
           localData.jobs[jobIndex].updated_at = new Date().toISOString();
         }
       }
@@ -1271,11 +1271,8 @@ async function claimAppointment(appt) {
     
     showNotification(`Job claimed successfully!`, 'success');
     
-    // Set the claimed flag on the appointment object for immediate UI update
-    appt._claimedByMe = true;
-    
     // Refresh table to show claimed state
-    renderAppointments();
+    await renderAppointments();
     
   } catch (error) {
     console.error('Error claiming appointment:', error);
@@ -1322,13 +1319,6 @@ async function unclaimAppointment(appt) {
         const { error } = await supabase.from('data').update({ jobs }).eq('shop_id', shopId);
         if (error) throw error;
         
-        // Update local cache for immediate UI refresh
-        try {
-          const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
-          localData.jobs = jobs;
-          localStorage.setItem('xm_data', JSON.stringify(localData));
-        } catch (e) {}
-        
         console.log('Job unclaimed in jobs table');
       }
     } else {
@@ -1344,13 +1334,10 @@ async function unclaimAppointment(appt) {
       }
     }
     
-    // Clear the claimed flag on the appointment object
-    appt._claimedByMe = false;
-    
     showNotification(`Job unclaimed`, 'success');
     
     // Refresh table
-    renderAppointments();
+    await renderAppointments();
     
   } catch (error) {
     console.error('Error unclaiming appointment:', error);
@@ -1743,7 +1730,7 @@ async function saveAppointments(appointments) {
 // Store current user info for claim checking
 let currentUserForClaim = null;
 
-function renderAppointments(appointments = allAppointments) {
+async function renderAppointments(appointments = allAppointments) {
   const tbody = document.querySelector('#apptTable tbody');
   const empty = document.getElementById('apptEmpty');
   
@@ -1758,14 +1745,26 @@ function renderAppointments(appointments = allAppointments) {
   
   if (empty) empty.textContent = '';
   
-  // For staff users, check which appointments have jobs claimed by them
+  // For staff users, fetch fresh jobs data from Supabase to check assignments
   let jobsData = [];
   if (isStaffUser && currentUserForClaim) {
     try {
-      const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
-      jobsData = localData.jobs || [];
-    } catch (e) {}
+      const supabase = getSupabaseClient();
+      const shopId = getCurrentShopId();
+      if (supabase && shopId) {
+        const { data } = await supabase
+          .from('jobs')
+          .select('id, appointment_id, assigned_to')
+          .eq('shop_id', shopId);
+        if (data) jobsData = data;
+      }
+    } catch (e) {
+      console.warn('Could not fetch jobs for staff highlighting:', e);
+    }
   }
+  
+  // Get staff auth_id for consistent comparison
+  const staffAuthId = currentUserForClaim?.auth_id || currentUserForClaim?.id;
   
   // Apply sorting based on header clicks
   const sorted = [...appointments].sort((a, b) => {
@@ -1808,20 +1807,18 @@ function renderAppointments(appointments = allAppointments) {
   });
   
   sorted.forEach(appt => {
-    // Check if this appointment is claimed by the current user
-    if (isStaffUser && currentUserForClaim) {
-      // First check if already set on the appointment object (from claim/unclaim action)
-      if (appt._claimedByMe === undefined && jobsData.length > 0) {
-        const job = jobsData.find(j => j.appointment_id === appt.id);
-        appt._claimedByMe = job && job.assigned_to === currentUserForClaim.id;
-      }
+    // Check if this appointment has a job assigned to the current staff user
+    let isAssignedToMe = false;
+    if (isStaffUser && staffAuthId && jobsData.length > 0) {
+      const job = jobsData.find(j => j.appointment_id === appt.id);
+      isAssignedToMe = job && String(job.assigned_to) === String(staffAuthId);
     }
     
     const tr = document.createElement('tr');
     tr.dataset.apptId = appt.id;
     
-    // Add green highlight for staff's claimed appointments
-    if (isStaffUser && appt._claimedByMe) {
+    // Add green highlight for staff's assigned appointments
+    if (isStaffUser && isAssignedToMe) {
       tr.classList.add('staff-claimed');
     }
     
@@ -1930,13 +1927,12 @@ function renderAppointments(appointments = allAppointments) {
 
     if (isStaffUser) {
       // Staff: Show Claim/Unclaim button only
-      // Check if this appointment's job is already claimed by current user
+      // Check if this appointment's job is already assigned to current user
       const claimBtn = document.createElement('button');
-      const isClaimedByMe = currentUserForClaim && appt._claimedByMe;
-      claimBtn.className = isClaimedByMe ? 'btn small danger' : 'btn small info';
-      claimBtn.textContent = isClaimedByMe ? 'Unclaim' : 'Claim';
-      claimBtn.title = isClaimedByMe ? 'Release this job' : 'Claim this job';
-      claimBtn.addEventListener('click', () => isClaimedByMe ? unclaimAppointment(appt) : claimAppointment(appt));
+      claimBtn.className = isAssignedToMe ? 'btn small danger' : 'btn small info';
+      claimBtn.textContent = isAssignedToMe ? 'Unclaim' : 'Claim';
+      claimBtn.title = isAssignedToMe ? 'Release this job' : 'Claim this job';
+      claimBtn.addEventListener('click', () => isAssignedToMe ? unclaimAppointment(appt) : claimAppointment(appt));
       actionsDiv.appendChild(claimBtn);
     } else {
       // Admin/Owner: Show full action buttons
@@ -2362,7 +2358,7 @@ let currentStaffActionAppt = null;
  * Open staff action modal (for mobile staff users)
  * Shows View and Claim/Unclaim options
  */
-function openStaffActionModal(appt) {
+async function openStaffActionModal(appt) {
   currentStaffActionAppt = appt;
   const modal = document.getElementById('staffActionModal');
   const customerDisplay = document.getElementById('staffActionCustomer');
@@ -2378,10 +2374,34 @@ function openStaffActionModal(appt) {
     customerDisplay.textContent = customerName;
   }
   
+  // Check assignment status from Supabase
+  let isAssignedToMe = false;
+  const staffAuthId = currentUserForClaim?.auth_id || currentUserForClaim?.id;
+  
+  if (staffAuthId) {
+    try {
+      const supabase = getSupabaseClient();
+      const shopId = getCurrentShopId();
+      if (supabase && shopId) {
+        const { data: job } = await supabase
+          .from('jobs')
+          .select('assigned_to')
+          .eq('appointment_id', appt.id)
+          .eq('shop_id', shopId)
+          .single();
+        
+        if (job) {
+          isAssignedToMe = String(job.assigned_to) === String(staffAuthId);
+        }
+      }
+    } catch (e) {
+      // Job might not exist yet, that's ok
+    }
+  }
+  
   // Update claim button based on current state
   if (claimBtn) {
-    const isClaimedByMe = currentUserForClaim && appt._claimedByMe;
-    if (isClaimedByMe) {
+    if (isAssignedToMe) {
       claimBtn.className = 'btn danger';
       claimBtn.textContent = 'Unclaim Job';
       claimBtn.style.width = '100%';
@@ -2426,9 +2446,32 @@ function handleStaffActionView() {
 async function handleStaffActionClaim() {
   if (!currentStaffActionAppt) return;
   
-  const isClaimedByMe = currentUserForClaim && currentStaffActionAppt._claimedByMe;
+  // Check current assignment status from Supabase
+  let isAssignedToMe = false;
+  const staffAuthId = currentUserForClaim?.auth_id || currentUserForClaim?.id;
   
-  if (isClaimedByMe) {
+  if (staffAuthId) {
+    try {
+      const supabase = getSupabaseClient();
+      const shopId = getCurrentShopId();
+      if (supabase && shopId) {
+        const { data: job } = await supabase
+          .from('jobs')
+          .select('assigned_to')
+          .eq('appointment_id', currentStaffActionAppt.id)
+          .eq('shop_id', shopId)
+          .single();
+        
+        if (job) {
+          isAssignedToMe = String(job.assigned_to) === String(staffAuthId);
+        }
+      }
+    } catch (e) {
+      // Job might not exist yet
+    }
+  }
+  
+  if (isAssignedToMe) {
     await unclaimAppointment(currentStaffActionAppt);
   } else {
     await claimAppointment(currentStaffActionAppt);
@@ -2496,7 +2539,7 @@ async function updateAppointmentStatus(apptId, newStatus) {
   allAppointments[index].updated_at = new Date().toISOString();
 
   await saveAppointments(allAppointments);
-  renderAppointments();
+  await renderAppointments();
 
   // Create notification for status changes
   try {
@@ -2729,7 +2772,7 @@ async function saveNewAppointment() {
   await checkAndTransitionNewAppointments(allAppointments);
 
   closeNewModal();
-  renderAppointments();
+  await renderAppointments();
   showNotification('Appointment created successfully!');
 }
 
@@ -2881,7 +2924,7 @@ async function saveEditedAppointment(e) {
   await addServiceToInvoice(currentApptId, allAppointments[index].service);
   
   closeEditModal();
-  renderAppointments();
+  await renderAppointments();
   showNotification('Appointment updated successfully!');
 }
 
@@ -3038,7 +3081,7 @@ async function confirmDeleteAppointment() {
   // Remove from local array
   allAppointments = allAppointments.filter(a => a.id !== pendingDeleteApptId);
   await saveAppointments(allAppointments);
-  renderAppointments();
+  await renderAppointments();
   showNotification('Appointment and related jobs/invoices deleted');
   hideDeleteApptModal();
 }
@@ -3275,7 +3318,7 @@ function createNotePanel(note, showActions = true) {
   // Right side - media thumbnails
   if (note.media_urls && note.media_urls.length > 0) {
     const mediaContainer = document.createElement('div');
-    mediaContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px; max-width: 200px; justify-content: flex-end;';
+    mediaContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px; max-width: 200px; justify-content: flex-end; margin-right: 45px;';
     
     note.media_urls.forEach(media => {
       const thumb = document.createElement('div');
@@ -3833,7 +3876,7 @@ async function setupAppointments() {
   await checkAndTransitionNewAppointments(allAppointments);
   
   // Render initial table
-  renderAppointments();
+  await renderAppointments();
   
   // Event listeners
   if (newBtn) newBtn.addEventListener('click', openNewModal);
@@ -3878,7 +3921,7 @@ async function setupAppointments() {
   try {
     document.querySelectorAll('#apptTable thead th.sortable').forEach(h => {
       h.style.cursor = 'pointer';
-      h.addEventListener('click', () => {
+      h.addEventListener('click', async () => {
         const col = h.dataset.col;
         if (!col) return;
         if (apptSortCol === col) apptSortDir = apptSortDir === 'asc' ? 'desc' : 'asc';
@@ -3886,7 +3929,7 @@ async function setupAppointments() {
         // update header classes
         document.querySelectorAll('#apptTable thead th.sortable').forEach(x => x.classList.remove('asc','desc'));
         h.classList.add(apptSortDir === 'asc' ? 'asc' : 'desc');
-        renderAppointments();
+        await renderAppointments();
       });
     });
   } catch (e) {}

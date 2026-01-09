@@ -1282,7 +1282,7 @@ function createJobViewNotePanel(note) {
   // Right side - media thumbnails
   if (note.media_urls && note.media_urls.length > 0) {
     const mediaContainer = document.createElement('div');
-    mediaContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px; max-width: 200px; justify-content: flex-end;';
+    mediaContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px; max-width: 200px; justify-content: flex-end; margin-right: 45px;';
     
     note.media_urls.forEach(media => {
       const thumb = document.createElement('div');
@@ -1638,9 +1638,16 @@ window.confirmDeleteNote = confirmDeleteNote;
 async function saveJobNote(e) {
   if (e) e.preventDefault();
   
+  console.log('[SaveNote] ====== SAVING NOTE ======');
+  console.log('[SaveNote] pendingNoteMedia:', pendingNoteMedia);
+  console.log('[SaveNote] pendingNoteMedia.length:', pendingNoteMedia.length);
+  
   const textarea = document.getElementById('jobNoteText');
   const saveBtn = document.getElementById('saveJobNoteBtn');
   const noteText = textarea.value.trim();
+  
+  console.log('[SaveNote] noteText:', noteText);
+  console.log('[SaveNote] currentJobNotesAppointmentId:', currentJobNotesAppointmentId);
   
   if (!noteText && pendingNoteMedia.length === 0) {
     showNotification('Please enter a note or add media.', 'error');
