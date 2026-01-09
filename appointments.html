@@ -110,6 +110,7 @@
     <table class="table" id="apptTable">
       <thead>
         <tr>
+          <th style="width: 20px; padding: 0;"></th>
           <th data-col="created" class="sortable">Created</th>
           <th data-col="customer" class="sortable">Customer</th>
           <th data-col="vehicle" class="sortable">Vehicle</th>
@@ -723,6 +724,33 @@ import { upsertCustomerToSupabase } from './pages/appointments.js?v=1767390869';
         </button>
         <button id="staffActionClaim" class="btn info" style="width: 100%; padding: 14px; font-size: 1rem;">
           Claim Job
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Admin/Owner Mobile Action Modal -->
+<div id="adminActionModal" class="modal-backdrop hidden">
+  <div class="modal-card" style="max-width: 340px;">
+    <div class="modal-head">
+      <h3>Appointment Actions</h3>
+      <button id="closeAdminActionModal" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <div id="adminActionCustomer" style="font-weight: 600; font-size: 1.1rem; margin-bottom: 16px; text-align: center;"></div>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <button id="adminActionView" class="btn" style="width: 100%; padding: 14px; font-size: 1rem;">
+          View Details
+        </button>
+        <button id="adminActionInvoice" class="btn secondary" style="width: 100%; padding: 14px; font-size: 1rem;">
+          Invoice
+        </button>
+        <button id="adminActionEdit" class="btn info" style="width: 100%; padding: 14px; font-size: 1rem;">
+          Edit
+        </button>
+        <button id="adminActionDelete" class="btn danger" style="width: 100%; padding: 14px; font-size: 1rem;">
+          Delete
         </button>
       </div>
     </div>

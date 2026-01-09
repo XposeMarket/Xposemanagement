@@ -37,6 +37,43 @@ let jobSortDir = 'desc';
 // Status options for jobs
 const JOB_STATUSES = ['in_progress', 'awaiting_parts', 'completed'];
 
+// ========== Read Notes Tracking ==========
+/**
+ * Get the storage key for read notes (per user)
+ */
+function getReadNotesKey() {
+  const userId = localStorage.getItem('xm_user_id') || 'anonymous';
+  return `xm_read_notes_${userId}`;
+}
+
+/**
+ * Get set of read note IDs
+ */
+function getReadNoteIds() {
+  try {
+    const data = localStorage.getItem(getReadNotesKey());
+    return new Set(data ? JSON.parse(data) : []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+/**
+ * Mark a note as read
+ */
+function markNoteAsRead(noteId) {
+  const readIds = getReadNoteIds();
+  readIds.add(noteId);
+  localStorage.setItem(getReadNotesKey(), JSON.stringify([...readIds]));
+}
+
+/**
+ * Check if a note is read
+ */
+function isNoteRead(noteId) {
+  return getReadNoteIds().has(noteId);
+}
+
 /**
  * Get current user's shop ID
  */
@@ -470,20 +507,47 @@ async function saveJobs(jobs) {
 /**
  * Render jobs tables
  */
-function renderJobs() {
+async function renderJobs() {
+  // Fetch notes to show indicator dot for UNREAD notes only
+  let unreadNotesMap = {};
+  try {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const appointmentIds = allJobs.map(j => j.appointment_id).filter(Boolean);
+      if (appointmentIds.length > 0) {
+        const { data: notesData } = await supabase
+          .from('appointment_notes')
+          .select('id, appointment_id')
+          .in('appointment_id', appointmentIds);
+        
+        if (notesData) {
+          const readIds = getReadNoteIds();
+          notesData.forEach(n => {
+            // Only count unread notes
+            if (!readIds.has(n.id)) {
+              unreadNotesMap[n.appointment_id] = (unreadNotesMap[n.appointment_id] || 0) + 1;
+            }
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Could not fetch notes for indicators:', e);
+  }
+  
   // Active jobs (in_progress)
   const activeJobs = allJobs.filter(j => j.status === 'in_progress');
-  renderJobsTable('jobsTable', 'jobsEmpty', activeJobs, 'No active jobs.');
+  renderJobsTable('jobsTable', 'jobsEmpty', activeJobs, 'No active jobs.', unreadNotesMap);
   
   // Awaiting parts
   const awaitingJobs = allJobs.filter(j => j.status === 'awaiting_parts');
-  renderJobsTable('awaitTable', 'awaitEmpty', awaitingJobs, 'No jobs awaiting parts.');
+  renderJobsTable('awaitTable', 'awaitEmpty', awaitingJobs, 'No jobs awaiting parts.', unreadNotesMap);
 }
 
 /**
  * Render a specific jobs table
  */
-function renderJobsTable(tableId, emptyId, jobs, emptyText) {
+function renderJobsTable(tableId, emptyId, jobs, emptyText, notesMap = {}) {
   const tbody = document.querySelector(`#${tableId} tbody`);
   const empty = document.getElementById(emptyId);
   
@@ -635,7 +699,7 @@ function openJobActionsModal(job) {
             job.assigned_to = null;
             job.updated_at = new Date().toISOString();
             
-            renderJobs();
+            await renderJobs();
             showNotification('Job unclaimed', 'success');
           } catch (e) {
             console.error('Error unclaiming job:', e);
@@ -710,6 +774,14 @@ function openJobActionsModal(job) {
     
     // Find related appointment
     const appt = allAppointments.find(a => a.id === job.appointment_id);
+    
+    // Note indicator dot (first column)
+    const tdDot = document.createElement('td');
+    tdDot.style.cssText = 'width: 20px; padding: 0; text-align: center; vertical-align: middle;';
+    if (notesMap[job.appointment_id] > 0) {
+      tdDot.innerHTML = '<span style="display: inline-block; width: 10px; height: 10px; background: #3b82f6; border-radius: 50%;" title="Has unread notes"></span>';
+    }
+    tr.appendChild(tdDot);
     
     // Job #
     const tdJobNum = document.createElement('td');
@@ -817,7 +889,7 @@ function openJobActionsModal(job) {
             job.assigned_to = null;
             job.updated_at = new Date().toISOString();
             
-            renderJobs();
+            await renderJobs();
             showNotification('Job unclaimed', 'success');
             console.log('✅ Job unclaimed in jobs table');
           } catch (e) {
@@ -868,7 +940,7 @@ function openJobActionsModal(job) {
               job.assigned_to = currentStaffAuthId;
               job.updated_at = new Date().toISOString();
               
-              renderJobs();
+              await renderJobs();
               showNotification('Job claimed!', 'success');
             } catch (e) {
               console.error('Error claiming job:', e);
@@ -927,7 +999,7 @@ function setupJobSorting() {
     if (!thead) return;
     thead.querySelectorAll('th.sortable').forEach(th => {
       th.style.cursor = 'pointer';
-      th.addEventListener('click', () => {
+      th.addEventListener('click', async () => {
         const col = th.dataset.col;
         if (!col) return;
         if (jobSortCol === col) {
@@ -939,7 +1011,7 @@ function setupJobSorting() {
         // update visual indicators
         document.querySelectorAll(`#${tableId} thead th.sortable`).forEach(h => h.classList.remove('asc','desc'));
         th.classList.add(jobSortDir);
-        renderJobs();
+        await renderJobs();
       });
     });
   });
@@ -1225,19 +1297,49 @@ async function loadAppointmentNotes(appointmentId) {
  */
 function createJobViewNotePanel(note) {
   const panel = document.createElement('div');
-  panel.style.cssText = 'border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #f9f9f9; position: relative;';
+  const noteIsRead = isNoteRead(note.id);
+  panel.style.cssText = `border: 1px solid ${noteIsRead ? '#ddd' : '#3b82f6'}; border-radius: 8px; padding: 12px; background: ${noteIsRead ? '#f9f9f9' : '#f0f7ff'}; position: relative;`;
+  panel.dataset.noteId = note.id;
   
-  // Delete button (top right)
+  // Button container (top right)
+  const btnContainer = document.createElement('div');
+  btnContainer.style.cssText = 'position: absolute; top: 8px; right: 8px; display: flex; gap: 4px;';
+  
+  // Mark as read button (checkmark) - only show if unread
+  if (!noteIsRead) {
+    const readBtn = document.createElement('button');
+    readBtn.className = 'btn small';
+    readBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+    readBtn.style.cssText = 'padding: 4px 8px; border-radius: 4px; background: #10b981; color: white;';
+    readBtn.title = 'Mark as read';
+    readBtn.onclick = async (e) => {
+      e.stopPropagation();
+      markNoteAsRead(note.id);
+      // Update panel styling
+      panel.style.border = '1px solid #ddd';
+      panel.style.background = '#f9f9f9';
+      // Hide the read button
+      readBtn.style.display = 'none';
+      // Refresh the table to update dot indicator
+      await renderJobs();
+      showNotification('Note marked as read', 'success');
+    };
+    btnContainer.appendChild(readBtn);
+  }
+  
+  // Delete button
   const deleteBtn = document.createElement('button');
   deleteBtn.className = 'btn small danger';
   deleteBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg>';
-  deleteBtn.style.cssText = 'position: absolute; top: 8px; right: 8px; padding: 4px 8px; border-radius: 4px;';
+  deleteBtn.style.cssText = 'padding: 4px 8px; border-radius: 4px;';
   deleteBtn.title = 'Delete note';
   deleteBtn.onclick = (e) => {
     e.stopPropagation();
     openDeleteNoteModal(note.id);
   };
-  panel.appendChild(deleteBtn);
+  btnContainer.appendChild(deleteBtn);
+  
+  panel.appendChild(btnContainer);
   
   // Main content wrapper (flex row for text left, media right)
   const contentWrapper = document.createElement('div');
@@ -1282,7 +1384,9 @@ function createJobViewNotePanel(note) {
   // Right side - media thumbnails
   if (note.media_urls && note.media_urls.length > 0) {
     const mediaContainer = document.createElement('div');
-    mediaContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px; max-width: 200px; justify-content: flex-end; margin-right: 45px;';
+    // More margin when there's a checkmark button (unread) - 2 buttons need more space
+    const rightMargin = noteIsRead ? '45px' : '85px';
+    mediaContainer.style.cssText = `display: flex; flex-wrap: wrap; gap: 8px; max-width: 200px; justify-content: flex-end; margin-right: ${rightMargin};`;
     
     note.media_urls.forEach(media => {
       const thumb = document.createElement('div');
@@ -1906,7 +2010,7 @@ async function updateJobStatus(jobId, newStatus) {
   }
   
   await saveJobs(allJobs);
-  renderJobs();
+  await renderJobs();
   showNotification(`Job status updated to ${newStatus.replace(/_/g, ' ')}`);
 }
 
@@ -2021,7 +2125,7 @@ async function assignJob(jobId, userId) {
   allJobs[index].updated_at = new Date().toISOString();
   
   await saveJobs(allJobs);
-  renderJobs();
+  await renderJobs();
   
   const user = allUsers.find(u => u.id === userId);
   showNotification(`Job assigned to ${user.first} ${user.last}`);
@@ -2909,7 +3013,7 @@ async function setupJobs() {
   console.log(`✅ Loaded ${allUsers.length} users`);
   
   // Render tables
-  renderJobs();
+  await renderJobs();
   // Setup sortable headers for jobs
   setupJobSorting();
   

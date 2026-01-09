@@ -994,29 +994,31 @@ footer::after{ bottom: -6px; }
   /* Hide the tooltip on very small screens to avoid overlap */
   .calendar .day .tooltip{ display:none !important; }
 
-  /* Hide unwanted columns in appointments table on mobile: show only Customer (with Vehicle), Status, Date */
-  #apptTable thead th:nth-child(1),
-  #apptTable tbody td:nth-child(1) { display: none; } /* Created Date */
-
-  #apptTable thead th:nth-child(3),
-  #apptTable tbody td:nth-child(3) { display: none; } /* Vehicle */
+  /* Hide unwanted columns in appointments table on mobile: show only Dot, Customer, Scheduled, Status */
+  #apptTable thead th:nth-child(2),
+  #apptTable tbody td:nth-child(2) { display: none; } /* Created Date */
 
   #apptTable thead th:nth-child(4),
-  #apptTable tbody td:nth-child(4) { display: none; } /* Service */
+  #apptTable tbody td:nth-child(4) { display: none; } /* Vehicle */
 
-  #apptTable thead th:nth-child(6),
-  #apptTable tbody td:nth-child(6) { display: none; } /* Preferred Time */
+  #apptTable thead th:nth-child(5),
+  #apptTable tbody td:nth-child(5) { display: none; } /* Service */
 
-  #apptTable thead th:nth-child(8),
-  #apptTable tbody td:nth-child(8) { display: none; } /* Actions */
+  #apptTable thead th:nth-child(7),
+  #apptTable tbody td:nth-child(7) { display: none; } /* Preferred Time */
+
+  #apptTable thead th:nth-child(9),
+  #apptTable tbody td:nth-child(9) { display: none; } /* Actions */
+
+  /* Dot column styling on mobile */
+  #apptTable td:nth-child(1) { width: 20px; padding: 0; }
 
   /* Allow Customer column to expand on mobile for combined text */
-  #apptTable td:nth-child(2) { max-width: none; }
+  #apptTable td:nth-child(3) { max-width: none; }
   #apptTable { table-layout: fixed; }
-  #apptTable td:nth-child(2) { width: 45%; }
-  #apptTable td:nth-child(4) { width: 35%; vertical-align: top; }
-  #apptTable td:nth-child(5) { width: 20%; }
-  #apptTable td:nth-child(7) { width: 35%; }
+  #apptTable td:nth-child(3) { width: 40%; } /* Customer */
+  #apptTable td:nth-child(6) { width: 35%; } /* Scheduled */
+  #apptTable td:nth-child(8) { width: 25%; } /* Status */
 
   /* Smaller text and tighter spacing on mobile */
   #apptTable td { font-size: 13px; padding: 8px 6px; }
@@ -1025,28 +1027,31 @@ footer::after{ bottom: -6px; }
   /* Make toolbar select fit better on mobile */
   .toolbar select { width: auto; min-width: 120px; max-width: 150px; }
 
-  /* Hide unwanted columns in jobs tables on mobile */
-  #jobsTable thead th:nth-child(1),
-  #jobsTable tbody td:nth-child(1),
-  #awaitTable thead th:nth-child(1),
-  #awaitTable tbody td:nth-child(1) { display: none; } /* Job # */
-
-  #jobsTable thead th:nth-child(6),
-  #jobsTable tbody td:nth-child(6),
-  #awaitTable thead th:nth-child(6),
-  #awaitTable tbody td:nth-child(6) { display: none; } /* Assigned To */
+  /* Hide unwanted columns in jobs tables on mobile: show Dot, Customer, Vehicle, Service, Status */
+  #jobsTable thead th:nth-child(2),
+  #jobsTable tbody td:nth-child(2),
+  #awaitTable thead th:nth-child(2),
+  #awaitTable tbody td:nth-child(2) { display: none; } /* Job # */
 
   #jobsTable thead th:nth-child(7),
   #jobsTable tbody td:nth-child(7),
   #awaitTable thead th:nth-child(7),
-  #awaitTable tbody td:nth-child(7) { display: none; } /* Actions */
+  #awaitTable tbody td:nth-child(7) { display: none; } /* Assigned To */
+
+  #jobsTable thead th:nth-child(8),
+  #jobsTable tbody td:nth-child(8),
+  #awaitTable thead th:nth-child(8),
+  #awaitTable tbody td:nth-child(8) { display: none; } /* Actions */
+
+  /* Dot column styling on mobile */
+  #jobsTable td:nth-child(1), #awaitTable td:nth-child(1) { width: 20px; padding: 0; }
 
   /* Adjust column widths for jobs tables on mobile */
   #jobsTable, #awaitTable { table-layout: fixed; }
-  #jobsTable td:nth-child(2), #awaitTable td:nth-child(2) { width: 28%; } /* Customer */
-  #jobsTable td:nth-child(3), #awaitTable td:nth-child(3) { width: 25%; } /* Vehicle */
-  #jobsTable td:nth-child(4), #awaitTable td:nth-child(4) { width: 27%; } /* Service */
-  #jobsTable td:nth-child(5), #awaitTable td:nth-child(5) { width: 20%; } /* Status */
+  #jobsTable td:nth-child(3), #awaitTable td:nth-child(3) { width: 25%; } /* Customer */
+  #jobsTable td:nth-child(4), #awaitTable td:nth-child(4) { width: 25%; } /* Vehicle */
+  #jobsTable td:nth-child(5), #awaitTable td:nth-child(5) { width: 28%; } /* Service */
+  #jobsTable td:nth-child(6), #awaitTable td:nth-child(6) { width: 22%; } /* Status */
 
   /* Smaller text for jobs tables on mobile */
   #jobsTable th,

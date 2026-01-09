@@ -28,6 +28,43 @@ let apptSortDir = 'desc'; // 'asc' | 'desc'
 // Status options
 const STATUSES = ['new', 'scheduled', 'in_progress', 'awaiting_parts', 'completed'];
 
+// ========== Read Notes Tracking ==========
+/**
+ * Get the storage key for read notes (per user)
+ */
+function getReadNotesKey() {
+  const userId = localStorage.getItem('xm_user_id') || 'anonymous';
+  return `xm_read_notes_${userId}`;
+}
+
+/**
+ * Get set of read note IDs
+ */
+function getReadNoteIds() {
+  try {
+    const data = localStorage.getItem(getReadNotesKey());
+    return new Set(data ? JSON.parse(data) : []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+/**
+ * Mark a note as read
+ */
+function markNoteAsRead(noteId) {
+  const readIds = getReadNoteIds();
+  readIds.add(noteId);
+  localStorage.setItem(getReadNotesKey(), JSON.stringify([...readIds]));
+}
+
+/**
+ * Check if a note is read
+ */
+function isNoteRead(noteId) {
+  return getReadNoteIds().has(noteId);
+}
+
 // Format a time string (HH:MM or HH:MM:SS or ISO) to a 12-hour clock like "2:30 PM".
 function formatTime12(timeStr) {
   if (!timeStr) return null;
@@ -1763,6 +1800,31 @@ async function renderAppointments(appointments = allAppointments) {
     }
   }
   
+  // Fetch notes to show indicator dot for UNREAD notes only
+  let unreadNotesMap = {};
+  try {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const appointmentIds = appointments.map(a => a.id);
+      const { data: notesData } = await supabase
+        .from('appointment_notes')
+        .select('id, appointment_id')
+        .in('appointment_id', appointmentIds);
+      
+      if (notesData) {
+        const readIds = getReadNoteIds();
+        notesData.forEach(n => {
+          // Only count unread notes
+          if (!readIds.has(n.id)) {
+            unreadNotesMap[n.appointment_id] = (unreadNotesMap[n.appointment_id] || 0) + 1;
+          }
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('Could not fetch notes for indicators:', e);
+  }
+  
   // Get staff auth_id for consistent comparison
   const staffAuthId = currentUserForClaim?.auth_id || currentUserForClaim?.id;
   
@@ -1829,14 +1891,22 @@ async function renderAppointments(appointments = allAppointments) {
         // Only trigger if not clicking a button inside the row
         if (e.target.closest('button')) return;
         // For staff users, show action modal with View/Claim options
-        // For other roles, directly open view modal
+        // For admin/owner, show admin action modal with full options
         if (isStaffUser) {
           openStaffActionModal(appt);
         } else {
-          openViewModal(appt);
+          openAdminActionModal(appt);
         }
       });
     }
+    
+    // Note indicator dot (first column)
+    const tdDot = document.createElement('td');
+    tdDot.style.cssText = 'width: 20px; padding: 0; text-align: center; vertical-align: middle;';
+    if (unreadNotesMap[appt.id] > 0) {
+      tdDot.innerHTML = '<span style="display: inline-block; width: 10px; height: 10px; background: #3b82f6; border-radius: 50%;" title="Has unread notes"></span>';
+    }
+    tr.appendChild(tdDot);
     
     // Created date
     const tdCreated = document.createElement('td');
@@ -2484,6 +2554,95 @@ async function handleStaffActionClaim() {
 window.closeStaffActionModal = closeStaffActionModal;
 window.handleStaffActionView = handleStaffActionView;
 window.handleStaffActionClaim = handleStaffActionClaim;
+
+// ========== Admin Action Modal (for mobile admin/owner users) ==========
+let currentAdminActionAppt = null;
+
+/**
+ * Open admin action modal (for mobile admin/owner users)
+ * Shows View, Invoice, Edit, Delete options
+ */
+function openAdminActionModal(appt) {
+  currentAdminActionAppt = appt;
+  const modal = document.getElementById('adminActionModal');
+  const customerDisplay = document.getElementById('adminActionCustomer');
+  
+  if (!modal) return;
+  
+  // Set customer name
+  const customerName = appt.customer_first && appt.customer_last 
+    ? `${appt.customer_first} ${appt.customer_last}`.trim()
+    : appt.customer || 'Unknown Customer';
+  if (customerDisplay) {
+    customerDisplay.textContent = customerName;
+  }
+  
+  modal.classList.remove('hidden');
+}
+
+/**
+ * Close admin action modal
+ */
+function closeAdminActionModal() {
+  const modal = document.getElementById('adminActionModal');
+  if (modal) modal.classList.add('hidden');
+  currentAdminActionAppt = null;
+}
+
+/**
+ * Handle admin action - View
+ */
+function handleAdminActionView() {
+  if (!currentAdminActionAppt) return;
+  const appt = currentAdminActionAppt;
+  closeAdminActionModal();
+  openViewModal(appt);
+}
+
+/**
+ * Handle admin action - Invoice
+ */
+function handleAdminActionInvoice() {
+  if (!currentAdminActionAppt) return;
+  const appt = currentAdminActionAppt;
+  closeAdminActionModal();
+  
+  // Find invoice for this appointment
+  const invoices = JSON.parse(localStorage.getItem('xm_data') || '{}').invoices || [];
+  const invoice = invoices.find(inv => inv.appointment_id === appt.id);
+  if (invoice) {
+    window.location.href = `invoices.html?id=${invoice.id}`;
+  } else {
+    showNotification('No invoice found for this appointment', 'error');
+  }
+}
+
+/**
+ * Handle admin action - Edit
+ */
+function handleAdminActionEdit() {
+  if (!currentAdminActionAppt) return;
+  const appt = currentAdminActionAppt;
+  closeAdminActionModal();
+  openEditModal(appt);
+}
+
+/**
+ * Handle admin action - Delete
+ */
+function handleAdminActionDelete() {
+  if (!currentAdminActionAppt) return;
+  const apptId = currentAdminActionAppt.id;
+  closeAdminActionModal();
+  showDeleteApptModal(apptId);
+}
+
+// Make admin modal functions global
+window.closeAdminActionModal = closeAdminActionModal;
+window.handleAdminActionView = handleAdminActionView;
+window.handleAdminActionInvoice = handleAdminActionInvoice;
+window.handleAdminActionEdit = handleAdminActionEdit;
+window.handleAdminActionDelete = handleAdminActionDelete;
 
 /**
  * Open status modal
@@ -3249,19 +3408,49 @@ async function renderAppointmentNotes(appointmentId) {
  */
 function createNotePanel(note, showActions = true) {
   const panel = document.createElement('div');
-  panel.style.cssText = 'border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #f9f9f9; position: relative;';
+  const noteIsRead = isNoteRead(note.id);
+  panel.style.cssText = `border: 1px solid ${noteIsRead ? '#ddd' : '#3b82f6'}; border-radius: 8px; padding: 12px; background: ${noteIsRead ? '#f9f9f9' : '#f0f7ff'}; position: relative;`;
+  panel.dataset.noteId = note.id;
   
-  // Delete button (top right) - always show
+  // Button container (top right)
+  const btnContainer = document.createElement('div');
+  btnContainer.style.cssText = 'position: absolute; top: 8px; right: 8px; display: flex; gap: 4px;';
+  
+  // Mark as read button (checkmark) - only show if unread
+  if (!noteIsRead) {
+    const readBtn = document.createElement('button');
+    readBtn.className = 'btn small';
+    readBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+    readBtn.style.cssText = 'padding: 4px 8px; border-radius: 4px; background: #10b981; color: white;';
+    readBtn.title = 'Mark as read';
+    readBtn.onclick = async (e) => {
+      e.stopPropagation();
+      markNoteAsRead(note.id);
+      // Update panel styling
+      panel.style.border = '1px solid #ddd';
+      panel.style.background = '#f9f9f9';
+      // Hide the read button
+      readBtn.style.display = 'none';
+      // Refresh the table to update dot indicator
+      await renderAppointments();
+      showNotification('Note marked as read', 'success');
+    };
+    btnContainer.appendChild(readBtn);
+  }
+  
+  // Delete button
   const deleteBtn = document.createElement('button');
   deleteBtn.className = 'btn small danger';
   deleteBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg>';
-  deleteBtn.style.cssText = 'position: absolute; top: 8px; right: 8px; padding: 4px 8px; border-radius: 4px;';
+  deleteBtn.style.cssText = 'padding: 4px 8px; border-radius: 4px;';
   deleteBtn.title = 'Delete note';
   deleteBtn.onclick = (e) => {
     e.stopPropagation();
     openDeleteApptNoteModal(note.id);
   };
-  panel.appendChild(deleteBtn);
+  btnContainer.appendChild(deleteBtn);
+  
+  panel.appendChild(btnContainer);
   
   // Main content wrapper (flex row for text left, media right)
   const contentWrapper = document.createElement('div');
@@ -3318,7 +3507,9 @@ function createNotePanel(note, showActions = true) {
   // Right side - media thumbnails
   if (note.media_urls && note.media_urls.length > 0) {
     const mediaContainer = document.createElement('div');
-    mediaContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px; max-width: 200px; justify-content: flex-end; margin-right: 45px;';
+    // More margin when there's a checkmark button (unread) - 2 buttons need more space
+    const rightMargin = noteIsRead ? '45px' : '85px';
+    mediaContainer.style.cssText = `display: flex; flex-wrap: wrap; gap: 8px; max-width: 200px; justify-content: flex-end; margin-right: ${rightMargin};`;
     
     note.media_urls.forEach(media => {
       const thumb = document.createElement('div');
@@ -3730,9 +3921,17 @@ window.confirmDeleteApptNote = confirmDeleteApptNote;
 async function saveNote(e) {
   if (e) e.preventDefault();
   
+  console.log('[ApptNotes] ====== SAVING NOTE ======');
+  console.log('[ApptNotes] pendingApptNoteMedia:', pendingApptNoteMedia);
+  console.log('[ApptNotes] pendingApptNoteMedia.length:', pendingApptNoteMedia.length);
+  
   const textarea = document.getElementById('noteText');
   const saveBtn = document.getElementById('saveNoteBtn');
   const noteText = textarea.value.trim();
+  
+  console.log('[ApptNotes] noteText:', noteText);
+  console.log('[ApptNotes] currentNotesAppointmentId:', currentNotesAppointmentId);
+  console.log('[ApptNotes] currentNoteId:', currentNoteId);
   
   if (!noteText && pendingApptNoteMedia.length === 0) {
     showNotification('Please enter a note or add media.', 'error');
@@ -3958,6 +4157,21 @@ async function setupAppointments() {
   if (staffActionViewBtn) staffActionViewBtn.addEventListener('click', handleStaffActionView);
   if (staffActionClaimBtn) staffActionClaimBtn.addEventListener('click', handleStaffActionClaim);
   if (staffActionModal) staffActionModal.addEventListener('click', (e) => { if (e.target === staffActionModal) closeStaffActionModal(); });
+  
+  // Admin action modal event listeners
+  const adminActionModal = document.getElementById('adminActionModal');
+  const closeAdminActionBtn = document.getElementById('closeAdminActionModal');
+  const adminActionViewBtn = document.getElementById('adminActionView');
+  const adminActionInvoiceBtn = document.getElementById('adminActionInvoice');
+  const adminActionEditBtn = document.getElementById('adminActionEdit');
+  const adminActionDeleteBtn = document.getElementById('adminActionDelete');
+  
+  if (closeAdminActionBtn) closeAdminActionBtn.addEventListener('click', closeAdminActionModal);
+  if (adminActionViewBtn) adminActionViewBtn.addEventListener('click', handleAdminActionView);
+  if (adminActionInvoiceBtn) adminActionInvoiceBtn.addEventListener('click', handleAdminActionInvoice);
+  if (adminActionEditBtn) adminActionEditBtn.addEventListener('click', handleAdminActionEdit);
+  if (adminActionDeleteBtn) adminActionDeleteBtn.addEventListener('click', handleAdminActionDelete);
+  if (adminActionModal) adminActionModal.addEventListener('click', (e) => { if (e.target === adminActionModal) closeAdminActionModal(); });
   
   // Initialize vehicle dropdowns
   const vehicleYearSelect = document.getElementById('vehicleYear');
