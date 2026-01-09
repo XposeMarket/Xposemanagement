@@ -2370,3 +2370,11 @@ button,
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Staff claimed/assigned row highlight */
+tr.staff-claimed {
+  background-color: rgba(16, 185, 129, 0.12) !important;
+}
+tr.staff-claimed:hover {
+  background-color: rgba(16, 185, 129, 0.2) !important;
+}

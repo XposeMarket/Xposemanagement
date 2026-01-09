@@ -27,6 +27,7 @@ let allStaff = []; // shop_staff rows (for assignment lookups)
 // Track if current user is staff (not admin)
 let isStaffUser = false;
 let currentStaffUserId = null;
+let currentStaffAuthId = null; // auth_id for consistent lookups
 // Draft for newly-created or selected service to be used in add-flow
 let newServiceDraft = null;
 // Sorting state for jobs tables
@@ -530,6 +531,15 @@ function renderJobsTable(tableId, emptyId, jobs, emptyText) {
   sorted.forEach(job => {
     const tr = document.createElement('tr');
     tr.dataset.jobId = job.id;
+    
+    // Add green highlight for staff's assigned jobs
+    if (isStaffUser && currentStaffAuthId) {
+      const assignedId = job.assigned_to || job.assigned || null;
+      if (assignedId && (String(assignedId) === String(currentStaffAuthId))) {
+        tr.classList.add('staff-claimed');
+      }
+    }
+    
     // On mobile, make row clickable to open actions modal
     if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
       tr.classList.add('job-row-clickable');
@@ -557,7 +567,10 @@ function openJobActionsModal(job) {
   const btns = modal.querySelector('#jobActionsBtns');
   btns.innerHTML = '';
   
-  // View button
+  // Find related appointment for YMM info
+  const appt = allAppointments.find(a => a.id === job.appointment_id);
+  
+  // View button (always shown)
   const viewBtn = document.createElement('button');
   viewBtn.className = 'btn';
   viewBtn.textContent = 'View Details';
@@ -567,74 +580,130 @@ function openJobActionsModal(job) {
   };
   btns.appendChild(viewBtn);
   
-  // Add action buttons (Parts, Assign, Remove)
-  const partsBtn = document.createElement('button');
-  partsBtn.className = 'btn';
-  partsBtn.textContent = 'Parts';
-  // Find related appointment for YMM info
-  const appt = allAppointments.find(a => a.id === job.appointment_id);
-  partsBtn.onclick = () => { modal.classList.add('hidden'); openPartsModal(job, appt); };
-  btns.appendChild(partsBtn);
-
-  // Assign button (mobile)
-  const assignBtn = document.createElement('button');
-  assignBtn.className = 'btn info';
-  assignBtn.textContent = 'Assign';
-  assignBtn.onclick = () => {
+  // Note button (always shown)
+  const noteBtn = document.createElement('button');
+  noteBtn.className = 'btn';
+  noteBtn.textContent = 'Add Note';
+  noteBtn.onclick = () => {
     modal.classList.add('hidden');
-    openAssignModal(job);
-  };
-  btns.appendChild(assignBtn);
-
-  const manualPartsBtn = document.createElement('button');
-  manualPartsBtn.className = 'btn';
-  manualPartsBtn.textContent = 'Add Parts Manually';
-  manualPartsBtn.onclick = () => { 
-    console.log('[ManualParts] Button clicked');
-    modal.classList.add('hidden'); 
-    const appt = allAppointments.find(a => a.id === job.appointment_id);
-    
-    console.log('[ManualParts] Found appointment:', appt);
-    console.log('[ManualParts] partPricingModal available:', !!window.partPricingModal);
-    console.log('[ManualParts] xm_partPricingModal available:', !!window.xm_partPricingModal);
-    
-    // Use xm_partPricingModal directly as fallback
-    const pricingModal = window.partPricingModal || window.xm_partPricingModal;
-    
-    if (appt && pricingModal) {
-      // Create empty part object with manual_entry flag
-      const manualPart = {
-        manual_entry: true,
-        name: '',
-        part_name: '',
-        part_number: '',
-        id: 'manual'
-      };
-      
-      // Get vehicle info for the job
-      const vehicle = appt.vehicle_year && appt.vehicle_make && appt.vehicle_model
-        ? `${appt.vehicle_year} ${appt.vehicle_make} ${appt.vehicle_model}`
-        : null;
-      
-      console.log('[ManualParts] Opening pricing modal with vehicle:', vehicle);
-      
-      // Open the part pricing modal with manual entry mode
-      pricingModal.show(manualPart, job.id, vehicle);
-    } else if (!pricingModal) {
-      console.error('[ManualParts] Part pricing modal not available');
-      alert('Part pricing modal is not available. Please refresh the page.');
-    } else if (!appt) {
-      console.error('[ManualParts] Appointment not found for job:', job.id);
-      alert('Could not find appointment for this job.');
+    if (appt) {
+      currentJobNotesAppointmentId = appt.id;
+      openJobAddNoteModal();
     }
   };
-  btns.appendChild(manualPartsBtn);
+  btns.appendChild(noteBtn);
+  
+  if (isStaffUser) {
+    // Staff: Only show Unclaim button (if assigned to them)
+    const assignedId = job.assigned_to || job.assigned || null;
+    const isAssignedToMe = assignedId && (String(assignedId) === String(currentStaffAuthId));
+    
+    if (isAssignedToMe) {
+      const unclaimBtn = document.createElement('button');
+      unclaimBtn.className = 'btn danger';
+      unclaimBtn.textContent = 'Unclaim';
+      unclaimBtn.onclick = async () => {
+        modal.classList.add('hidden');
+        const supabase = getSupabaseClient();
+        const shopId = getCurrentShopId();
+        
+        if (supabase && shopId) {
+          try {
+            const { error: jobError } = await supabase
+              .from('jobs')
+              .update({ 
+                assigned_to: null,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', job.id);
+            
+            if (jobError) {
+              console.error('Error unclaiming job:', jobError);
+              showNotification('Failed to unclaim job', 'error');
+              return;
+            }
+            
+            const { data } = await supabase.from('data').select('jobs').eq('shop_id', shopId).single();
+            const jobs = data?.jobs || [];
+            const jobIndex = jobs.findIndex(j => j.id === job.id);
+            if (jobIndex >= 0) {
+              jobs[jobIndex].assigned_to = null;
+              jobs[jobIndex].updated_at = new Date().toISOString();
+              await supabase.from('data').update({ jobs }).eq('shop_id', shopId);
+            }
+            
+            job.assigned_to = null;
+            job.updated_at = new Date().toISOString();
+            
+            renderJobs();
+            showNotification('Job unclaimed', 'success');
+          } catch (e) {
+            console.error('Error unclaiming job:', e);
+            showNotification('Failed to unclaim job', 'error');
+          }
+        }
+      };
+      btns.appendChild(unclaimBtn);
+    }
+  } else {
+    // Admin/Owner: Show all action buttons
+    
+    // Parts button
+    const partsBtn = document.createElement('button');
+    partsBtn.className = 'btn';
+    partsBtn.textContent = 'Parts';
+    partsBtn.onclick = () => { modal.classList.add('hidden'); openPartsModal(job, appt); };
+    btns.appendChild(partsBtn);
 
-  const removeBtn = document.createElement('button');
-  removeBtn.className = 'btn danger';
-  removeBtn.textContent = 'Remove';
-  removeBtn.onclick = () => { modal.classList.add('hidden'); openRemoveModal(job); };
-  btns.appendChild(removeBtn);
+    // Assign button
+    const assignBtn = document.createElement('button');
+    assignBtn.className = 'btn info';
+    assignBtn.textContent = 'Assign';
+    assignBtn.onclick = () => {
+      modal.classList.add('hidden');
+      openAssignModal(job);
+    };
+    btns.appendChild(assignBtn);
+
+    // Add Parts Manually button
+    const manualPartsBtn = document.createElement('button');
+    manualPartsBtn.className = 'btn';
+    manualPartsBtn.textContent = 'Add Parts Manually';
+    manualPartsBtn.onclick = () => { 
+      modal.classList.add('hidden'); 
+      
+      const pricingModal = window.partPricingModal || window.xm_partPricingModal;
+      
+      if (appt && pricingModal) {
+        const manualPart = {
+          manual_entry: true,
+          name: '',
+          part_name: '',
+          part_number: '',
+          id: 'manual'
+        };
+        
+        const vehicle = appt.vehicle_year && appt.vehicle_make && appt.vehicle_model
+          ? `${appt.vehicle_year} ${appt.vehicle_make} ${appt.vehicle_model}`
+          : null;
+        
+        pricingModal.show(manualPart, job.id, vehicle);
+      } else if (!pricingModal) {
+        alert('Part pricing modal is not available. Please refresh the page.');
+      } else if (!appt) {
+        alert('Could not find appointment for this job.');
+      }
+    };
+    btns.appendChild(manualPartsBtn);
+
+    // Remove button
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'btn danger';
+    removeBtn.textContent = 'Remove';
+    removeBtn.onclick = () => { modal.classList.add('hidden'); openRemoveModal(job); };
+    btns.appendChild(removeBtn);
+  }
+  
   modal.classList.remove('hidden');
   modal.querySelector('#closeJobActions').onclick = () => modal.classList.add('hidden');
 }
@@ -770,11 +839,11 @@ function openJobActionsModal(job) {
           
           if (supabase && shopId) {
             try {
-              // Update the jobs table
+              // Update the jobs table - use auth_id for consistent lookups
               const { error: jobError } = await supabase
                 .from('jobs')
                 .update({ 
-                  assigned_to: currentStaffUserId,
+                  assigned_to: currentStaffAuthId,
                   updated_at: new Date().toISOString()
                 })
                 .eq('id', job.id);
@@ -790,18 +859,17 @@ function openJobActionsModal(job) {
               const jobs = data?.jobs || [];
               const jobIndex = jobs.findIndex(j => j.id === job.id);
               if (jobIndex >= 0) {
-                jobs[jobIndex].assigned_to = currentStaffUserId;
+                jobs[jobIndex].assigned_to = currentStaffAuthId;
                 jobs[jobIndex].updated_at = new Date().toISOString();
                 await supabase.from('data').update({ jobs }).eq('shop_id', shopId);
               }
               
               // Update local
-              job.assigned_to = currentStaffUserId;
+              job.assigned_to = currentStaffAuthId;
               job.updated_at = new Date().toISOString();
               
               renderJobs();
               showNotification('Job claimed!', 'success');
-              console.log('✅ Job claimed in jobs table');
             } catch (e) {
               console.error('Error claiming job:', e);
               showNotification('Failed to claim job', 'error');
@@ -818,13 +886,14 @@ function openJobActionsModal(job) {
       }
     }
     
-  // Parts button (bottom-left)
-  const partsBtn = document.createElement('button');
-  // Use blue "info" style for parts action
-  partsBtn.className = 'btn small info';
-  partsBtn.textContent = 'Parts';
-    partsBtn.onclick = () => openPartsModal(job, appt);
-    actionsDiv.appendChild(partsBtn);
+    // Parts button (bottom-left) - Admin/Owner only
+    if (!isStaffUser) {
+      const partsBtn = document.createElement('button');
+      partsBtn.className = 'btn small info';
+      partsBtn.textContent = 'Parts';
+      partsBtn.onclick = () => openPartsModal(job, appt);
+      actionsDiv.appendChild(partsBtn);
+    }
     
     // Note or Remove button based on role
     if (isStaffUser) {
@@ -1156,14 +1225,31 @@ async function loadAppointmentNotes(appointmentId) {
  */
 function createJobViewNotePanel(note) {
   const panel = document.createElement('div');
-  panel.style.cssText = 'border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #f9f9f9;';
+  panel.style.cssText = 'border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #f9f9f9; position: relative;';
+  
+  // Delete button (top right)
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'btn small danger';
+  deleteBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg>';
+  deleteBtn.style.cssText = 'position: absolute; top: 8px; right: 8px; padding: 4px 8px; border-radius: 4px;';
+  deleteBtn.title = 'Delete note';
+  deleteBtn.onclick = (e) => {
+    e.stopPropagation();
+    openDeleteNoteModal(note.id);
+  };
+  panel.appendChild(deleteBtn);
+  
+  // Main content wrapper (flex row for text left, media right)
+  const contentWrapper = document.createElement('div');
+  contentWrapper.style.cssText = 'display: flex; gap: 16px; align-items: flex-start;';
+  
+  // Left side - text content
+  const textContent = document.createElement('div');
+  textContent.style.cssText = 'flex: 1; min-width: 0; padding-right: 30px;';
   
   // Header with author and date
   const header = document.createElement('div');
-  header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;';
-  
-  const authorInfo = document.createElement('div');
-  authorInfo.style.cssText = 'display: flex; flex-direction: column; gap: 2px;';
+  header.style.cssText = 'display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px;';
   
   const authorName = document.createElement('strong');
   authorName.style.fontSize = '14px';
@@ -1181,17 +1267,58 @@ function createJobViewNotePanel(note) {
   const wasEdited = new Date(note.updated_at).getTime() !== createdDate.getTime();
   dateInfo.textContent = createdDate.toLocaleString() + (wasEdited ? ' (edited)' : '');
   
-  authorInfo.appendChild(authorName);
-  authorInfo.appendChild(dateInfo);
-  header.appendChild(authorInfo);
+  header.appendChild(authorName);
+  header.appendChild(dateInfo);
   
-  // Note content
+  // Note text content
   const content = document.createElement('p');
   content.style.cssText = 'margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; color: #333;';
   content.textContent = note.note;
   
-  panel.appendChild(header);
-  panel.appendChild(content);
+  textContent.appendChild(header);
+  textContent.appendChild(content);
+  contentWrapper.appendChild(textContent);
+  
+  // Right side - media thumbnails
+  if (note.media_urls && note.media_urls.length > 0) {
+    const mediaContainer = document.createElement('div');
+    mediaContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px; max-width: 200px; justify-content: flex-end;';
+    
+    note.media_urls.forEach(media => {
+      const thumb = document.createElement('div');
+      thumb.style.cssText = 'width: 60px; height: 60px; border-radius: 6px; overflow: hidden; cursor: pointer; background: #ddd; display: flex; align-items: center; justify-content: center; flex-shrink: 0;';
+      
+      if (media.type === 'video') {
+        // Video thumbnail with play icon
+        thumb.innerHTML = `
+          <div style="position: relative; width: 100%; height: 100%;">
+            <video src="${media.url}" style="width: 100%; height: 100%; object-fit: cover;"></video>
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.6); border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;">
+              <span style="color: white; font-size: 12px; margin-left: 2px;">▶</span>
+            </div>
+          </div>
+        `;
+      } else {
+        // Image thumbnail
+        const img = document.createElement('img');
+        img.src = media.url;
+        img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+        img.alt = 'Note attachment';
+        thumb.appendChild(img);
+      }
+      
+      thumb.onclick = (e) => {
+        e.stopPropagation();
+        openMediaPreview(media.url, media.type);
+      };
+      
+      mediaContainer.appendChild(thumb);
+    });
+    
+    contentWrapper.appendChild(mediaContainer);
+  }
+  
+  panel.appendChild(contentWrapper);
   
   return panel;
 }
@@ -1241,10 +1368,269 @@ function openJobAddNoteModal() {
 function closeJobNoteModal() {
   const modal = document.getElementById('jobNoteModal');
   if (modal) modal.classList.add('hidden');
+  // Clear media selections
+  pendingNoteMedia = [];
+  const preview = document.getElementById('jobNoteMediaPreview');
+  if (preview) preview.innerHTML = '';
+  const count = document.getElementById('jobNoteMediaCount');
+  if (count) count.textContent = 'No files selected';
+  const input = document.getElementById('jobNoteMedia');
+  if (input) input.value = '';
 }
 
 // Make it global for onclick
 window.closeJobNoteModal = closeJobNoteModal;
+
+// Pending media files for note upload
+let pendingNoteMedia = [];
+let noteToDeleteId = null;
+
+/**
+ * Handle media file selection for notes
+ */
+function handleNoteMediaSelect(input) {
+  const files = Array.from(input.files);
+  const preview = document.getElementById('jobNoteMediaPreview');
+  const count = document.getElementById('jobNoteMediaCount');
+  
+  if (files.length === 0) {
+    pendingNoteMedia = [];
+    if (preview) preview.innerHTML = '';
+    if (count) count.textContent = 'No files selected';
+    return;
+  }
+  
+  // Validate file sizes (max 10MB each)
+  const maxSize = 10 * 1024 * 1024;
+  const validFiles = files.filter(f => {
+    if (f.size > maxSize) {
+      alert(`File "${f.name}" is too large. Maximum size is 10MB.`);
+      return false;
+    }
+    return true;
+  });
+  
+  pendingNoteMedia = validFiles;
+  
+  if (count) {
+    count.textContent = `${validFiles.length} file${validFiles.length !== 1 ? 's' : ''} selected`;
+  }
+  
+  // Show previews
+  if (preview) {
+    preview.innerHTML = '';
+    validFiles.forEach((file, idx) => {
+      const thumb = document.createElement('div');
+      thumb.style.cssText = 'position: relative; width: 60px; height: 60px; border-radius: 6px; overflow: hidden; background: #ddd;';
+      
+      if (file.type.startsWith('video/')) {
+        // Video preview
+        const video = document.createElement('video');
+        video.src = URL.createObjectURL(file);
+        video.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+        thumb.appendChild(video);
+        // Add play icon overlay
+        const playIcon = document.createElement('div');
+        playIcon.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.6); border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;';
+        playIcon.innerHTML = '<span style="color: white; font-size: 10px; margin-left: 2px;">▶</span>';
+        thumb.appendChild(playIcon);
+      } else {
+        // Image preview
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+        thumb.appendChild(img);
+      }
+      
+      // Remove button
+      const removeBtn = document.createElement('button');
+      removeBtn.innerHTML = '&times;';
+      removeBtn.style.cssText = 'position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.6); color: white; border: none; cursor: pointer; font-size: 12px; line-height: 1; padding: 0;';
+      removeBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        pendingNoteMedia.splice(idx, 1);
+        // Re-render previews
+        handleNoteMediaSelect({ files: pendingNoteMedia });
+      };
+      thumb.appendChild(removeBtn);
+      
+      preview.appendChild(thumb);
+    });
+  }
+}
+
+window.handleNoteMediaSelect = handleNoteMediaSelect;
+
+/**
+ * Upload media files to Supabase storage
+ */
+async function uploadNoteMedia(files, appointmentId) {
+  console.log('[NoteMedia] Starting upload for', files.length, 'files');
+  
+  const supabase = getSupabaseClient();
+  if (!supabase || !files.length) {
+    console.log('[NoteMedia] No supabase client or no files');
+    return [];
+  }
+  
+  const shopId = getCurrentShopId();
+  console.log('[NoteMedia] Shop ID:', shopId, 'Appointment ID:', appointmentId);
+  
+  const uploadedMedia = [];
+  
+  for (const file of files) {
+    try {
+      console.log('[NoteMedia] Uploading file:', file.name, 'Type:', file.type, 'Size:', file.size);
+      
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${shopId}/${appointmentId}/${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+      
+      console.log('[NoteMedia] Target path:', fileName);
+      
+      const { data, error } = await supabase.storage
+        .from('note-media')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: file.type
+        });
+      
+      if (error) {
+        console.error('[NoteMedia] Upload error:', error);
+        showNotification(`Failed to upload ${file.name}: ${error.message}`, 'error');
+        continue;
+      }
+      
+      console.log('[NoteMedia] Upload successful:', data);
+      
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('note-media')
+        .getPublicUrl(fileName);
+      
+      console.log('[NoteMedia] Public URL:', urlData?.publicUrl);
+      
+      if (urlData?.publicUrl) {
+        uploadedMedia.push({
+          url: urlData.publicUrl,
+          type: file.type.startsWith('video/') ? 'video' : 'image',
+          name: file.name
+        });
+      }
+    } catch (err) {
+      console.error('[NoteMedia] Exception during upload:', err);
+      showNotification(`Error uploading ${file.name}`, 'error');
+    }
+  }
+  
+  console.log('[NoteMedia] Upload complete, uploaded:', uploadedMedia.length, 'files');
+  return uploadedMedia;
+}
+
+/**
+ * Open media preview modal
+ */
+function openMediaPreview(url, type) {
+  const modal = document.getElementById('mediaPreviewModal');
+  const content = document.getElementById('mediaPreviewContent');
+  
+  if (!modal || !content) return;
+  
+  content.innerHTML = '';
+  
+  if (type === 'video') {
+    const video = document.createElement('video');
+    video.src = url;
+    video.controls = true;
+    video.autoplay = true;
+    video.style.cssText = 'max-width: 100%; max-height: 85vh;';
+    content.appendChild(video);
+  } else {
+    const img = document.createElement('img');
+    img.src = url;
+    img.style.cssText = 'max-width: 100%; max-height: 85vh; object-fit: contain;';
+    img.alt = 'Note attachment';
+    content.appendChild(img);
+  }
+  
+  modal.classList.remove('hidden');
+}
+
+window.openMediaPreview = openMediaPreview;
+
+/**
+ * Close media preview modal
+ */
+function closeMediaPreview() {
+  const modal = document.getElementById('mediaPreviewModal');
+  if (modal) {
+    modal.classList.add('hidden');
+    // Stop any playing videos
+    const video = modal.querySelector('video');
+    if (video) video.pause();
+  }
+}
+
+window.closeMediaPreview = closeMediaPreview;
+
+/**
+ * Open delete note confirmation modal
+ */
+function openDeleteNoteModal(noteId) {
+  noteToDeleteId = noteId;
+  const modal = document.getElementById('deleteNoteModal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+window.openDeleteNoteModal = openDeleteNoteModal;
+
+/**
+ * Close delete note modal
+ */
+function closeDeleteNoteModal() {
+  const modal = document.getElementById('deleteNoteModal');
+  if (modal) modal.classList.add('hidden');
+  noteToDeleteId = null;
+}
+
+window.closeDeleteNoteModal = closeDeleteNoteModal;
+
+/**
+ * Confirm and delete the note
+ */
+async function confirmDeleteNote() {
+  if (!noteToDeleteId) return;
+  
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    showNotification('Unable to delete note. Please try again.', 'error');
+    return;
+  }
+  
+  try {
+    const { error } = await supabase
+      .from('appointment_notes')
+      .delete()
+      .eq('id', noteToDeleteId);
+    
+    if (error) throw error;
+    
+    closeDeleteNoteModal();
+    
+    // Refresh notes list
+    if (currentJobNotesAppointmentId) {
+      await renderJobViewNotes(currentJobNotesAppointmentId);
+    }
+    
+    showNotification('Note deleted', 'success');
+  } catch (err) {
+    console.error('[Jobs] Error deleting note:', err);
+    showNotification('Failed to delete note. Please try again.', 'error');
+  }
+}
+
+window.confirmDeleteNote = confirmDeleteNote;
 
 /**
  * Save job note
@@ -1253,10 +1639,11 @@ async function saveJobNote(e) {
   if (e) e.preventDefault();
   
   const textarea = document.getElementById('jobNoteText');
+  const saveBtn = document.getElementById('saveJobNoteBtn');
   const noteText = textarea.value.trim();
   
-  if (!noteText) {
-    alert('Please enter a note.');
+  if (!noteText && pendingNoteMedia.length === 0) {
+    showNotification('Please enter a note or add media.', 'error');
     return;
   }
   
@@ -1264,30 +1651,55 @@ async function saveJobNote(e) {
   const authId = await getCurrentAuthId();
   
   if (!supabase || !authId || !currentJobNotesAppointmentId) {
-    alert('Unable to save note. Please try again.');
+    showNotification('Unable to save note. Please try again.', 'error');
     return;
   }
   
+  // Disable save button and show loading
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+  }
+  
   try {
-    // Create new note
+    // Upload media files if any
+    let mediaUrls = [];
+    if (pendingNoteMedia.length > 0) {
+      mediaUrls = await uploadNoteMedia(pendingNoteMedia, currentJobNotesAppointmentId);
+    }
+    
+    // Create new note with media
+    const noteData = {
+      appointment_id: currentJobNotesAppointmentId,
+      note: noteText || '(Media attached)',
+      created_by: authId
+    };
+    
+    // Add media_urls if we have any
+    if (mediaUrls.length > 0) {
+      noteData.media_urls = mediaUrls;
+    }
+    
     const { error } = await supabase
       .from('appointment_notes')
-      .insert({
-        appointment_id: currentJobNotesAppointmentId,
-        note: noteText,
-        created_by: authId
-      });
+      .insert(noteData);
     
     if (error) throw error;
-    console.log('✅ Job note created');
     
     // Refresh notes list
     await renderJobViewNotes(currentJobNotesAppointmentId);
     closeJobNoteModal();
+    showNotification('Note saved successfully', 'success');
     
   } catch (err) {
     console.error('[Jobs] Error saving note:', err);
-    alert('Failed to save note. Please try again.');
+    showNotification('Failed to save note. Please try again.', 'error');
+  } finally {
+    // Re-enable save button
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save';
+    }
   }
 }
 
@@ -2450,6 +2862,7 @@ async function setupJobs() {
   const currentUser = await getCurrentUserWithRole();
   isStaffUser = currentUser.role === 'staff';
   currentStaffUserId = currentUser.id;
+  currentStaffAuthId = currentUser.auth_id || currentUser.id; // Store auth_id for consistent lookups
   // Set global for other components to check
   window.xm_isStaffUser = isStaffUser;
   // Also store in session for partsModalHandler

@@ -3206,14 +3206,31 @@ async function renderAppointmentNotes(appointmentId) {
  */
 function createNotePanel(note, showActions = true) {
   const panel = document.createElement('div');
-  panel.style.cssText = 'border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #f9f9f9;';
+  panel.style.cssText = 'border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #f9f9f9; position: relative;';
+  
+  // Delete button (top right) - always show
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'btn small danger';
+  deleteBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg>';
+  deleteBtn.style.cssText = 'position: absolute; top: 8px; right: 8px; padding: 4px 8px; border-radius: 4px;';
+  deleteBtn.title = 'Delete note';
+  deleteBtn.onclick = (e) => {
+    e.stopPropagation();
+    openDeleteApptNoteModal(note.id);
+  };
+  panel.appendChild(deleteBtn);
+  
+  // Main content wrapper (flex row for text left, media right)
+  const contentWrapper = document.createElement('div');
+  contentWrapper.style.cssText = 'display: flex; gap: 16px; align-items: flex-start;';
+  
+  // Left side - text content
+  const textContent = document.createElement('div');
+  textContent.style.cssText = 'flex: 1; min-width: 0; padding-right: 30px;';
   
   // Header with author and date
   const header = document.createElement('div');
-  header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;';
-  
-  const authorInfo = document.createElement('div');
-  authorInfo.style.cssText = 'display: flex; flex-direction: column; gap: 2px;';
+  header.style.cssText = 'display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px;';
   
   const authorName = document.createElement('strong');
   authorName.style.fontSize = '14px';
@@ -3231,44 +3248,70 @@ function createNotePanel(note, showActions = true) {
   const wasEdited = new Date(note.updated_at).getTime() !== createdDate.getTime();
   dateInfo.textContent = createdDate.toLocaleString() + (wasEdited ? ' (edited)' : '');
   
-  authorInfo.appendChild(authorName);
-  authorInfo.appendChild(dateInfo);
+  header.appendChild(authorName);
+  header.appendChild(dateInfo);
   
-  header.appendChild(authorInfo);
-  
-  // Action buttons - only show if showActions is true
-  if (showActions) {
-    const actions = document.createElement('div');
-    actions.style.cssText = 'display: flex; gap: 8px;';
-    
-    // Edit button
-    const editBtn = document.createElement('button');
-    editBtn.type = 'button';
-    editBtn.className = 'btn small';
-    editBtn.textContent = 'Edit';
-    editBtn.addEventListener('click', () => openEditNoteModal(note));
-    
-    // Delete button with trash icon
-    const deleteBtn = document.createElement('button');
-    deleteBtn.type = 'button';
-    deleteBtn.className = 'btn small danger';
-    deleteBtn.setAttribute('aria-label', 'Delete note');
-    deleteBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg>';
-    deleteBtn.addEventListener('click', () => deleteAppointmentNote(note.id));
-    
-    actions.appendChild(editBtn);
-    actions.appendChild(deleteBtn);
-    
-    header.appendChild(actions);
-  }
-  
-  // Note content
+  // Note text content
   const content = document.createElement('p');
   content.style.cssText = 'margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; color: #333;';
   content.textContent = note.note;
   
-  panel.appendChild(header);
-  panel.appendChild(content);
+  textContent.appendChild(header);
+  
+  // Edit button (optional, only if showActions)
+  if (showActions) {
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'btn small';
+    editBtn.textContent = 'Edit';
+    editBtn.style.marginBottom = '8px';
+    editBtn.addEventListener('click', () => openEditNoteModal(note));
+    textContent.appendChild(editBtn);
+  }
+  
+  textContent.appendChild(content);
+  contentWrapper.appendChild(textContent);
+  
+  // Right side - media thumbnails
+  if (note.media_urls && note.media_urls.length > 0) {
+    const mediaContainer = document.createElement('div');
+    mediaContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px; max-width: 200px; justify-content: flex-end;';
+    
+    note.media_urls.forEach(media => {
+      const thumb = document.createElement('div');
+      thumb.style.cssText = 'width: 60px; height: 60px; border-radius: 6px; overflow: hidden; cursor: pointer; background: #ddd; display: flex; align-items: center; justify-content: center; flex-shrink: 0;';
+      
+      if (media.type === 'video') {
+        // Video thumbnail with play icon
+        thumb.innerHTML = `
+          <div style="position: relative; width: 100%; height: 100%;">
+            <video src="${media.url}" style="width: 100%; height: 100%; object-fit: cover;"></video>
+            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.6); border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;">
+              <span style="color: white; font-size: 12px; margin-left: 2px;">▶</span>
+            </div>
+          </div>
+        `;
+      } else {
+        // Image thumbnail
+        const img = document.createElement('img');
+        img.src = media.url;
+        img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+        img.alt = 'Note attachment';
+        thumb.appendChild(img);
+      }
+      
+      thumb.onclick = (e) => {
+        e.stopPropagation();
+        openApptMediaPreview(media.url, media.type);
+      };
+      
+      mediaContainer.appendChild(thumb);
+    });
+    
+    contentWrapper.appendChild(mediaContainer);
+  }
+  
+  panel.appendChild(contentWrapper);
   
   return panel;
 }
@@ -3324,7 +3367,319 @@ function closeNoteModal() {
   const modal = document.getElementById('noteModal');
   if (modal) modal.classList.add('hidden');
   currentNoteId = null;
+  // Clear media selections
+  pendingApptNoteMedia = [];
+  const preview = document.getElementById('noteMediaPreview');
+  if (preview) preview.innerHTML = '';
+  const count = document.getElementById('noteMediaCount');
+  if (count) count.textContent = 'No files selected';
+  const input = document.getElementById('noteMediaInput');
+  if (input) input.value = '';
 }
+
+// Pending media files for appointment note upload
+let pendingApptNoteMedia = [];
+let apptNoteToDeleteId = null;
+
+/**
+ * Handle media file selection for appointment notes
+ */
+function handleApptNoteMediaSelect(input) {
+  const files = Array.from(input.files);
+  const preview = document.getElementById('noteMediaPreview');
+  const count = document.getElementById('noteMediaCount');
+  
+  if (files.length === 0) {
+    pendingApptNoteMedia = [];
+    if (preview) preview.innerHTML = '';
+    if (count) count.textContent = 'No files selected';
+    return;
+  }
+  
+  // Validate file sizes (max 10MB each)
+  const maxSize = 10 * 1024 * 1024;
+  const validFiles = files.filter(f => {
+    if (f.size > maxSize) {
+      alert(`File "${f.name}" is too large. Maximum size is 10MB.`);
+      return false;
+    }
+    return true;
+  });
+  
+  pendingApptNoteMedia = validFiles;
+  
+  if (count) {
+    count.textContent = `${validFiles.length} file${validFiles.length !== 1 ? 's' : ''} selected`;
+  }
+  
+  // Show previews
+  if (preview) {
+    preview.innerHTML = '';
+    validFiles.forEach((file, idx) => {
+      const thumb = document.createElement('div');
+      thumb.style.cssText = 'position: relative; width: 60px; height: 60px; border-radius: 6px; overflow: hidden; background: #ddd;';
+      
+      if (file.type.startsWith('video/')) {
+        const video = document.createElement('video');
+        video.src = URL.createObjectURL(file);
+        video.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+        thumb.appendChild(video);
+        const playIcon = document.createElement('div');
+        playIcon.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.6); border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;';
+        playIcon.innerHTML = '<span style="color: white; font-size: 10px; margin-left: 2px;">▶</span>';
+        thumb.appendChild(playIcon);
+      } else {
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(file);
+        img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+        thumb.appendChild(img);
+      }
+      
+      const removeBtn = document.createElement('button');
+      removeBtn.innerHTML = '&times;';
+      removeBtn.style.cssText = 'position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.6); color: white; border: none; cursor: pointer; font-size: 12px; line-height: 1; padding: 0;';
+      removeBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        pendingApptNoteMedia.splice(idx, 1);
+        handleApptNoteMediaSelect({ files: pendingApptNoteMedia });
+      };
+      thumb.appendChild(removeBtn);
+      
+      preview.appendChild(thumb);
+    });
+  }
+}
+
+window.handleApptNoteMediaSelect = handleApptNoteMediaSelect;
+
+/**
+ * Upload media files to Supabase storage for appointments
+ */
+async function uploadApptNoteMedia(files, appointmentId) {
+  console.log('[NoteMedia] Starting upload for', files.length, 'files');
+  
+  const supabase = getSupabaseClient();
+  if (!supabase || !files.length) {
+    console.log('[NoteMedia] No supabase client or no files');
+    return [];
+  }
+  
+  const shopId = getCurrentShopId();
+  console.log('[NoteMedia] Shop ID:', shopId, 'Appointment ID:', appointmentId);
+  
+  const uploadedMedia = [];
+  
+  for (const file of files) {
+    try {
+      console.log('[NoteMedia] Uploading file:', file.name, 'Type:', file.type, 'Size:', file.size);
+      
+      const fileExt = file.name.split('.').pop().toLowerCase();
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substr(2, 9);
+      const fileName = `${shopId}/${appointmentId}/${timestamp}_${random}.${fileExt}`;
+      
+      console.log('[NoteMedia] Target path:', fileName);
+      console.log('[NoteMedia] Attempting upload to bucket: note-media');
+      
+      // Use 'note-media' bucket (with hyphen, not camelCase)
+      const { data, error } = await supabase.storage
+        .from('note-media')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: file.type
+        });
+      
+      if (error) {
+        console.error('[NoteMedia] Upload error:', error);
+        console.error('[NoteMedia] Error details:', JSON.stringify(error));
+        showNotification(`Failed to upload ${file.name}: ${error.message}`, 'error');
+        continue;
+      }
+      
+      console.log('[NoteMedia] Upload successful:', data);
+      
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('note-media')
+        .getPublicUrl(fileName);
+      
+      console.log('[NoteMedia] Public URL data:', urlData);
+      
+      if (urlData?.publicUrl) {
+        const mediaObj = {
+          url: urlData.publicUrl,
+          type: file.type.startsWith('video/') ? 'video' : 'image',
+          name: file.name
+        };
+        uploadedMedia.push(mediaObj);
+        console.log('[NoteMedia] Added to uploadedMedia:', mediaObj);
+      } else {
+        console.error('[NoteMedia] No public URL returned for file:', file.name);
+      }
+    } catch (err) {
+      console.error('[NoteMedia] Exception during upload:', err);
+      console.error('[NoteMedia] Exception stack:', err.stack);
+      showNotification(`Error uploading ${file.name}`, 'error');
+    }
+  }
+  
+  console.log('[NoteMedia] Upload complete. Total uploaded:', uploadedMedia.length, 'files');
+  console.log('[NoteMedia] Uploaded media array:', JSON.stringify(uploadedMedia));
+  return uploadedMedia;
+}
+
+/**
+ * Open media preview modal for appointments
+ */
+function openApptMediaPreview(url, type) {
+  const modal = document.getElementById('apptMediaPreviewModal');
+  const content = document.getElementById('apptMediaPreviewContent');
+  
+  if (!modal || !content) return;
+  
+  content.innerHTML = '';
+  
+  if (type === 'video') {
+    const video = document.createElement('video');
+    video.src = url;
+    video.controls = true;
+    video.autoplay = true;
+    video.style.cssText = 'max-width: 100%; max-height: 85vh;';
+    content.appendChild(video);
+  } else {
+    const img = document.createElement('img');
+    img.src = url;
+    img.style.cssText = 'max-width: 100%; max-height: 85vh; object-fit: contain;';
+    img.alt = 'Note attachment';
+    content.appendChild(img);
+  }
+  
+  modal.classList.remove('hidden');
+}
+
+window.openApptMediaPreview = openApptMediaPreview;
+
+/**
+ * Close media preview modal for appointments
+ */
+function closeApptMediaPreview() {
+  const modal = document.getElementById('apptMediaPreviewModal');
+  if (modal) {
+    modal.classList.add('hidden');
+    const video = modal.querySelector('video');
+    if (video) video.pause();
+  }
+}
+
+window.closeApptMediaPreview = closeApptMediaPreview;
+
+/**
+ * Open delete note confirmation modal for appointments
+ */
+function openDeleteApptNoteModal(noteId) {
+  console.log('[Notes] Opening delete modal for note:', noteId);
+  apptNoteToDeleteId = noteId;
+  const modal = document.getElementById('deleteApptNoteModal');
+  if (modal) {
+    // Store noteId on the modal element as well for redundancy
+    modal.dataset.noteId = noteId;
+    modal.classList.remove('hidden');
+  }
+}
+
+window.openDeleteApptNoteModal = openDeleteApptNoteModal;
+
+/**
+ * Close delete note modal for appointments
+ */
+function closeDeleteApptNoteModal() {
+  const modal = document.getElementById('deleteApptNoteModal');
+  if (modal) modal.classList.add('hidden');
+  apptNoteToDeleteId = null;
+}
+
+window.closeDeleteApptNoteModal = closeDeleteApptNoteModal;
+
+/**
+ * Confirm and delete the appointment note
+ */
+async function confirmDeleteApptNote() {
+  // Try to get noteId from variable first, then from modal dataset as fallback
+  const modal = document.getElementById('deleteApptNoteModal');
+  const noteId = apptNoteToDeleteId || (modal ? modal.dataset.noteId : null);
+  
+  console.log('[Notes] confirmDeleteApptNote called, noteId:', noteId);
+  
+  if (!noteId) {
+    console.error('[Notes] No note ID to delete');
+    return;
+  }
+  
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    showNotification('Unable to delete note. Please try again.', 'error');
+    return;
+  }
+  
+  // Close the delete confirmation modal first
+  closeDeleteApptNoteModal();
+  
+  try {
+    console.log('[Notes] Deleting note from database...');
+    const { error } = await supabase
+      .from('appointment_notes')
+      .delete()
+      .eq('id', noteId);
+    
+    if (error) throw error;
+    
+    console.log('[Notes] Note deleted successfully');
+    
+    // Immediately refresh both note lists to show the deletion
+    if (currentNotesAppointmentId) {
+      // Reload notes from database
+      const freshNotes = await loadAppointmentNotes(currentNotesAppointmentId);
+      allNotes = freshNotes;
+      
+      // Refresh edit modal notes list (appointmentNotesList) if it exists
+      const editModalNotesList = document.getElementById('appointmentNotesList');
+      if (editModalNotesList) {
+        editModalNotesList.innerHTML = '';
+        if (freshNotes.length === 0) {
+          editModalNotesList.innerHTML = '<p style="color: #666; font-style: italic; padding: 12px; text-align: center;">No notes yet. Click "Add Note" below to create one.</p>';
+        } else {
+          freshNotes.forEach(note => {
+            const notePanel = createNotePanel(note, true);
+            editModalNotesList.appendChild(notePanel);
+          });
+        }
+      }
+      
+      // Refresh view modal notes list (viewModalNotesList) if it exists
+      const viewModalNotesList = document.getElementById('viewModalNotesList');
+      if (viewModalNotesList) {
+        viewModalNotesList.innerHTML = '';
+        if (freshNotes.length === 0) {
+          viewModalNotesList.innerHTML = '<p style="color: #666; font-style: italic; padding: 12px; text-align: center;">No notes yet. Click "Add Note" above to create one.</p>';
+        } else {
+          freshNotes.forEach(note => {
+            const notePanel = createNotePanel(note, false);
+            viewModalNotesList.appendChild(notePanel);
+          });
+        }
+      }
+    }
+    
+    showNotification('Note deleted', 'success');
+  } catch (err) {
+    console.error('[Appointments] Error deleting note:', err);
+    showNotification('Failed to delete note. Please try again.', 'error');
+  }
+}
+
+window.confirmDeleteApptNote = confirmDeleteApptNote;
 
 /**
  * Save note (create or update)
@@ -3333,10 +3688,11 @@ async function saveNote(e) {
   if (e) e.preventDefault();
   
   const textarea = document.getElementById('noteText');
+  const saveBtn = document.getElementById('saveNoteBtn');
   const noteText = textarea.value.trim();
   
-  if (!noteText) {
-    alert('Please enter a note.');
+  if (!noteText && pendingApptNoteMedia.length === 0) {
+    showNotification('Please enter a note or add media.', 'error');
     return;
   }
   
@@ -3344,32 +3700,48 @@ async function saveNote(e) {
   const authId = await getCurrentAuthId();
   
   if (!supabase || !authId || !currentNotesAppointmentId) {
-    alert('Unable to save note. Please try again.');
+    showNotification('Unable to save note. Please try again.', 'error');
     return;
   }
   
+  // Disable save button and show loading
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+  }
+  
   try {
+    // Upload media files if any (only for new notes)
+    let mediaUrls = [];
+    if (pendingApptNoteMedia.length > 0 && !currentNoteId) {
+      mediaUrls = await uploadApptNoteMedia(pendingApptNoteMedia, currentNotesAppointmentId);
+    }
+    
     if (currentNoteId) {
-      // Update existing note
+      // Update existing note (no media update for edits)
       const { error } = await supabase
         .from('appointment_notes')
         .update({ note: noteText })
         .eq('id', currentNoteId);
       
       if (error) throw error;
-      console.log('✅ Note updated');
     } else {
-      // Create new note
+      // Create new note with media
+      const noteData = {
+        appointment_id: currentNotesAppointmentId,
+        note: noteText || '(Media attached)',
+        created_by: authId
+      };
+      
+      if (mediaUrls.length > 0) {
+        noteData.media_urls = mediaUrls;
+      }
+      
       const { error } = await supabase
         .from('appointment_notes')
-        .insert({
-          appointment_id: currentNotesAppointmentId,
-          note: noteText,
-          created_by: authId
-        });
+        .insert(noteData);
       
       if (error) throw error;
-      console.log('✅ Note created');
     }
     
     // Refresh notes list in both edit modal and view modal
@@ -3382,10 +3754,17 @@ async function saveNote(e) {
     }
     
     closeNoteModal();
+    showNotification('Note saved successfully', 'success');
     
   } catch (err) {
     console.error('Error saving note:', err);
-    alert('Failed to save note. Please try again.');
+    showNotification('Failed to save note. Please try again.', 'error');
+  } finally {
+    // Re-enable save button
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Note';
+    }
   }
 }
 
@@ -3419,7 +3798,7 @@ async function deleteAppointmentNote(noteId) {
     
   } catch (err) {
     console.error('Error deleting note:', err);
-    alert('Failed to delete note. Please try again.');
+    showNotification('Failed to delete note. Please try again.', 'error');
   }
 }
 

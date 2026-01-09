@@ -199,12 +199,49 @@
     <div class="modal-body">
       <form id="jobNoteForm" style="display: flex; flex-direction: column; gap: 12px;">
         <label for="jobNoteText">Note:</label>
-        <textarea id="jobNoteText" rows="5" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;" placeholder="Enter your note here..."></textarea>
+        <textarea id="jobNoteText" rows="4" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;" placeholder="Enter your note here..."></textarea>
+        
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <label>Attachments (Images/Videos):</label>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <label for="jobNoteMedia" class="btn small" style="cursor: pointer; margin: 0;">
+              Choose Files
+            </label>
+            <input type="file" id="jobNoteMedia" accept="image/*,video/*" multiple style="display: none;" onchange="handleNoteMediaSelect(this)">
+            <span id="jobNoteMediaCount" style="font-size: 13px; color: #666;">No files selected</span>
+          </div>
+          <div id="jobNoteMediaPreview" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;"></div>
+        </div>
       </form>
     </div>
     <div class="modal-foot">
       <button onclick="closeJobNoteModal()" class="btn">Cancel</button>
-      <button onclick="saveJobNote(event)" class="btn info">Save</button>
+      <button onclick="saveJobNote(event)" class="btn info" id="saveJobNoteBtn">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Media Preview Modal -->
+<div id="mediaPreviewModal" class="modal-overlay hidden" onclick="closeMediaPreview()" style="z-index: 10050;">
+  <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 90vw; max-height: 90vh; padding: 0; background: #000; border-radius: 8px; overflow: hidden;">
+    <button onclick="closeMediaPreview()" class="btn-close" style="position: absolute; top: 10px; right: 10px; z-index: 10; background: rgba(0,0,0,0.5); color: white; border-radius: 50%; width: 36px; height: 36px;">&times;</button>
+    <div id="mediaPreviewContent" style="display: flex; justify-content: center; align-items: center; max-height: 85vh;"></div>
+  </div>
+</div>
+
+<!-- Delete Note Confirmation Modal -->
+<div id="deleteNoteModal" class="modal-overlay hidden" onclick="closeDeleteNoteModal()" style="z-index: 10040;">
+  <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 400px;">
+    <div class="modal-head">
+      <h3>Delete Note</h3>
+      <button onclick="closeDeleteNoteModal()" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p>Are you sure you want to delete this note? This action cannot be undone.</p>
+    </div>
+    <div class="modal-foot">
+      <button onclick="closeDeleteNoteModal()" class="btn">Cancel</button>
+      <button onclick="confirmDeleteNote()" class="btn danger">Delete</button>
     </div>
   </div>
 </div>
