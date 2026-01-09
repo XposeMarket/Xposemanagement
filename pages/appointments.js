@@ -1227,7 +1227,14 @@ async function claimAppointment(appt) {
         }
       }
       
-      console.log('✅ Job claimed in jobs table');
+      // Update local cache for immediate UI refresh
+      try {
+        const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
+        localData.jobs = jobs;
+        localStorage.setItem('xm_data', JSON.stringify(localData));
+      } catch (e) {}
+      
+      console.log('Job claimed in jobs table');
     } else {
       // localStorage fallback
       const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
@@ -1263,6 +1270,9 @@ async function claimAppointment(appt) {
     }
     
     showNotification(`Job claimed successfully!`, 'success');
+    
+    // Set the claimed flag on the appointment object for immediate UI update
+    appt._claimedByMe = true;
     
     // Refresh table to show claimed state
     renderAppointments();
@@ -1319,7 +1329,7 @@ async function unclaimAppointment(appt) {
           localStorage.setItem('xm_data', JSON.stringify(localData));
         } catch (e) {}
         
-        console.log('✅ Job unclaimed in jobs table');
+        console.log('Job unclaimed in jobs table');
       }
     } else {
       // localStorage fallback
@@ -1799,20 +1809,35 @@ function renderAppointments(appointments = allAppointments) {
   
   sorted.forEach(appt => {
     // Check if this appointment is claimed by the current user
-    if (isStaffUser && currentUserForClaim && jobsData.length > 0) {
-      const job = jobsData.find(j => j.appointment_id === appt.id);
-      appt._claimedByMe = job && job.assigned_to === currentUserForClaim.id;
+    if (isStaffUser && currentUserForClaim) {
+      // First check if already set on the appointment object (from claim/unclaim action)
+      if (appt._claimedByMe === undefined && jobsData.length > 0) {
+        const job = jobsData.find(j => j.appointment_id === appt.id);
+        appt._claimedByMe = job && job.assigned_to === currentUserForClaim.id;
+      }
     }
     
     const tr = document.createElement('tr');
     tr.dataset.apptId = appt.id;
-    // On mobile, make row clickable to open view modal
+    
+    // Add green highlight for staff's claimed appointments
+    if (isStaffUser && appt._claimedByMe) {
+      tr.classList.add('staff-claimed');
+    }
+    
+    // On mobile, make row clickable
     if (window.matchMedia && window.matchMedia('(max-width: 768px)').matches) {
       tr.classList.add('appt-row-clickable');
       tr.addEventListener('click', (e) => {
         // Only trigger if not clicking a button inside the row
         if (e.target.closest('button')) return;
-        openViewModal(appt);
+        // For staff users, show action modal with View/Claim options
+        // For other roles, directly open view modal
+        if (isStaffUser) {
+          openStaffActionModal(appt);
+        } else {
+          openViewModal(appt);
+        }
       });
     }
     
@@ -2326,6 +2351,96 @@ function closeViewModal() {
 
 // Make it global for onclick
 window.closeViewApptModal = closeViewModal;
+
+// ========================================
+// STAFF ACTION MODAL (Mobile)
+// ========================================
+
+let currentStaffActionAppt = null;
+
+/**
+ * Open staff action modal (for mobile staff users)
+ * Shows View and Claim/Unclaim options
+ */
+function openStaffActionModal(appt) {
+  currentStaffActionAppt = appt;
+  const modal = document.getElementById('staffActionModal');
+  const customerDisplay = document.getElementById('staffActionCustomer');
+  const claimBtn = document.getElementById('staffActionClaim');
+  
+  if (!modal) return;
+  
+  // Set customer name
+  const customerName = appt.customer_first && appt.customer_last 
+    ? `${appt.customer_first} ${appt.customer_last}`.trim()
+    : appt.customer || 'Unknown Customer';
+  if (customerDisplay) {
+    customerDisplay.textContent = customerName;
+  }
+  
+  // Update claim button based on current state
+  if (claimBtn) {
+    const isClaimedByMe = currentUserForClaim && appt._claimedByMe;
+    if (isClaimedByMe) {
+      claimBtn.className = 'btn danger';
+      claimBtn.textContent = 'Unclaim Job';
+      claimBtn.style.width = '100%';
+      claimBtn.style.padding = '14px';
+      claimBtn.style.fontSize = '1rem';
+    } else {
+      claimBtn.className = 'btn info';
+      claimBtn.textContent = 'Claim Job';
+      claimBtn.style.width = '100%';
+      claimBtn.style.padding = '14px';
+      claimBtn.style.fontSize = '1rem';
+    }
+  }
+  
+  modal.classList.remove('hidden');
+}
+
+/**
+ * Close staff action modal
+ */
+function closeStaffActionModal() {
+  const modal = document.getElementById('staffActionModal');
+  if (modal) modal.classList.add('hidden');
+  currentStaffActionAppt = null;
+}
+
+/**
+ * Handle View button click from staff action modal
+ */
+function handleStaffActionView() {
+  if (currentStaffActionAppt) {
+    // Save reference before closing modal (which sets currentStaffActionAppt to null)
+    const appt = currentStaffActionAppt;
+    closeStaffActionModal();
+    openViewModal(appt);
+  }
+}
+
+/**
+ * Handle Claim/Unclaim button click from staff action modal
+ */
+async function handleStaffActionClaim() {
+  if (!currentStaffActionAppt) return;
+  
+  const isClaimedByMe = currentUserForClaim && currentStaffActionAppt._claimedByMe;
+  
+  if (isClaimedByMe) {
+    await unclaimAppointment(currentStaffActionAppt);
+  } else {
+    await claimAppointment(currentStaffActionAppt);
+  }
+  
+  closeStaffActionModal();
+}
+
+// Make functions global for onclick handlers
+window.closeStaffActionModal = closeStaffActionModal;
+window.handleStaffActionView = handleStaffActionView;
+window.handleStaffActionClaim = handleStaffActionClaim;
 
 /**
  * Open status modal
@@ -3410,6 +3525,17 @@ async function setupAppointments() {
   if (deleteModalCancel) deleteModalCancel.addEventListener('click', hideDeleteApptModal);
   if (deleteModalConfirm) deleteModalConfirm.addEventListener('click', confirmDeleteAppointment);
   if (deleteModal) deleteModal.addEventListener('click', (e) => { if (e.target === deleteModal) hideDeleteApptModal(); });
+  
+  // Staff action modal event listeners
+  const staffActionModal = document.getElementById('staffActionModal');
+  const closeStaffActionBtn = document.getElementById('closeStaffActionModal');
+  const staffActionViewBtn = document.getElementById('staffActionView');
+  const staffActionClaimBtn = document.getElementById('staffActionClaim');
+  
+  if (closeStaffActionBtn) closeStaffActionBtn.addEventListener('click', closeStaffActionModal);
+  if (staffActionViewBtn) staffActionViewBtn.addEventListener('click', handleStaffActionView);
+  if (staffActionClaimBtn) staffActionClaimBtn.addEventListener('click', handleStaffActionClaim);
+  if (staffActionModal) staffActionModal.addEventListener('click', (e) => { if (e.target === staffActionModal) closeStaffActionModal(); });
   
   // Initialize vehicle dropdowns
   const vehicleYearSelect = document.getElementById('vehicleYear');

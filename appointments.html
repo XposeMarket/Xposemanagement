@@ -62,6 +62,14 @@
     .btn-close { background: none; border: none; font-size: 24px; cursor: pointer; color: inherit; }
     .notification { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 500; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
     .hidden { display:none; }
+    
+    /* Staff claimed appointment row highlight */
+    tr.staff-claimed {
+      background-color: rgba(16, 185, 129, 0.12) !important;
+    }
+    tr.staff-claimed:hover {
+      background-color: rgba(16, 185, 129, 0.2) !important;
+    }
   </style>
 </head>
 <body>
@@ -666,6 +674,27 @@ import { upsertCustomerToSupabase } from './pages/appointments.js?v=1767390869';
     <div class="modal-body">
       <div id="statusPills" style="display: flex; flex-direction: column; gap: 12px;">
         <!-- Pills will be populated -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Staff Mobile Action Modal -->
+<div id="staffActionModal" class="modal-backdrop hidden">
+  <div class="modal-card" style="max-width: 340px;">
+    <div class="modal-head">
+      <h3 id="staffActionTitle">Appointment Actions</h3>
+      <button id="closeStaffActionModal" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body" style="padding: 20px;">
+      <div id="staffActionCustomer" style="font-weight: 600; font-size: 1.1rem; margin-bottom: 16px; text-align: center;"></div>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <button id="staffActionView" class="btn" style="width: 100%; padding: 14px; font-size: 1rem;">
+          View Details
+        </button>
+        <button id="staffActionClaim" class="btn info" style="width: 100%; padding: 14px; font-size: 1rem;">
+          Claim Job
+        </button>
       </div>
     </div>
   </div>
