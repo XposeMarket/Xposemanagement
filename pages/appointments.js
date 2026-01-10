@@ -28,6 +28,11 @@ let apptSortDir = 'desc'; // 'asc' | 'desc'
 // Status options
 const STATUSES = ['new', 'scheduled', 'in_progress', 'awaiting_parts', 'completed'];
 
+// Notes polling
+let notesPollingInterval = null;
+let lastKnownNotesHash = null;
+const NOTES_POLL_INTERVAL = 15000; // 15 seconds
+
 // ========== Read Notes Tracking ==========
 /**
  * Get the storage key for read notes (per user)
@@ -63,6 +68,74 @@ function markNoteAsRead(noteId) {
  */
 function isNoteRead(noteId) {
   return getReadNoteIds().has(noteId);
+}
+
+// ========== Notes Polling ==========
+/**
+ * Generate a simple hash of notes data to detect changes
+ */
+function generateNotesHash(notes) {
+  if (!notes || notes.length === 0) return 'empty';
+  // Create a hash based on note IDs and updated_at timestamps
+  return notes.map(n => `${n.id}:${n.updated_at}`).sort().join('|');
+}
+
+/**
+ * Poll for new/updated notes and refresh the table if changes detected
+ */
+async function pollForNotes() {
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase || !allAppointments.length) return;
+    
+    const appointmentIds = allAppointments.map(a => a.id);
+    const { data: notesData } = await supabase
+      .from('appointment_notes')
+      .select('id, updated_at')
+      .in('appointment_id', appointmentIds);
+    
+    const currentHash = generateNotesHash(notesData || []);
+    
+    // If this is the first poll, just store the hash
+    if (lastKnownNotesHash === null) {
+      lastKnownNotesHash = currentHash;
+      return;
+    }
+    
+    // If notes changed, refresh the table
+    if (currentHash !== lastKnownNotesHash) {
+      console.log('[NotesPolling] Notes changed, refreshing table...');
+      lastKnownNotesHash = currentHash;
+      await renderAppointments();
+    }
+  } catch (e) {
+    console.warn('[NotesPolling] Error polling for notes:', e);
+  }
+}
+
+/**
+ * Start polling for notes updates
+ */
+function startNotesPolling() {
+  if (notesPollingInterval) {
+    clearInterval(notesPollingInterval);
+  }
+  // Initial poll
+  pollForNotes();
+  // Set up interval
+  notesPollingInterval = setInterval(pollForNotes, NOTES_POLL_INTERVAL);
+  console.log(`[NotesPolling] Started polling every ${NOTES_POLL_INTERVAL / 1000} seconds`);
+}
+
+/**
+ * Stop polling for notes
+ */
+function stopNotesPolling() {
+  if (notesPollingInterval) {
+    clearInterval(notesPollingInterval);
+    notesPollingInterval = null;
+    console.log('[NotesPolling] Stopped polling');
+  }
 }
 
 // Format a time string (HH:MM or HH:MM:SS or ISO) to a 12-hour clock like "2:30 PM".
@@ -4273,6 +4346,9 @@ async function setupAppointments() {
       populateVehicleModels(naVehicleMakeSelect, naVehicleModelSelect, naVehicleYearSelect);
     });
   }
+  
+  // Start polling for notes updates
+  startNotesPolling();
   
   console.log('✅ Appointments page setup complete');
 }
