@@ -3667,6 +3667,10 @@ function openEditNoteModal(note) {
   textarea.focus();
 }
 
+// Pending media files for appointment note upload - use window to share across module instances
+if (!window.pendingApptNoteMedia) window.pendingApptNoteMedia = [];
+let apptNoteToDeleteId = null;
+
 /**
  * Close note modal
  */
@@ -3675,7 +3679,7 @@ function closeNoteModal() {
   if (modal) modal.classList.add('hidden');
   currentNoteId = null;
   // Clear media selections
-  pendingApptNoteMedia = [];
+  window.pendingApptNoteMedia = [];
   const preview = document.getElementById('noteMediaPreview');
   if (preview) preview.innerHTML = '';
   const count = document.getElementById('noteMediaCount');
@@ -3684,20 +3688,18 @@ function closeNoteModal() {
   if (input) input.value = '';
 }
 
-// Pending media files for appointment note upload
-let pendingApptNoteMedia = [];
-let apptNoteToDeleteId = null;
-
 /**
  * Handle media file selection for appointment notes
  */
 function handleApptNoteMediaSelect(input) {
+  console.log('[ApptNoteMedia] handleApptNoteMediaSelect called', input);
   const files = Array.from(input.files);
+  console.log('[ApptNoteMedia] Files selected:', files.length, files);
   const preview = document.getElementById('noteMediaPreview');
   const count = document.getElementById('noteMediaCount');
   
   if (files.length === 0) {
-    pendingApptNoteMedia = [];
+    window.pendingApptNoteMedia = [];
     if (preview) preview.innerHTML = '';
     if (count) count.textContent = 'No files selected';
     return;
@@ -3713,7 +3715,8 @@ function handleApptNoteMediaSelect(input) {
     return true;
   });
   
-  pendingApptNoteMedia = validFiles;
+  window.pendingApptNoteMedia = validFiles;
+  console.log('[ApptNoteMedia] window.pendingApptNoteMedia set to:', window.pendingApptNoteMedia.length, 'files');
   
   if (count) {
     count.textContent = `${validFiles.length} file${validFiles.length !== 1 ? 's' : ''} selected`;
@@ -3748,8 +3751,8 @@ function handleApptNoteMediaSelect(input) {
       removeBtn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        pendingApptNoteMedia.splice(idx, 1);
-        handleApptNoteMediaSelect({ files: pendingApptNoteMedia });
+        window.pendingApptNoteMedia.splice(idx, 1);
+        handleApptNoteMediaSelect({ files: window.pendingApptNoteMedia });
       };
       thumb.appendChild(removeBtn);
       
@@ -3995,8 +3998,8 @@ async function saveNote(e) {
   if (e) e.preventDefault();
   
   console.log('[ApptNotes] ====== SAVING NOTE ======');
-  console.log('[ApptNotes] pendingApptNoteMedia:', pendingApptNoteMedia);
-  console.log('[ApptNotes] pendingApptNoteMedia.length:', pendingApptNoteMedia.length);
+  console.log('[ApptNotes] window.pendingApptNoteMedia:', window.pendingApptNoteMedia);
+  console.log('[ApptNotes] window.pendingApptNoteMedia.length:', window.pendingApptNoteMedia.length);
   
   const textarea = document.getElementById('noteText');
   const saveBtn = document.getElementById('saveNoteBtn');
@@ -4006,7 +4009,7 @@ async function saveNote(e) {
   console.log('[ApptNotes] currentNotesAppointmentId:', currentNotesAppointmentId);
   console.log('[ApptNotes] currentNoteId:', currentNoteId);
   
-  if (!noteText && pendingApptNoteMedia.length === 0) {
+  if (!noteText && window.pendingApptNoteMedia.length === 0) {
     showNotification('Please enter a note or add media.', 'error');
     return;
   }
@@ -4028,8 +4031,8 @@ async function saveNote(e) {
   try {
     // Upload media files if any (only for new notes)
     let mediaUrls = [];
-    if (pendingApptNoteMedia.length > 0 && !currentNoteId) {
-      mediaUrls = await uploadApptNoteMedia(pendingApptNoteMedia, currentNotesAppointmentId);
+    if (window.pendingApptNoteMedia.length > 0 && !currentNoteId) {
+      mediaUrls = await uploadApptNoteMedia(window.pendingApptNoteMedia, currentNotesAppointmentId);
     }
     
     if (currentNoteId) {
