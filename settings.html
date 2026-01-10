@@ -1030,10 +1030,44 @@ document.addEventListener('DOMContentLoaded', function(){
   <script type="module">
   import { loadSubscriptionBanner } from './pages/settings-subscription.js';
 
-  document.addEventListener('DOMContentLoaded', () => {
-    loadSubscriptionBanner();
-    // terminal-registration-component.js will auto-load the panel if #terminal-settings-section exists
-  });
+  document.addEventListener('DOMContentLoaded', async () => {
+  loadSubscriptionBanner();
+  
+  // Handle terminal purchase success
+  const urlParams = new URLSearchParams(window.location.search);
+  const terminalPurchase = urlParams.get('terminal_purchase');
+  const sessionId = urlParams.get('session_id');
+  
+  if (terminalPurchase === 'success' && sessionId) {
+    try {
+      // Fetch session details to get terminal info
+      const response = await fetch('https://xpose-stripe-server.vercel.app/api/terminal/purchase-complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId })
+      });
+      
+      if (response.ok) {
+        // Show success notification
+        if (typeof showNotification === 'function') {
+          showNotification('Terminal purchase successful! Your terminal will ship within 5-7 business days.', 'success');
+        } else {
+          alert('Terminal purchase successful! Your terminal will ship within 5-7 business days.');
+        }
+      }
+      
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch (error) {
+      console.error('Error completing terminal purchase:', error);
+    }
+  } else if (terminalPurchase === 'cancelled') {
+    // Clean up URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+  
+  // terminal-registration-component.js will auto-load the panel if #terminal-settings-section exists
+});
   </script>
 
 </body></html>

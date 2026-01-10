@@ -2173,8 +2173,30 @@ function setupInvoices() {
     }, 3000);
   }
 
-  // Terminal Payment Modal
-  function showTerminalPaymentModal(inv) {
+  // Terminal Payment Modal - with multi-terminal selection support
+  async function showTerminalPaymentModal(inv, selectedTerminalId = null) {
+    // If no terminal selected yet, check if shop has multiple terminals
+    if (!selectedTerminalId && supabase) {
+      try {
+        const { data: terminals, error } = await supabase
+          .from('shop_terminals')
+          .select('id, terminal_id, label, model, status')
+          .eq('shop_id', shopId)
+          .eq('status', 'online');
+        
+        if (!error && terminals && terminals.length > 1) {
+          // Multiple terminals - show selection modal first
+          showTerminalSelectionModal(inv, terminals);
+          return;
+        } else if (!error && terminals && terminals.length === 1) {
+          // Single terminal - use it directly
+          selectedTerminalId = terminals[0].terminal_id;
+        }
+      } catch (e) {
+        console.warn('[Invoices] Could not fetch terminals:', e);
+      }
+    }
+
     // Get customer name
     let customerName = 'Unknown Customer';
     if (inv.customer_first || inv.customer_last) {
@@ -2268,7 +2290,7 @@ function setupInvoices() {
       
       // Check if shop has terminal
       const shopInfo = window.getShopInfo ? window.getShopInfo() : null;
-      const hasTerminal = shopInfo && shopInfo.terminal_id;
+      const hasTerminal = selectedTerminalId || (shopInfo && shopInfo.terminal_id);
       
       if (!hasTerminal) {
         statusIcon.innerHTML = '<i class="fas fa-info-circle" style="color:#ff9800;"></i>';
@@ -2285,6 +2307,122 @@ function setupInvoices() {
         await markInvoicePaid(inv);
       }, 2000);
     }, 2000);
+  }
+
+  // Terminal Selection Modal - shown when shop has multiple terminals
+  function showTerminalSelectionModal(inv, terminals) {
+    // Create or get the terminal selection modal
+    let modal = document.getElementById('terminal-selection-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'terminal-selection-modal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+
+    // Calculate total for display
+    const subtotal = (inv.items || []).reduce((sum, itm) => sum + (itm.qty * itm.price), 0);
+    const tax = subtotal * ((inv.tax_rate || 0) / 100);
+    const discount = subtotal * ((inv.discount || 0) / 100);
+    const total = subtotal + tax - discount;
+
+    // Build terminal options
+    const terminalOptionsHTML = terminals.map(term => {
+      const label = term.label || term.model || 'Terminal';
+      const statusColor = term.status === 'online' ? '#10b981' : '#ef4444';
+      const statusText = term.status === 'online' ? 'Online' : 'Offline';
+      return `
+        <button class="terminal-option-btn" data-terminal-id="${term.terminal_id}" style="
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+          padding: 16px;
+          margin-bottom: 12px;
+          background: var(--card, #fff);
+          border: 2px solid var(--line, #e5e7eb);
+          border-radius: 10px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        ">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="width:48px;height:48px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:8px;display:flex;align-items:center;justify-content:center;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+                <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-6-1h2v-2h-2v2zm-3 0h2v-2h-2v2zm-3 0h2v-2H8v2zm6-3h2v-2h-2v2zm-3 0h2v-2h-2v2zm-3 0h2v-2H8v2z"/>
+              </svg>
+            </div>
+            <div style="text-align:left;">
+              <div style="font-weight:600;font-size:1rem;color:var(--text,#111);">${label}</div>
+              <div style="font-size:0.85rem;color:var(--muted,#666);">${term.model || 'Stripe Terminal'}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="width:8px;height:8px;border-radius:50%;background:${statusColor};"></span>
+            <span style="font-size:0.85rem;color:${statusColor};font-weight:500;">${statusText}</span>
+          </div>
+        </button>
+      `;
+    }).join('');
+
+    modal.innerHTML = `
+      <div class="modal-content card" style="max-width:480px;margin:12vh auto;padding:0;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:20px 24px;">
+          <h2 style="margin:0;font-size:1.35rem;">Select Terminal</h2>
+          <p style="margin:8px 0 0 0;opacity:0.9;font-size:0.95rem;">Invoice #${inv.number || inv.id} • ${total.toFixed(2)}</p>
+        </div>
+        <div style="padding:24px;">
+          <p style="margin:0 0 16px 0;color:var(--muted,#666);font-size:0.95rem;">Choose which terminal to process this payment:</p>
+          <div id="terminal-options-list">
+            ${terminalOptionsHTML}
+          </div>
+        </div>
+        <div style="padding:16px 24px;background:var(--bg,#f9fafb);border-top:1px solid var(--line,#e5e7eb);display:flex;justify-content:flex-end;gap:12px;">
+          <button class="btn" id="cancel-terminal-selection">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+
+    // Wire up terminal selection buttons
+    const optionBtns = modal.querySelectorAll('.terminal-option-btn');
+    optionBtns.forEach(btn => {
+      // Hover effect
+      btn.addEventListener('mouseenter', () => {
+        btn.style.borderColor = '#667eea';
+        btn.style.background = 'var(--bg, #f9fafb)';
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.borderColor = 'var(--line, #e5e7eb)';
+        btn.style.background = 'var(--card, #fff)';
+      });
+      
+      btn.addEventListener('click', () => {
+        const terminalId = btn.dataset.terminalId;
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+        // Proceed to checkout with selected terminal
+        showTerminalPaymentModal(inv, terminalId);
+      });
+    });
+
+    // Cancel button
+    const cancelBtn = modal.querySelector('#cancel-terminal-selection');
+    if (cancelBtn) {
+      cancelBtn.onclick = () => {
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+      };
+    }
+
+    // Close on backdrop click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.style.display = 'none';
+        modal.classList.add('hidden');
+      }
+    });
   }
 
   // Wire up actions

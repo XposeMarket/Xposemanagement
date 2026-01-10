@@ -745,6 +745,146 @@ app.post('/api/terminal/register', async (req, res) => {
   }
 });
 
+// Purchase additional terminal
+app.post('/api/terminal/purchase', async (req, res) => {
+  const { shopId, terminalModel, priceId, customerEmail } = req.body;
+
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe not configured' });
+  }
+
+  if (!shopId || !terminalModel || !priceId) {
+    return res.status(400).json({ error: 'Shop ID, terminal model, and price ID are required' });
+  }
+
+  try {
+    console.log('🛒 Creating terminal purchase checkout for shop:', shopId, 'terminal:', terminalModel);
+
+    const envFrontend = normalizeOrigin(process.env.FRONTEND_URL);
+    const origin = req.headers.origin || envFrontend || 'https://www.xpose.management';
+
+    // Create checkout session for terminal purchase
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1
+        }
+      ],
+      customer_email: customerEmail || undefined,
+      subscription_data: {
+        metadata: {
+          shop_id: shopId,
+          terminal_model: terminalModel,
+          purchase_type: 'additional_terminal'
+        }
+      },
+      allow_promotion_codes: true,
+      success_url: `${origin}/settings.html?terminal_purchase=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/settings.html?terminal_purchase=cancelled`,
+      metadata: {
+        shop_id: shopId,
+        terminal_model: terminalModel,
+        purchase_type: 'additional_terminal'
+      }
+    });
+
+    console.log('✅ Terminal purchase checkout created:', session.id);
+
+    res.json({ 
+      success: true, 
+      url: session.url,
+      sessionId: session.id 
+    });
+
+  } catch (error) {
+    console.error('❌ Terminal purchase checkout failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Complete terminal purchase - save to database
+app.post('/api/terminal/purchase-complete', async (req, res) => {
+  const { sessionId } = req.body;
+
+  if (!stripe) {
+    return res.status(500).json({ error: 'Stripe not configured' });
+  }
+
+  if (!sessionId) {
+    return res.status(400).json({ error: 'Session ID is required' });
+  }
+
+  try {
+    console.log('📦 Completing terminal purchase for session:', sessionId);
+
+    // Retrieve the checkout session
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ['subscription']
+    });
+
+    if (!session || session.payment_status !== 'paid') {
+      return res.status(400).json({ error: 'Payment not completed' });
+    }
+
+    const shopId = session.metadata?.shop_id;
+    const terminalModel = session.metadata?.terminal_model;
+
+    if (!shopId || !terminalModel) {
+      return res.status(400).json({ error: 'Missing shop or terminal info in session' });
+    }
+
+    // Save to shop_terminals table
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.warn('⚠️ Supabase not configured - cannot save terminal');
+      return res.json({ success: true, saved: false, message: 'Terminal purchased but database not configured' });
+    }
+
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Insert the terminal record
+    const { data: terminal, error: insertError } = await supabase
+      .from('shop_terminals')
+      .insert({
+        shop_id: shopId,
+        terminal_model: terminalModel,
+        stripe_subscription_id: session.subscription?.id || session.subscription,
+        status: 'pending_shipment',
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('❌ Failed to save terminal:', insertError);
+      // Don't fail the request - payment was successful
+      return res.json({ success: true, saved: false, error: insertError.message });
+    }
+
+    console.log('✅ Terminal purchase saved:', terminal.id);
+
+    res.json({
+      success: true,
+      saved: true,
+      terminal: {
+        id: terminal.id,
+        model: terminalModel,
+        status: 'pending_shipment'
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Terminal purchase completion failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get terminal status (GET with shopId in URL)
 app.get('/api/terminal/status/:shopId?', async (req, res) => {
   const shopId = req.params.shopId || req.query.shopId;
