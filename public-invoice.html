@@ -242,7 +242,7 @@
     </div>
 
     <div class="powered-by">
-      Powered by <a href="https://xposemanagement.com" target="_blank">Xpose Management</a>
+      Powered by <a href="https://xpose.management" target="_blank">Xpose Management</a>
       <img src="assets/XposeManagementCRMlogo.png" alt="Xpose Management">
     </div>
   </main>
@@ -400,9 +400,22 @@
       const laborItems = [];
       const serviceItems = [];
       const partLaborGroups = [];
+      const servicePartGroups = [];
+      const serviceLaborGroups = [];
       const usedIndexes = new Set();
 
-      // 1. First pass: Detect Part+Labor groups by groupId
+      // Build list of known service names from settings or local cache
+      let serviceNames = [];
+      try {
+        if (settings && settings.services) {
+          serviceNames = (Array.isArray(settings.services) ? settings.services : []).map(s => (s.name || '').toLowerCase().trim());
+        } else {
+          const d = JSON.parse(localStorage.getItem('xm_data') || '{}');
+          serviceNames = ((d.settings && d.settings.services) || []).map(s => (s.name || '').toLowerCase().trim());
+        }
+      } catch (e) { serviceNames = []; }
+
+      // 1. First pass: Detect explicit linked groups (Part+Labor, Service+Part, Service+Labor)
       for (let i = 0; i < items.length; i++) {
         if (usedIndexes.has(i)) continue;
         const itm = items[i];
@@ -410,20 +423,48 @@
           const linkedIdx = items.findIndex((it, idx) => idx !== i && it.groupId === itm.groupId);
           if (linkedIdx !== -1 && !usedIndexes.has(linkedIdx)) {
             const linkedItem = items[linkedIdx];
-            const isPart = itm.type === 'part' || (itm.name || '').toLowerCase().startsWith('part:') || 
-                          itm.part_number || typeof itm.cost_price !== 'undefined';
-            if (isPart) {
-              partLaborGroups.push([itm, linkedItem]);
-            } else {
-              partLaborGroups.push([linkedItem, itm]);
+            const itmName = (itm.name || '').toLowerCase().trim();
+            const linkedName = (linkedItem.name || '').toLowerCase().trim();
+            const itmIsService = serviceNames.length && serviceNames.includes(itmName);
+            const linkedIsService = serviceNames.length && serviceNames.includes(linkedName);
+
+            if (itmIsService || linkedIsService) {
+              const service = itmIsService ? itm : linkedItem;
+              const other = itmIsService ? linkedItem : itm;
+              const otherIsPart = (other.type === 'part') || other.part_number || (typeof other.cost_price !== 'undefined') || (other.name||'').toLowerCase().startsWith('part:');
+              if (otherIsPart) servicePartGroups.push([service, other]);
+              else serviceLaborGroups.push([service, other]);
+              usedIndexes.add(i);
+              usedIndexes.add(linkedIdx);
+              continue;
             }
+
+            const isPart = itm.type === 'part' || (itm.name || '').toLowerCase().startsWith('part:') || itm.part_number || typeof itm.cost_price !== 'undefined';
+            if (isPart) partLaborGroups.push([itm, linkedItem]);
+            else partLaborGroups.push([linkedItem, itm]);
             usedIndexes.add(i);
             usedIndexes.add(linkedIdx);
             continue;
           }
         }
 
-        // 2. Sequential Part+Labor detection
+        // 2. Fallback: sequential detection - prefer Service+Part/Service+Labor, then Part+Labor
+        const nameLower = (itm.name || '').toLowerCase().trim();
+        const isServiceItem = serviceNames.length && serviceNames.includes(nameLower);
+
+        if (isServiceItem) {
+          for (let j = i + 1; j < items.length && j <= i + 2; j++) {
+            if (usedIndexes.has(j)) continue;
+            const nextItem = items[j];
+            const nextName = (nextItem.name || '').toLowerCase().trim();
+            const nextIsPart = (nextItem.type === 'part') || nextItem.part_number || typeof nextItem.cost_price !== 'undefined' || nextName.startsWith('part:');
+            const nextIsLabor = (nextItem.type === 'labor') || nextName.startsWith('labor') || nextName.includes('labor');
+            if (nextIsPart) { servicePartGroups.push([itm, nextItem]); usedIndexes.add(i); usedIndexes.add(j); break; }
+            if (nextIsLabor) { serviceLaborGroups.push([itm, nextItem]); usedIndexes.add(i); usedIndexes.add(j); break; }
+          }
+          if (usedIndexes.has(i)) continue;
+        }
+
         const isPartByType = (itm.type === 'part');
         const isPartByName = (itm.name || '').toLowerCase().trim().startsWith('part:');
         if (isPartByType || isPartByName) {
@@ -432,8 +473,7 @@
             const nextItem = items[j];
             const nextName = (nextItem.name || '').toLowerCase().trim();
             const isLaborByType = (nextItem.type === 'labor');
-            const isLaborByName = nextName.startsWith('labor') || nextName.startsWith('labor:') || 
-                nextName.includes('labor for') || nextName.includes('installation');
+            const isLaborByName = nextName.startsWith('labor') || nextName.startsWith('labor:') || nextName.includes('labor for') || nextName.includes('installation');
             if (isLaborByType || isLaborByName) {
               partLaborGroups.push([itm, nextItem]);
               usedIndexes.add(i);
@@ -517,6 +557,82 @@
           itemsBody.appendChild(trSubtotal);
           
           // Spacer row
+          const trSpacer = document.createElement('tr');
+          trSpacer.innerHTML = `<td colspan="4" style="height:8px;"></td>`;
+          itemsBody.appendChild(trSpacer);
+        }
+      }
+
+      // Render Service+Part groups
+      if (servicePartGroups.length) {
+        for (const [service, part] of servicePartGroups) {
+          let groupTitle = (service.groupName && service.groupName.trim()) || (service.name && service.name.trim()) || 'Service + Part';
+          const trHeader = document.createElement('tr');
+          trHeader.innerHTML = `<td colspan="4" style="font-weight:bold;background:var(--line);color:var(--text);padding:8px;">${groupTitle}</td>`;
+          itemsBody.appendChild(trHeader);
+
+          // Service row
+          const svcQty = Number(service.qty) || 0;
+          const svcPrice = Number(service.price) || 0;
+          const svcTotal = svcQty * svcPrice;
+          subtotal += svcTotal;
+          const trSvc = document.createElement('tr');
+          trSvc.innerHTML = `<td style="padding-left:20px;">${service.name}</td><td style="text-align:center">${svcQty}</td><td style="text-align:right">$${svcPrice.toFixed(2)}</td><td style="text-align:right">$${svcTotal.toFixed(2)}</td>`;
+          itemsBody.appendChild(trSvc);
+
+          // Part row
+          const partQty = Number(part.qty) || 0;
+          const partPrice = Number(part.price) || 0;
+          const partTotal = partQty * partPrice;
+          subtotal += partTotal;
+          const trPart = document.createElement('tr');
+          trPart.innerHTML = `<td style="padding-left:20px;">${(part.name || '').replace(/^part:/i,'').trim() || 'Part'}</td><td style="text-align:center">${partQty}</td><td style="text-align:right">$${partPrice.toFixed(2)}</td><td style="text-align:right">$${partTotal.toFixed(2)}</td>`;
+          itemsBody.appendChild(trPart);
+
+          // Group subtotal
+          const groupSubtotal = svcTotal + partTotal;
+          const trSubtotal = document.createElement('tr');
+          trSubtotal.innerHTML = `<td colspan="3" style="text-align:right;padding-right:10px;font-weight:500;font-style:italic;">Subtotal</td><td style="text-align:right;font-weight:500;">$${groupSubtotal.toFixed(2)}</td>`;
+          itemsBody.appendChild(trSubtotal);
+
+          const trSpacer = document.createElement('tr');
+          trSpacer.innerHTML = `<td colspan="4" style="height:8px;"></td>`;
+          itemsBody.appendChild(trSpacer);
+        }
+      }
+      // Render Service+Labor groups
+      if (serviceLaborGroups.length) {
+        for (const [service, labor] of serviceLaborGroups) {
+          let groupTitle = (service.groupName && service.groupName.trim()) || (service.name && service.name.trim()) || 'Service + Labor';
+          const trHeader = document.createElement('tr');
+          trHeader.innerHTML = `<td colspan="4" style="font-weight:bold;background:var(--line);color:var(--text);padding:8px;">${groupTitle}</td>`;
+          itemsBody.appendChild(trHeader);
+
+          // Service row
+          const svcQty = Number(service.qty) || 0;
+          const svcPrice = Number(service.price) || 0;
+          const svcTotal = svcQty * svcPrice;
+          subtotal += svcTotal;
+          const trSvc = document.createElement('tr');
+          trSvc.innerHTML = `<td style="padding-left:20px;">${service.name}</td><td style="text-align:center">${svcQty}</td><td style="text-align:right">$${svcPrice.toFixed(2)}</td><td style="text-align:right">$${svcTotal.toFixed(2)}</td>`;
+          itemsBody.appendChild(trSvc);
+
+          // Labor row
+          const laborQty = Number(labor.qty) || 0;
+          const laborPrice = Number(labor.price) || 0;
+          const laborTotal = laborQty * laborPrice;
+          subtotal += laborTotal;
+          let displayLaborName = labor.name ? `Labor - ${labor.name}` : `Labor (${laborQty} hr${laborQty !== 1 ? 's' : ''})`;
+          const trLabor = document.createElement('tr');
+          trLabor.innerHTML = `<td style="padding-left:20px;">${displayLaborName}</td><td style="text-align:center">${laborQty}</td><td style="text-align:right">$${laborPrice.toFixed(2)}</td><td style="text-align:right">$${laborTotal.toFixed(2)}</td>`;
+          itemsBody.appendChild(trLabor);
+
+          // Group subtotal
+          const groupSubtotal = svcTotal + laborTotal;
+          const trSubtotal = document.createElement('tr');
+          trSubtotal.innerHTML = `<td colspan="3" style="text-align:right;padding-right:10px;font-weight:500;font-style:italic;">Subtotal</td><td style="text-align:right;font-weight:500;">$${groupSubtotal.toFixed(2)}</td>`;
+          itemsBody.appendChild(trSubtotal);
+
           const trSpacer = document.createElement('tr');
           trSpacer.innerHTML = `<td colspan="4" style="height:8px;"></td>`;
           itemsBody.appendChild(trSpacer);
