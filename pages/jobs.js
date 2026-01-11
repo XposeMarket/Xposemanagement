@@ -149,6 +149,77 @@ function stopNotesPolling() {
   }
 }
 
+// ========== Status Polling ==========
+let statusPollingInterval = null;
+let lastKnownStatusHash = null;
+const STATUS_POLL_INTERVAL = 30000; // 30 seconds - align with invitations polling
+
+function generateStatusHash(items) {
+  if (!items || items.length === 0) return 'empty';
+  return items.map(i => `${i.id}:${i.status}:${i.updated_at || ''}`).sort().join('|');
+}
+
+async function pollForStatuses() {
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase || !allJobs.length) return;
+
+    const jobIds = allJobs.map(j => j.id).filter(Boolean);
+    if (!jobIds.length) return;
+
+    const { data: rows, error } = await supabase
+      .from('jobs')
+      .select('id,status,updated_at')
+      .in('id', jobIds);
+
+    if (error) { console.warn('[StatusPolling] Supabase error:', error); return; }
+
+    const currentHash = generateStatusHash(rows || []);
+    if (lastKnownStatusHash === null) {
+      lastKnownStatusHash = currentHash;
+      return;
+    }
+
+    if (currentHash !== lastKnownStatusHash) {
+      console.log('[StatusPolling] Job statuses changed, merging and refreshing jobs table...');
+      lastKnownStatusHash = currentHash;
+
+      // Merge the polled status rows into the in-memory `allJobs` array.
+      const rowsMap = (rows || []).reduce((m, r) => { if (r && r.id) m[r.id] = r; return m; }, {});
+      let didChange = false;
+      allJobs = allJobs.map(j => {
+        if (!j || !j.id) return j;
+        const polled = rowsMap[j.id];
+        if (!polled) return j;
+        if (j.status !== polled.status || (polled.updated_at && j.updated_at !== polled.updated_at)) {
+          didChange = true;
+          return Object.assign({}, j, { status: polled.status, updated_at: polled.updated_at });
+        }
+        return j;
+      });
+
+      if (didChange) await renderJobs();
+    }
+  } catch (e) {
+    console.warn('[StatusPolling] Error polling statuses:', e);
+  }
+}
+
+function startStatusPolling() {
+  if (statusPollingInterval) clearInterval(statusPollingInterval);
+  pollForStatuses();
+  statusPollingInterval = setInterval(pollForStatuses, STATUS_POLL_INTERVAL);
+  console.log(`[StatusPolling] Started polling every ${STATUS_POLL_INTERVAL / 1000} seconds`);
+}
+
+function stopStatusPolling() {
+  if (statusPollingInterval) {
+    clearInterval(statusPollingInterval);
+    statusPollingInterval = null;
+    console.log('[StatusPolling] Stopped polling');
+  }
+}
+
 /**
  * Get current user's shop ID
  */
@@ -3531,6 +3602,8 @@ async function setupJobs() {
 
   // Start polling for notes updates
   startNotesPolling();
+  // Start polling for status updates so other users see live status changes
+  if (typeof startStatusPolling === 'function') startStatusPolling();
 
   console.log('✅ Jobs page setup complete');
 }

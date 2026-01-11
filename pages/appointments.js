@@ -138,6 +138,69 @@ function stopNotesPolling() {
   }
 }
 
+// ========== Status Polling for Appointments ==========
+let apptStatusPollingInterval = null;
+let lastKnownApptStatusHash = null;
+const APPT_STATUS_POLL_INTERVAL = 30000; // 30 seconds
+
+function generateApptStatusHash(items) {
+  if (!items || items.length === 0) return 'empty';
+  return items.map(i => `${i.id}:${i.status}:${i.updated_at || ''}`).sort().join('|');
+}
+
+async function pollForAppointmentStatuses() {
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase || !allAppointments.length) return;
+
+    const apptIds = allAppointments.map(a => a.id).filter(Boolean);
+    if (!apptIds.length) return;
+
+    const { data: rows, error } = await supabase
+      .from('appointments')
+      .select('id,status,updated_at')
+      .in('id', apptIds);
+
+    if (error) { console.warn('[ApptStatusPolling] Supabase error:', error); return; }
+
+    const currentHash = generateApptStatusHash(rows || []);
+    if (lastKnownApptStatusHash === null) { lastKnownApptStatusHash = currentHash; return; }
+    if (currentHash !== lastKnownApptStatusHash) {
+      console.log('[ApptStatusPolling] Appointment statuses changed, merging and refreshing table...');
+      lastKnownApptStatusHash = currentHash;
+
+      // Merge the polled appointment status rows into the in-memory `allAppointments` array.
+      const rowsMap = (rows || []).reduce((m, r) => { if (r && r.id) m[r.id] = r; return m; }, {});
+      let didChange = false;
+      allAppointments = allAppointments.map(a => {
+        if (!a || !a.id) return a;
+        const polled = rowsMap[a.id];
+        if (!polled) return a;
+        if (a.status !== polled.status || (polled.updated_at && a.updated_at !== polled.updated_at)) {
+          didChange = true;
+          return Object.assign({}, a, { status: polled.status, updated_at: polled.updated_at });
+        }
+        return a;
+      });
+
+      if (didChange) await renderAppointments();
+    }
+  } catch (e) {
+    console.warn('[ApptStatusPolling] Error polling appointment statuses:', e);
+  }
+}
+
+function startApptStatusPolling() {
+  if (apptStatusPollingInterval) clearInterval(apptStatusPollingInterval);
+  pollForAppointmentStatuses();
+  apptStatusPollingInterval = setInterval(pollForAppointmentStatuses, APPT_STATUS_POLL_INTERVAL);
+  console.log(`[ApptStatusPolling] Started polling every ${APPT_STATUS_POLL_INTERVAL / 1000} seconds`);
+}
+
+function stopApptStatusPolling() {
+  if (apptStatusPollingInterval) { clearInterval(apptStatusPollingInterval); apptStatusPollingInterval = null; console.log('[ApptStatusPolling] Stopped polling'); }
+}
+
 // Format a time string (HH:MM or HH:MM:SS or ISO) to a 12-hour clock like "2:30 PM".
 function formatTime12(timeStr) {
   if (!timeStr) return null;
@@ -4352,6 +4415,8 @@ async function setupAppointments() {
   
   // Start polling for notes updates
   startNotesPolling();
+  // Start appointment status polling to keep statuses in sync across users
+  if (typeof startApptStatusPolling === 'function') startApptStatusPolling();
   
   console.log('✅ Appointments page setup complete');
 }
