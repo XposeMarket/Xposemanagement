@@ -326,7 +326,8 @@ import { getShopData } from './helpers/storage.js';
       const discEl = document.getElementById('iDisc');
       const grandEl = document.getElementById('iGrand');
 
-      invNoEl.textContent = invObj.number || invObj.id || '';
+      console.debug('[Invoice] renderInvoice called', { id: invObj && invObj.id, number: invObj && invObj.number, shopSource });
+      invNoEl.textContent = invObj.number || invObj.id || 'N/A';
       // FIX: Always prefer customer_first/customer_last over customer (which is a UUID)
       invCustomerEl.textContent = (invObj.customer_first || invObj.customer_last) ? 
         ((invObj.customer_first || '') + ' ' + (invObj.customer_last || '')).trim() : 
@@ -373,14 +374,36 @@ import { getShopData } from './helpers/storage.js';
   // Render labels in bold, escape values to avoid HTML injection
   function esc(v){ return String(v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
   shopNameEl.innerHTML = `<strong>Name:</strong> ${esc(displayName)}`;
-  // Compose full address line
+  // Compose full address line (support many possible field names)
   const shopAddressEl = document.getElementById('invShopAddress');
   let addressParts = [];
-  if (s && s.street) addressParts.push(s.street);
-  if (s && s.city) addressParts.push(s.city);
-  if (s && s.state) addressParts.push(s.state);
-  if (s && s.zipcode) addressParts.push(s.zipcode);
-  shopAddressEl.innerHTML = addressParts.length ? `<strong>Address:</strong> ${esc(addressParts.join(', '))}` : '';
+  const streetFields = ['street','address','address1','address_line1','address_line_1','street1','line1'];
+  const cityFields = ['city','town','locality'];
+  const stateFields = ['state','region','province'];
+  const zipFields = ['zipcode','zip','postal_code','postal'];
+
+  function pushFirstExisting(obj, fields) {
+    for (const f of fields) {
+      if (obj && typeof obj[f] === 'string' && obj[f].trim()) { addressParts.push(obj[f].trim()); return; }
+    }
+  }
+
+  pushFirstExisting(s, streetFields);
+  pushFirstExisting(s, cityFields);
+  pushFirstExisting(s, stateFields);
+  pushFirstExisting(s, zipFields);
+
+  // Fallback to single-line address fields if present
+  if (!addressParts.length && s) {
+    const fallbackAddr = s.address || s.full_address || s.location || s.address_line || s.addr;
+    if (fallbackAddr && typeof fallbackAddr === 'string' && fallbackAddr.trim()) addressParts.push(fallbackAddr.trim());
+  }
+
+  if (shopAddressEl) {
+    shopAddressEl.innerHTML = `<strong>Address:</strong> ${esc(addressParts.join(', ') || 'N/A')}`;
+  } else {
+    console.warn('[Invoice] invShopAddress element not found');
+  }
   shopPhoneEl.innerHTML = `<strong>Number:</strong> ${esc(displayPhone)}`;
   shopEmailEl.innerHTML = `<strong>Email:</strong> ${esc(displayEmail)}`;
 
@@ -396,6 +419,53 @@ import { getShopData } from './helpers/storage.js';
     }
     if (brandNameEl) brandNameEl.textContent = displayName || '';
   } catch (e) {}
+
+  // If shop info is missing or incomplete, try fetching authoritative shop row from Supabase
+  (async function tryFetchShop() {
+    try {
+      const needsFetch = !s || !s.name || !s.street && !s.address && !s.full_address;
+      const shopIdCandidate = (invObj && invObj.shop_id) || (allData && allData.settings && allData.settings.shop && (Array.isArray(allData.settings.shop) ? allData.settings.shop[0] && (allData.settings.shop[0].id || allData.settings.shop[0].shop_id) : (allData.settings.shop.id || allData.settings.shop.shop_id))) || null;
+      if (needsFetch && shopIdCandidate && typeof getSupabaseClient === 'function') {
+        const supabase = await getSupabaseClient();
+        if (supabase) {
+          const { data: shopRow, error: shopErr } = await supabase.from('shops').select('*').eq('id', shopIdCandidate).single();
+          if (!shopErr && shopRow) {
+            s = shopRow;
+            // Recompute display values
+            displayName = s.name || displayName;
+            displayPhone = s.phone || displayPhone;
+            displayEmail = s.email || displayEmail;
+            shopNameEl.innerHTML = `<strong>Name:</strong> ${esc(displayName)}`;
+
+            // recompute addressParts (use same helpers/fields as above)
+            let newAddressParts = [];
+            const streetFields = ['street','address','address1','address_line1','address_line_1','street1','line1'];
+            const cityFields = ['city','town','locality'];
+            const stateFields = ['state','region','province'];
+            const zipFields = ['zipcode','zip','postal_code','postal'];
+            function pushFirstExisting(obj, fields) { for (const f of fields) { if (obj && typeof obj[f] === 'string' && obj[f].trim()) { newAddressParts.push(obj[f].trim()); return; } } }
+            pushFirstExisting(s, streetFields); pushFirstExisting(s, cityFields); pushFirstExisting(s, stateFields); pushFirstExisting(s, zipFields);
+            if (!newAddressParts.length) {
+              const fallbackAddr = s.address || s.full_address || s.location || s.address_line || s.addr;
+              if (fallbackAddr && typeof fallbackAddr === 'string' && fallbackAddr.trim()) newAddressParts.push(fallbackAddr.trim());
+            }
+            if (shopAddressEl) shopAddressEl.innerHTML = `<strong>Address:</strong> ${esc(newAddressParts.join(', ') || 'N/A')}`;
+            if (shopPhoneEl) shopPhoneEl.innerHTML = `<strong>Number:</strong> ${esc(displayPhone)}`;
+            if (shopEmailEl) shopEmailEl.innerHTML = `<strong>Email:</strong> ${esc(displayEmail)}`;
+
+            // update brand area logo/name if available
+            try {
+              const brandLogoEl2 = document.getElementById('brandShopLogo');
+              const brandNameEl2 = document.getElementById('brandShopName');
+              const logoSrc2 = (s && (s.logo || s.logo_url || s.image)) ? (s.logo || s.logo_url || s.image) : '';
+              if (logoSrc2 && brandLogoEl2) { brandLogoEl2.src = logoSrc2; brandLogoEl2.style.display = 'inline-block'; }
+              if (brandNameEl2) brandNameEl2.textContent = displayName || '';
+            } catch (e) {}
+          }
+        }
+      }
+    } catch (e) { console.warn('[Invoice] tryFetchShop failed', e); }
+  })();
 
     // Set print footer logo to shop logo when available (falls back to platform logo)
     try {
@@ -1164,6 +1234,8 @@ import { getShopData } from './helpers/storage.js';
               customer_first: customerName?.split(' ')[0] || '',
               customer_last: customerName?.split(' ').slice(1).join(' ') || '',
               shop_id: shopId,
+              appointment_id: invoice.appointment_id || null,
+              job_id: invoice.job_id || null,
               items: invoice.items || [],
               tax_rate: invoice.tax_rate || 0,
               discount: invoice.discount || 0,
