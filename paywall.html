@@ -480,12 +480,22 @@
   </footer>
   
   <script>
-    // Stripe Price IDs - These are your actual Price IDs from Stripe Dashboard
+    // Stripe Price IDs - monthly and annual price ids from Stripe Dashboard
     const PRICE_IDS = {
-      single: 'price_1Slydh4K55W1qqBCPa4CAwOi',
-      local: 'price_1Slyf44K55W1qqBCIayxsn8D',
-      multi: 'price_1Slyfn4K55W1qqBCMj84DH1q'
+      monthly: {
+        single: 'price_1SX97Z4K55W1qqBCSwzYlDd6',
+        local:  'price_1SX97b4K55W1qqBC7o7fJYUi',
+        multi:  'price_1SX97d4K55W1qqBCcNM0eP00'
+      },
+      annually: {
+        single: 'price_1Slydh4K55W1qqBCPa4CAwOi',
+        local:  'price_1Slyf44K55W1qqBCIayxsn8D',
+        multi:  'price_1Slyfn4K55W1qqBCMj84DH1q'
+      }
     };
+
+    // Current selected pricing period ('monthly' or 'annually')
+    let pricingPeriod = 'monthly';
 
     // Get user email if logged in
     function getUserEmail() {
@@ -554,7 +564,8 @@
         alert('Please select a plan and terminal.');
         return;
       }
-      const priceId = PRICE_IDS[plan];
+      const period = pricingPeriod || 'monthly';
+      const priceId = (PRICE_IDS[period] && PRICE_IDS[period][plan]) || null;
       if (!priceId || priceId.includes('REPLACE')) {
         alert('Stripe is not configured yet. Please add your Price IDs to paywall.html');
         return;
@@ -605,7 +616,8 @@
         alert('Please select a plan.');
         return;
       }
-      const priceId = PRICE_IDS[plan];
+      const period = pricingPeriod || 'monthly';
+      const priceId = (PRICE_IDS[period] && PRICE_IDS[period][plan]) || null;
       if (!priceId || priceId.includes('REPLACE')) {
         alert('Stripe is not configured yet. Please add your Price IDs to paywall.html');
         return;
@@ -660,11 +672,13 @@
         annuallyPricing.style.display = 'none';
         tabs[0].classList.add('active');
         tabs[1].classList.remove('active');
+        pricingPeriod = 'monthly';
       } else {
         monthlyPricing.style.display = 'none';
         annuallyPricing.style.display = 'grid';
         tabs[0].classList.remove('active');
         tabs[1].classList.add('active');
+        pricingPeriod = 'annually';
       }
     }
   </script>
