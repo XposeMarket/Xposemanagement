@@ -120,6 +120,18 @@ class PartPricingModal {
       jobVehicle = jobVehicleOrCallback;
       actualCallback = callback;
     }
+    // Defensive: if jobVehicle is an object, try to build a string
+    if (jobVehicle && typeof jobVehicle === 'object') {
+      const y = jobVehicle.year || jobVehicle.vehicle_year || 'Unknown';
+      const m = jobVehicle.make || jobVehicle.vehicle_make || 'Unknown';
+      const mo = jobVehicle.model || jobVehicle.vehicle_model || 'Unknown';
+      jobVehicle = `${y} ${m} ${mo}`;
+    }
+    // Fallback if jobVehicle is missing or empty
+    if (!jobVehicle || !String(jobVehicle).trim()) {
+      jobVehicle = 'Unknown vehicle';
+    }
+    console.log('[partPricingModal] Received jobVehicle:', jobVehicle);
     
     console.log('🔵 Pricing modal show() called', { part, jobId, jobVehicle });
     this.currentPart = part;
@@ -139,7 +151,7 @@ class PartPricingModal {
     
     if (jobContextEl && jobVehicleEl && jobIdEl) {
       if (jobId || jobVehicle) {
-        jobVehicleEl.textContent = jobVehicle || 'Vehicle not specified';
+        jobVehicleEl.textContent = jobVehicle;
         jobIdEl.textContent = jobId ? `Job #${jobId.slice(-6).toUpperCase()}` : '';
         jobContextEl.style.display = 'block';
       } else {
@@ -391,33 +403,24 @@ class PartPricingModal {
    * NOW WITH SUPPORT FOR MANUAL ENTRY FIELDS!
    */
   async savePart() {
-    // Get values from form
     const quantity = parseInt(document.getElementById('pricingQuantity').value) || 1;
     const costPrice = parseFloat(document.getElementById('pricingCost').value) || 0;
     const sellPrice = parseFloat(document.getElementById('pricingSell').value) || 0;
     const notes = document.getElementById('pricingNotes').value.trim();
-    let groupName = document.getElementById('prGroupTitle')?.value?.trim() || '';
-    let partNumber = document.getElementById('pricingPartNumberInput')?.value?.trim() || '';
+    const groupName = document.getElementById('prGroupTitle')?.value?.trim() || '';
+    const partNumber = document.getElementById('pricingPartNumberInput')?.value?.trim() || '';
     const shopId = this.getCurrentShopId();
 
     // For manual entry, update the part object with user inputs
-    if (this.currentPart.manual_entry) {
-      // Get part name from the group title field
+    if (this.currentPart?.manual_entry) {
       if (!groupName) {
-        try { showNotification('Part name is required', 'error'); } catch (e) { 
-          PartPricingModal._fallbackNotification('Part name is required', 'error'); 
-        }
+        try { showNotification('Part name is required', 'error'); } catch (e) { PartPricingModal._fallbackNotification('Part name is required', 'error'); }
         return;
       }
-      
       this.currentPart.name = groupName;
       this.currentPart.part_name = groupName;
       this.currentPart.part_number = partNumber || '';
-      
-      console.log('✅ Updated manual entry part:', {
-        name: groupName,
-        partNumber: partNumber
-      });
+      console.log('✅ Updated manual entry part:', { name: groupName, partNumber });
     }
 
     if (!shopId) {
@@ -454,51 +457,144 @@ class PartPricingModal {
       const isInventoryUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(partId));
       
       console.log('💾 Saving part:', { partId, isInventoryUUID, quantity, shopId });
-
-      // If there is NO jobId, skip all job_part/inventory logic and just add to invoice
-      if (!this.currentJobId) {
-        // Add to invoice display
-        try {
-          const partName = this.currentPart.name || this.currentPart.part_name || '';
-          if (typeof window.addPartToInvoice === 'function') {
-            const partItemId = await window.addPartToInvoice(
-              null,
-              partName,
-              quantity,
-              sellPrice,
-              costPrice,
-              groupName,
-              false // inventoryAlreadyDeducted
-            );
-            if (partItemId) this.lastAddedPartData = { invoiceItemId: partItemId, name: partName, qty: quantity, price: sellPrice || 0, cost: costPrice, groupName };
-          }
-        } catch (err) {
-          console.error('[PartPricingModal] failed to add part to invoice (no jobId)', err);
-        }
-        showNotification('Part added to invoice successfully!', 'success');
-        if (this.overlay) this.overlay.style.display = 'none';
-        if (this.modal) this.modal.style.display = 'none';
-        if (this.callback) {
-          try { this.callback(); } catch (e) { console.warn('[PartPricingModal] callback threw', e); }
-        }
-        return;
-      }
-
-      // ...existing code for jobId present (inventory/job_part logic)...
+      
       // If it's an inventory item, use the NEW automatic deduction API FIRST
-      if (isInventoryUUID && partId && !this.currentPart.manual_entry) {
-        // ...existing inventory deduction logic...
-        // (Unchanged)
+      if (isInventoryUUID && partId) {
+        console.log('📦 Inventory item detected - using automatic deduction API');
+        try {
+          const inventoryAPI = await import('../helpers/inventory-api.js');
+          const { supabase } = await import('../helpers/supabase.js');
+          
+          // Check if it's regular inventory or folder inventory
+          const { data: invItem } = await supabase
+            .from('inventory_items')
+            .select('id, qty, name')
+            .eq('id', partId)
+            .single();
+          
+          if (invItem) {
+            // Regular inventory - use addInventoryToJob (auto-deducts)
+            console.log('🔄 Adding regular inventory via addInventoryToJob (auto-deduct)');
+            await inventoryAPI.addInventoryToJob(
+              this.currentJobId,
+              partId,
+              quantity,
+              shopId,
+              {
+                part_name: this.currentPart.name || this.currentPart.part_name || '',
+                part_number: this.currentPart.part_number || '',
+                cost_price: costPrice,
+                sell_price: sellPrice,
+                markup_percent: sellPrice && costPrice ? ((sellPrice - costPrice) / costPrice * 100).toFixed(2) : 0
+              }
+            );
+            console.log('✅ Inventory auto-deducted successfully!');
+          } else {
+            // Try folder inventory
+            const { data: folderItem } = await supabase
+              .from('inventory_folder_items')
+              .select('id, qty, name')
+              .eq('id', partId)
+              .single();
+            
+            if (folderItem) {
+              console.log('🔄 Adding folder inventory via addFolderInventoryToJob (auto-deduct)');
+              await inventoryAPI.addFolderInventoryToJob(
+                this.currentJobId,
+                partId,
+                quantity,
+                shopId,
+                {
+                  part_name: this.currentPart.name || this.currentPart.part_name || '',
+                  part_number: this.currentPart.part_number || '',
+                  cost_price: costPrice,
+                  sell_price: sellPrice,
+                  markup_percent: sellPrice && costPrice ? ((sellPrice - costPrice) / costPrice * 100).toFixed(2) : 0
+                }
+              );
+              console.log('✅ Folder inventory auto-deducted successfully!');
+            }
+          }
+          
+          // Refresh inventory UI
+          try { 
+            if (typeof window.renderInventory === 'function') window.renderInventory(); 
+          } catch(e){}
+          
+        } catch (invError) {
+          console.error('❌ Inventory deduction failed:', invError);
+          if (invError.message && invError.message.includes('Insufficient inventory')) {
+            throw new Error(invError.message);
+          }
+          throw invError;
+        }
       } else {
-        // ...existing job_part creation logic...
-        // (Unchanged)
+        // Not an inventory item - create job_part manually (catalog or manual part)
+        console.log('📝 Creating job_part for catalog/manual part');
+        const { supabase } = await import('../helpers/supabase.js');
+        
+        // Ensure we only insert valid UUIDs into `part_id` column
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(partId));
+        const dbPartId = isUUID ? partId : null;
+        const { data, error } = await supabase
+          .from('job_parts')
+          .insert({
+            shop_id: shopId,
+            job_id: this.currentJobId,
+            part_id: dbPartId,
+            part_name: this.currentPart.name || this.currentPart.part_name || '',
+            part_number: this.currentPart.part_number || '',
+            quantity: quantity || 1,
+            cost_price: costPrice || 0,
+            sell_price: sellPrice || 0,
+            markup_percent: sellPrice && costPrice ? ((sellPrice - costPrice) / costPrice * 100).toFixed(2) : 0,
+            notes: notes || ''
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        console.log('✅ Job_part created:', data);
       }
 
-      // ...existing code for UI refresh, callback, etc...
+      // Close modal
+      if (this.overlay) this.overlay.style.display = 'none';
+      if (this.modal) this.modal.style.display = 'none';
+
+      // Call callback if provided
+      if (this.callback) {
+        try { this.callback(); } catch (e) { console.warn('[PartPricingModal] callback threw', e); }
+      }
+
+      // Store part data for linking with labor later
+      this.lastAddedPartData = {
+        name: this.currentPart.name || this.currentPart.part_name || '',
+        qty: quantity,
+        price: sellPrice || 0,
+        cost: costPrice,
+        groupName: groupName
+      };
+
+      // Also add to invoice
+      try {
+        const partName = this.currentPart.name || this.currentPart.part_name || '';
+        if (typeof window.addPartToInvoice === 'function') {
+          const partItemId = await window.addPartToInvoice(this.currentJobId, partName, quantity, sellPrice, costPrice, groupName);
+          console.log('[PartPricingModal] added part to invoice', { partItemId });
+          if (partItemId) this.lastAddedPartData.invoiceItemId = partItemId;
+        }
+      } catch (err) {
+        console.error('[PartPricingModal] failed to add part to invoice', err);
+      }
+
+      // Show success notification
+      showNotification('Part added to job successfully!', 'success');
+
     } catch (error) {
       console.error('Error adding part:', error);
       const errorMsg = error.message || 'Failed to add part to job';
       try { showNotification(errorMsg, 'error'); } catch (e) { PartPricingModal._fallbackNotification(errorMsg, 'error'); }
+
     } finally {
       // Reset button state
       if (saveBtn) {
@@ -605,8 +701,15 @@ class PartPricingModal {
       }
     };
     document.getElementById('confirmPartAddInvoice').onclick = () => {
-      modal.style.display = 'none';
-      this.savePart();
+      (async () => {
+        console.log('[PartPricingModal] confirm Add to Invoice clicked, jobId:', this.currentJobId);
+        modal.style.display = 'none';
+        try {
+          await this.savePart();
+        } catch (e) {
+          console.error('[PartPricingModal] savePart threw in confirmAddInvoice', e);
+        }
+      })();
     };
   }
 

@@ -257,12 +257,14 @@ class PartsModalHandler {
         };
         
         // Get vehicle info for the job
-        const vehicle = jobRef.year && jobRef.make && jobRef.model
-          ? `${jobRef.year} ${jobRef.make} ${jobRef.model}`
-          : null;
-        
+        const vehicle = {
+          year: jobRef.year || '',
+          make: jobRef.make || '',
+          model: jobRef.model || ''
+        };
+
         console.log('[PartsModalHandler] Opening partPricingModal for manual entry', { jobId: jobRef.id, vehicle });
-        
+
         // Open the part pricing modal with manual entry mode
         pricingModal.show(manualPart, jobRef.id, vehicle);
       } else {
@@ -329,15 +331,43 @@ class PartsModalHandler {
 
     const vehicleDisplay = document.getElementById('partsCurrentVehicle');
     if (vehicleDisplay) {
-      const vehicleText = `${job.year || ''} ${job.make || ''} ${job.model || ''}`.trim() || 'No vehicle info';
+      // If job lacks year/make/model, try to fallback to appointment data (if available globally)
+      let y = job.year || '';
+      let m = job.make || '';
+      let mo = job.model || '';
+      if (!(y && m && mo) && job && job.appointment_id && window.allAppointments) {
+        try {
+          const appt = (window.allAppointments || []).find(a => a.id === job.appointment_id);
+          if (appt) {
+            y = y || appt.vehicle_year || '';
+            m = m || appt.vehicle_make || '';
+            mo = mo || appt.vehicle_model || '';
+          }
+        } catch (e) {
+          console.warn('partsModalHandler: failed to lookup appointment for vehicle fallback', e);
+        }
+      }
+      const vehicleText = `${y || ''} ${m || ''} ${mo || ''}`.trim() || 'No vehicle info';
       vehicleDisplay.textContent = vehicleText;
     }
 
     await this.loadYears();
     await this.loadCategories();
 
-    if (job.year && job.make && job.model) {
-      await this.prefillVehicle(job.year, job.make, job.model);
+    // If vehicle parts are present use them, otherwise attempt to fallback via appointment
+    let fy = job.year || '';
+    let fm = job.make || '';
+    let fmo = job.model || '';
+    if (!(fy && fm && fmo) && job && job.appointment_id && window.allAppointments) {
+      const appt = (window.allAppointments || []).find(a => a.id === job.appointment_id);
+      if (appt) {
+        fy = fy || appt.vehicle_year || '';
+        fm = fm || appt.vehicle_make || '';
+        fmo = fmo || appt.vehicle_model || '';
+      }
+    }
+    if (fy && fm && fmo) {
+      await this.prefillVehicle(fy, fm, fmo);
     }
 
     document.getElementById('catalogResults').innerHTML = '';

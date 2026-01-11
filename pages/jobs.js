@@ -2315,21 +2315,18 @@ async function handleRemoveJob(removeAppointment = false) {
  * Open parts finder modal
  */
 function openPartsModal(job, appt) {
-  // Parse vehicle info from appointment
-  const vehicleText = appt?.vehicle || '';
-  const vehicleParts = vehicleText.match(/(\d{4})\s+([\w-]+)\s+(.+)/) || [];
-  
-  const jobWithVehicle = {
-    ...job,
-    year: vehicleParts[1] || null,
-    make: vehicleParts[2] || null,
-    model: vehicleParts[3] || null,
-    vehicle: vehicleText
-  };
-  
+  // Hydrate job with vehicle info from appointment before opening modal
+  if (appt) {
+    job.year = appt.vehicle_year || '';
+    job.make = appt.vehicle_make || '';
+    job.model = appt.vehicle_model || '';
+    job.vehicle = (appt.vehicle_year && appt.vehicle_make && appt.vehicle_model)
+      ? `${appt.vehicle_year} ${appt.vehicle_make} ${appt.vehicle_model}`
+      : '';
+  }
   // Use the new parts modal handler if available
   if (window.partsModalHandler) {
-    window.partsModalHandler.openModal(jobWithVehicle);
+    window.partsModalHandler.openModal(job);
   } else {
     // Fallback to old modal
     const modal = document.getElementById('partsModal');
@@ -3072,7 +3069,18 @@ async function setupJobs() {
   // Load all data
   allJobs = await loadJobs();
   allAppointments = await loadAppointments();
+  // Expose appointments for other components that may need to lookup vehicle info
+  window.allAppointments = allAppointments;
   allUsers = await loadUsers();
+  // Hydrate jobs with vehicle info from their appointment
+  for (const job of allJobs) {
+    const appt = allAppointments.find(a => a.id === job.appointment_id);
+    if (appt) {
+      job.year = appt.vehicle_year || '';
+      job.make = appt.vehicle_make || '';
+      job.model = appt.vehicle_model || '';
+    }
+  }
   // Load shop_staff for richer assignment lookup
   try {
     const supabase = getSupabaseClient();
@@ -3146,11 +3154,12 @@ async function setupJobs() {
       const jobId = document.getElementById('partsModal').dataset.jobId;
       if (jobId) {
         const job = allJobs.find(j => j.id === jobId);
-        const appt = allAppointments.find(a => a.id === job?.appointment_id);
-        if (job && appt) {
-          // Use partPricingModal instead of old addPartsModal
+        if (job) {
+          // Use vehicle info from job object
+          const vehicle = job.year && job.make && job.model
+            ? `${job.year} ${job.make} ${job.model}`
+            : null;
           const pricingModal = window.partPricingModal || window.xm_partPricingModal;
-          
           if (pricingModal) {
             const manualPart = {
               manual_entry: true,
@@ -3159,11 +3168,6 @@ async function setupJobs() {
               part_number: '',
               id: 'manual'
             };
-            
-            const vehicle = appt.vehicle_year && appt.vehicle_make && appt.vehicle_model
-              ? `${appt.vehicle_year} ${appt.vehicle_make} ${appt.vehicle_model}`
-              : null;
-            
             pricingModal.show(manualPart, job.id, vehicle);
           }
         }
@@ -3332,14 +3336,89 @@ async function setupJobs() {
     }
 
     // Handle Add Parts to Service
-    document.getElementById('addPartsToServiceBtn').addEventListener('click', () => {
+    document.getElementById('addPartsToServiceBtn').addEventListener('click', async () => {
+      // If newServiceDraft exists, create a job for it first
+      if (newServiceDraft) {
+        const partsHandler = window.partsModalHandler;
+        const appointment = partsHandler?.currentJob?.appointment_id ? allAppointments.find(a => a.id === partsHandler.currentJob.appointment_id) : null;
+        if (appointment) {
+          // Check for existing job for this appointment (regardless of service)
+          let existingJob = allJobs.find(j => j.appointment_id === appointment.id);
+          if (!existingJob) {
+            // Create job object with vehicle info
+            const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            existingJob = {
+              id: jobId,
+              appointment_id: appointment.id,
+              shop_id: appointment.shop_id,
+              status: 'in_progress',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              service: newServiceDraft.name,
+              service_price: newServiceDraft.price,
+              type: 'service',
+              qty: newServiceDraft.qty || 1,
+              year: appointment.vehicle_year || '',
+              make: appointment.vehicle_make || '',
+              model: appointment.vehicle_model || ''
+            };
+            allJobs.push(existingJob);
+            await saveJobs(allJobs);
+          } else {
+            // Always update vehicle info and service info on existing job
+            existingJob.year = appointment.vehicle_year || '';
+            existingJob.make = appointment.vehicle_make || '';
+            existingJob.model = appointment.vehicle_model || '';
+            // If service is not set, set it
+            if (!existingJob.service) existingJob.service = newServiceDraft.name;
+            if (!existingJob.service_price) existingJob.service_price = newServiceDraft.price;
+            await saveJobs(allJobs);
+          }
+          if (partsHandler) partsHandler.currentJob = existingJob;
+          // Add service to invoice only if not already present
+          let invoice = await getInvoiceForAppointment(appointment.id);
+          if (!invoice) {
+            invoice = await createInvoiceForAppointment(appointment);
+          }
+          if (invoice) {
+            invoice.items = invoice.items || [];
+            const alreadyHasService = invoice.items.some(item => item.type === 'service' && item.name === newServiceDraft.name);
+            if (!alreadyHasService) {
+              invoice.items.push({
+                id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                name: newServiceDraft.name,
+                price: newServiceDraft.price,
+                qty: newServiceDraft.qty || 1,
+                type: 'service'
+              });
+              await saveInvoice(invoice);
+            }
+          }
+          newServiceDraft = null;
+        }
+      }
       // Open partPricingModal for custom part
       if (window.partPricingModal) {
-        // Hide the service flow and open the part pricing modal; do NOT auto-reshow the flow here.
         document.getElementById('serviceAddFlowModal').classList.add('hidden');
-        window.partPricingModal.show({ manual_entry: true, name: '', part_name: '', part_number: '', id: 'manual' }, null, null);
+        // Pass jobId and vehicle to modal
+        const jobId = window.partsModalHandler?.currentJob?.id || null;
+        let vehicle = null;
+        // Try to get vehicle from currentJob
+        const jobObj = window.partsModalHandler?.currentJob || (jobId ? allJobs.find(j => j.id === jobId) : null);
+        if (jobObj) {
+          vehicle = jobObj.year && jobObj.make && jobObj.model
+            ? `${jobObj.year} ${jobObj.make} ${jobObj.model}`
+            : (jobObj.vehicle || '');
+        }
+        // Fallback to appointment lookup
+        if ((!vehicle || !String(vehicle).trim()) && jobObj && jobObj.appointment_id && window.allAppointments) {
+          const appt = (window.allAppointments || []).find(a => a.id === jobObj.appointment_id);
+          if (appt) vehicle = (appt.vehicle_year && appt.vehicle_make && appt.vehicle_model)
+            ? `${appt.vehicle_year} ${appt.vehicle_make} ${appt.vehicle_model}`
+            : (appt.vehicle || '');
+        }
+        window.partPricingModal.show({ manual_entry: true, name: '', part_name: '', part_number: '', id: 'manual' }, jobId, vehicle || null);
       } else {
-        // Fallback: just hide the service flow
         document.getElementById('serviceAddFlowModal').classList.add('hidden');
       }
     });
@@ -3347,16 +3426,67 @@ async function setupJobs() {
 
     // Handle Add Labor to Service
     document.getElementById('addLaborToServiceBtn').addEventListener('click', async () => {
+      // If newServiceDraft exists, create a job for it first
+      if (newServiceDraft) {
+        const partsHandler = window.partsModalHandler;
+        const appointment = partsHandler?.currentJob?.appointment_id ? allAppointments.find(a => a.id === partsHandler.currentJob.appointment_id) : null;
+        if (appointment) {
+          // Reuse existing job for this appointment if present, otherwise create a new one
+          let existingJob = allJobs.find(j => j.appointment_id === appointment.id);
+          if (!existingJob) {
+            const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const newJob = {
+              id: jobId,
+              appointment_id: appointment.id,
+              shop_id: appointment.shop_id,
+              status: 'in_progress',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              service: newServiceDraft.name,
+              service_price: newServiceDraft.price,
+              type: 'service',
+              qty: newServiceDraft.qty || 1
+            };
+            allJobs.push(newJob);
+            await saveJobs(allJobs);
+            existingJob = newJob;
+          } else {
+            // Ensure service and vehicle info are set on existing job
+            existingJob.service = existingJob.service || newServiceDraft.name;
+            existingJob.service_price = existingJob.service_price || newServiceDraft.price;
+            existingJob.year = existingJob.year || appointment.vehicle_year || '';
+            existingJob.make = existingJob.make || appointment.vehicle_make || '';
+            existingJob.model = existingJob.model || appointment.vehicle_model || '';
+            await saveJobs(allJobs);
+          }
+          if (partsHandler) partsHandler.currentJob = existingJob;
+          // Add service to invoice immediately
+          let invoice = await getInvoiceForAppointment(appointment.id);
+          if (!invoice) {
+            invoice = await createInvoiceForAppointment(appointment);
+          }
+          if (invoice) {
+            invoice.items = invoice.items || [];
+            invoice.items.push({
+              id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              name: newServiceDraft.name,
+              price: newServiceDraft.price,
+              qty: newServiceDraft.qty || 1,
+              type: 'service'
+            });
+            await saveInvoice(invoice);
+          }
+          newServiceDraft = null;
+        }
+      }
       // Hide the service flow and open the labor modal using openLaborModal so it populates rates
       document.getElementById('serviceAddFlowModal').classList.add('hidden');
       const partsHandler = window.partsModalHandler;
       const jobId = partsHandler?.currentJob?.id || null;
-      // Show overlay and open labor modal (which populates rates)
       try {
         await openLaborModal(jobId);
       } catch (e) {
         console.error('[jobs] Failed to open labor modal:', e);
-        // Fallback: show modal directly
         const overlay = document.getElementById('laborModalOverlay'); if (overlay) overlay.style.display = 'block';
         const lm = document.getElementById('laborModal'); if (lm) { lm.classList.remove('hidden'); lm.style.display = 'block'; }
       }
