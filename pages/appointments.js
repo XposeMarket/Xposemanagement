@@ -19,6 +19,8 @@ import { createShopNotification } from '../helpers/shop-notifications.js';
 let currentApptId = null;
 let currentApptForStatus = null;
 let allAppointments = [];
+// Currently open view modal appointment id
+let currentViewApptId = null;
 // Track if current user is staff (not admin)
 let isStaffUser = false;
 // Sorting state for appointments table
@@ -1934,6 +1936,13 @@ async function renderAppointments(appointments = allAppointments) {
     } catch (e) {
       console.warn('Could not fetch jobs for staff highlighting:', e);
     }
+
+      // If view modal is open for an appointment, refresh its assigned-to display
+      try {
+        if (currentViewApptId) {
+          updateViewModalAssignedTo(currentViewApptId).catch(() => {});
+        }
+      } catch (e) {}
   }
   
   // Fetch notes to show indicator dot for UNREAD notes only
@@ -2491,6 +2500,7 @@ async function openViewModal(appt) {
       <div><strong>Date:</strong> ${appt.preferred_date ? new Date(appt.preferred_date).toLocaleDateString() : 'Not set'}</div>
       <div><strong>Time:</strong> ${appt.preferred_time ? formatTime12(appt.preferred_time) : 'Not set'}</div>
       <div><strong>Status:</strong> <span class="tag ${getStatusClass(appt.status)}">${appt.status || 'new'}</span></div>
+      <div><strong>Assigned to:</strong> <span id="viewModalAssignedTo">${appt.assigned_to ? 'Loading...' : 'Unassigned'}</span></div>
       ${appt.notes ? `<div><strong>Notes:</strong><br>${appt.notes}</div>` : ''}
     </div>
     
@@ -2511,9 +2521,14 @@ async function openViewModal(appt) {
   };
   
   modal.classList.remove('hidden');
+  // Track currently viewed appointment
+  currentViewApptId = appt.id;
   
   // Load and render notes
   await renderViewModalNotes(appt.id);
+
+  // Update assigned-to display (may query jobs/shop_staff)
+  try { updateViewModalAssignedTo(appt.id); } catch (e) { console.warn('updateViewModalAssignedTo failed', e); }
   
   // Add note button handler
   const addNoteBtn = document.getElementById('viewModalAddNoteBtn');
@@ -2558,6 +2573,61 @@ function closeViewModal() {
 
 // Make it global for onclick
 window.closeViewApptModal = closeViewModal;
+
+/**
+ * Update the "Assigned to" span inside the view modal for a specific appointment
+ */
+async function updateViewModalAssignedTo(apptId) {
+  try {
+    const el = document.getElementById('viewModalAssignedTo');
+    if (!el || !apptId) return;
+
+    const supabase = getSupabaseClient();
+    const shopId = getCurrentShopId();
+    if (!supabase || !shopId) {
+      el.textContent = apptId ? 'Loading...' : 'Unassigned';
+      return;
+    }
+
+    // Find job for this appointment
+    const { data: job, error: jobErr } = await supabase
+      .from('jobs')
+      .select('assigned_to')
+      .eq('appointment_id', apptId)
+      .eq('shop_id', shopId)
+      .single();
+
+    if (jobErr || !job || !job.assigned_to) {
+      el.textContent = 'Unassigned';
+      return;
+    }
+
+    const assignedId = job.assigned_to;
+
+    // Try to resolve staff name from shop_staff
+    try {
+      const { data: staff } = await supabase
+        .from('shop_staff')
+        .select('first_name, last_name, email')
+        .eq('auth_id', assignedId)
+        .eq('shop_id', shopId)
+        .single();
+
+      if (staff) {
+        const name = `${staff.first_name || ''} ${staff.last_name || ''}`.trim() || staff.email || 'Assigned';
+        el.textContent = name;
+        return;
+      }
+    } catch (e) {
+      // ignore and fallback
+    }
+
+    // Fallback: show partial id or assigned marker
+    el.textContent = `Assigned (${String(assignedId).slice(0,6)})`;
+  } catch (e) {
+    console.warn('updateViewModalAssignedTo error', e);
+  }
+}
 
 // ========================================
 // STAFF ACTION MODAL (Mobile)
@@ -2969,7 +3039,9 @@ async function updateAppointmentStatus(apptId, newStatus) {
     if (!job) {
       const shopId = getCurrentShopId();
       job = {
-        id: getUUID(),
+        // Use a temporary 'job_' prefixed id for newly created jobs so saveJobs
+        // recognizes them as newly-created and will upsert into the canonical jobs table.
+        id: `job_${Date.now()}_${Math.random().toString(36).substr(2,9)}`,
         shop_id: shopId,
         appointment_id: appt.id,
         customer: appt.customer || '',
@@ -3013,27 +3085,91 @@ async function updateAppointmentStatus(apptId, newStatus) {
       console.error('[updateAppointmentStatus] Error stack:', e.stack);
     }
   } else {
-    // If status is not active, remove job from jobs
+    // If status is not active (new/scheduled/completed), COMPLETELY remove job and all related data
+    console.log(`[updateAppointmentStatus] Status is ${newStatus}, removing job completely...`);
+    const appt = allAppointments[index];
+    const shopId = getCurrentShopId();
+    const supabase = getSupabaseClient();
+    
+    if (supabase && shopId) {
+      try {
+        // Find all jobs for this appointment
+        const { data: jobsToDelete } = await supabase
+          .from('jobs')
+          .select('id')
+          .eq('appointment_id', appt.id)
+          .eq('shop_id', shopId);
+        
+        if (jobsToDelete && jobsToDelete.length > 0) {
+          const jobIds = jobsToDelete.map(j => j.id);
+          console.log(`[updateAppointmentStatus] Found ${jobIds.length} jobs to delete:`, jobIds);
+
+          // Only pass valid UUIDs to tables where job_id is a UUID foreign key
+          const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          const validJobIds = jobIds.filter(id => uuidRe.test(String(id)));
+          const skippedIds = jobIds.filter(id => !uuidRe.test(String(id)));
+          if (skippedIds.length) console.warn('[updateAppointmentStatus] Skipping non-UUID job ids when deleting parts/labor:', skippedIds);
+
+          // Delete all parts for these jobs (only UUIDs)
+          if (validJobIds.length) {
+            const { error: partsError } = await supabase
+              .from('job_parts')
+              .delete()
+              .in('job_id', validJobIds);
+            if (partsError) console.error('[updateAppointmentStatus] Error deleting job_parts:', partsError);
+            else console.log('✅ Deleted parts for jobs');
+          } else {
+            console.log('No valid UUID job_ids to delete job_parts for.');
+          }
+
+          // Delete all labor for these jobs (only UUIDs)
+          if (validJobIds.length) {
+            const { error: laborError } = await supabase
+              .from('job_labor')
+              .delete()
+              .in('job_id', validJobIds);
+            if (laborError) console.error('[updateAppointmentStatus] Error deleting job_labor:', laborError);
+            else console.log('✅ Deleted labor for jobs');
+          } else {
+            console.log('No valid UUID job_ids to delete job_labor for.');
+          }
+
+          // Delete the jobs themselves (use original jobIds returned from jobs table)
+          const { error: jobsError } = await supabase
+            .from('jobs')
+            .delete()
+            .in('id', jobIds);
+          if (jobsError) console.error('[updateAppointmentStatus] Error deleting jobs:', jobsError);
+          else console.log('✅ Deleted jobs from jobs table');
+        }
+      } catch (e) {
+        console.error('[updateAppointmentStatus] Error deleting job records:', e);
+      }
+    }
+    
+    // Remove from localStorage jobs
     let jobs = [];
     try {
       const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
       jobs = localData.jobs || [];
     } catch (e) {}
-    const appt = allAppointments[index];
+    
     jobs = jobs.filter(j => j.appointment_id !== appt.id);
+    
     try {
       const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
       localData.jobs = jobs;
       localStorage.setItem('xm_data', JSON.stringify(localData));
-      console.log('✅ Job removed for appointment', appt.id);
+      console.log('✅ Job removed from localStorage for appointment', appt.id);
     } catch (e) {
-      console.error('Failed to remove job:', e);
+      console.error('Failed to remove job from localStorage:', e);
     }
-    // Also sync jobs to Supabase (update data.jobs but skip canonical upsert to avoid touching unrelated rows)
+    
+    // Also sync jobs to Supabase data.jobs JSONB (update data.jobs but skip canonical upsert to avoid touching unrelated rows)
     try {
       const { saveJobs } = await import('./jobs.js');
       await saveJobs(jobs, { skipCanonicalUpsert: true });
-      console.log('✅ Jobs synced to Supabase');
+      console.log('✅ Jobs synced to Supabase data.jobs JSONB');
     } catch (e) {
       console.error('Failed to sync jobs to Supabase:', e);
     }

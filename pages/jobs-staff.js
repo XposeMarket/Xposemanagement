@@ -306,7 +306,8 @@ function renderJobsTable(tableId, emptyId, jobs) {
     tr.appendChild(dotCell);
 
     const assignedCell = document.createElement('td');
-    assignedCell.textContent = job.id ? job.id.substring(0, 8) + '...' : '';
+    // Use same job # format as main jobs page - last 6 chars uppercased
+    assignedCell.textContent = job.id ? job.id.slice(-6).toUpperCase() : '';
 
     const customerCell = document.createElement('td');
     customerCell.textContent = (appt.customer || job.customer || `${appt.customer_first || ''} ${appt.customer_last || ''}`).trim();
@@ -455,7 +456,7 @@ function openJobViewModal(job, appt) {
   const content = document.getElementById('jobViewContent');
   if (!modal || !content) return;
   content.innerHTML = `
-    <p><strong>Job ID:</strong> ${job.id}</p>
+    <p><strong>Job #:</strong> ${job.id ? job.id.slice(-6).toUpperCase() : ''}</p>
     <p><strong>Status:</strong> <span class="tag ${job.status || 'in_progress'}">${(job.status || 'in_progress').replace(/_/g, ' ')}</span></p>
     <p><strong>Customer:</strong> ${appt.customer || job.customer || ''}</p>
     <p><strong>Vehicle:</strong> ${appt.vehicle || ''}</p>

@@ -430,6 +430,13 @@ async function __mainBase() {
   if (byId('mobileLogoutBtn')) {
     byId('mobileLogoutBtn').addEventListener('click', (e) => {
       e.preventDefault();
+      // If mobile nav is open, close it so the confirmation modal isn't obscured
+      const menuToggle = byId('menuToggle');
+      const mainNav = document.getElementById('mainNav');
+      if (mainNav && menuToggle && mainNav.classList.contains('active')) {
+        mainNav.classList.remove('active');
+        menuToggle.classList.remove('active');
+      }
       showLogoutConfirmModal();
     });
   }

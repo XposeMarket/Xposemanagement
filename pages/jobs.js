@@ -357,26 +357,35 @@ async function loadJobs() {
   
   try {
     if (supabase) {
-      // Load from Supabase data table - get both jobs AND appointments for orphan cleanup
-      const { data, error } = await supabase
+      // Load from jobs TABLE (source of truth) instead of data.jobs JSONB
+      // This ensures deleted jobs stay deleted and don't get re-created from stale JSONB
+      const { data: jobsData, error: jobsError } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('shop_id', shopId);
+      
+      if (jobsError) {
+        console.warn('Error loading jobs from jobs table:', jobsError);
+        throw jobsError;
+      }
+      
+      let jobs = jobsData || [];
+      console.log(`[Jobs] Loaded ${jobs.length} jobs from jobs table`);
+      
+      // Also load appointments for orphan cleanup and hydration
+      const { data: dataRow } = await supabase
         .from('data')
-        .select('jobs, appointments')
+        .select('appointments')
         .eq('shop_id', shopId)
         .single();
       
-      if (error && error.code !== 'PGRST116') {
-        console.warn('Error loading jobs from Supabase:', error);
-        throw error;
-      }
-      
-      let jobs = data?.jobs || [];
-      const appointments = data?.appointments || [];
+      const appointments = dataRow?.appointments || [];
       
       // Clean up orphaned jobs: remove jobs whose appointment_id doesn't exist in appointments
       const appointmentIds = new Set(appointments.map(a => a.id));
       const originalCount = jobs.length;
       
-      jobs = jobs.filter(job => {
+      const validJobs = jobs.filter(job => {
         // Keep completed jobs regardless
         if (job.status === 'completed') return true;
         // Keep jobs with valid appointment references
@@ -388,38 +397,19 @@ async function loadJobs() {
         return false;
       });
       
-      // If we removed orphaned jobs, save the cleaned data back
-      if (jobs.length !== originalCount) {
-        console.log(`🧹 [Jobs] Cleaned ${originalCount - jobs.length} orphaned job(s)`);
+      // If we found orphaned jobs, delete them from the jobs table
+      if (validJobs.length !== originalCount) {
+        const orphanedJobs = jobs.filter(j => !validJobs.some(v => v.id === j.id));
+        console.log(`🧹 [Jobs] Cleaning ${orphanedJobs.length} orphaned job(s)`);
         
-        // Update data table with cleaned jobs
-        const { error: updateError } = await supabase
-          .from('data')
-          .update({ 
-            jobs: jobs,
-            updated_at: new Date().toISOString()
-          })
-          .eq('shop_id', shopId);
-        
-        if (updateError) {
-          console.warn('[Jobs] Failed to save cleaned jobs:', updateError);
-        } else {
-          console.log('✅ [Jobs] Orphaned jobs cleaned from data table');
+        for (const orphan of orphanedJobs) {
+          await supabase.from('jobs').delete().eq('id', orphan.id);
         }
-        
-        // Also delete orphaned jobs from the standalone jobs table
-        const originalJobs = data?.jobs || [];
-        const orphanedJobIds = originalJobs
-          .filter(job => !jobs.some(j => j.id === job.id))
-          .map(job => job.id);
-        
-        if (orphanedJobIds.length > 0) {
-          for (const jobId of orphanedJobIds) {
-            await supabase.from('jobs').delete().eq('id', jobId);
-          }
-          console.log(`✅ [Jobs] Deleted ${orphanedJobIds.length} orphaned job(s) from jobs table`);
-        }
+        console.log('✅ [Jobs] Orphaned jobs deleted from jobs table');
       }
+      
+      jobs = validJobs;
+      
       // Fix customer names if customer_first looks like a UUID
       try {
         const { data: customers } = await supabase
@@ -441,6 +431,17 @@ async function loadJobs() {
       } catch (e) {
         console.warn('[jobs.js] Could not fix customer names:', e);
       }
+      
+      // Sync jobs to data.jobs JSONB for consistency (but jobs table is source of truth)
+      try {
+        await supabase
+          .from('data')
+          .update({ jobs: jobs, updated_at: new Date().toISOString() })
+          .eq('shop_id', shopId);
+      } catch (e) {
+        console.warn('[Jobs] Failed to sync jobs to data.jobs JSONB:', e);
+      }
+      
       return jobs;
     }
   } catch (ex) {
@@ -605,41 +606,69 @@ async function saveJobs(jobs, options = {}) {
       if (upsertError) throw upsertError;
       
       // Also insert/update jobs in jobs table — only upsert the incoming/delta jobs to avoid touching unrelated rows
+      // IMPORTANT: Only upsert jobs that already exist in the jobs table OR are newly created
+      // This prevents ghost jobs from being re-created after deletion
       if (!options.skipCanonicalUpsert) {
-        for (const job of incomingUnique) {
-        // Parse customer name from job or appointment
-        let customer_first = '';
-        let customer_last = '';
-        try { console.log('[Jobs.saveJobs] upserting job:', job.id, 'appointment_id:', job.appointment_id, 'status:', job.status); } catch (e) {}
-        if (job.customer) {
-          const nameParts = job.customer.trim().split(' ');
-          customer_first = nameParts[0] || '';
-          customer_last = nameParts.slice(1).join(' ') || '';
-        } else if (job.customer_first) {
-          customer_first = job.customer_first;
-          customer_last = job.customer_last || '';
-        }
-        
-        const jobPayload = {
-          id: job.id,
-          shop_id: shopId,
-          appointment_id: job.appointment_id || null,
-          customer_first: customer_first,
-          customer_last: customer_last,
-          assigned_to: job.assigned_to || null,
-          status: job.status,
-          created_at: job.created_at,
-          updated_at: job.updated_at,
-          completed_at: job.completed_at || null
-        };
-        const { error: jobError } = await supabase
+        // First, get the list of jobs that currently exist in the jobs table
+        // Include appointment_id so we can decide whether to create a missing job
+        const { data: existingJobRows } = await supabase
           .from('jobs')
-          .upsert(jobPayload, { onConflict: 'id' });
-        if (jobError) {
-          console.error('Failed to upsert job:', jobError);
-        } else {
-          console.log(`✅ Job ${job.id} upserted to jobs table`);
-        }
+          .select('id, appointment_id')
+          .eq('shop_id', shopId);
+        const existingJobIds = new Set((existingJobRows || []).map(r => r.id));
+        const existingApptIds = new Set((existingJobRows || []).map(r => r.appointment_id).filter(Boolean));
+        
+        for (const job of incomingUnique) {
+          // Skip jobs that were deleted (not in jobs table AND not newly created)
+          // A job is "newly created" if it has a temp ID like job_xxx or was just added this session
+          const isNewlyCreated = job.id && job.id.toString().startsWith('job_');
+          const existsInTable = existingJobIds.has(job.id);
+
+          // If job doesn't exist in the canonical jobs table and isn't a newly-created temp id,
+          // decide whether to create it:
+          // - If there's already a job row for the same appointment_id, skip to avoid duplicates.
+          // - Otherwise proceed to upsert (create the job row) because no canonical row exists yet.
+          if (!existsInTable && !isNewlyCreated) {
+            if (job.appointment_id && existingApptIds.has(job.appointment_id)) {
+              console.log(`[Jobs.saveJobs] Skipping job: ${job.id} (another job exists for appointment ${job.appointment_id})`);
+              continue;
+            }
+            // No existing job for this appointment found in jobs table — proceed to upsert (create)
+          }
+          
+          // Parse customer name from job or appointment
+          let customer_first = '';
+          let customer_last = '';
+          try { console.log('[Jobs.saveJobs] upserting job:', job.id, 'appointment_id:', job.appointment_id, 'status:', job.status); } catch (e) {}
+          if (job.customer) {
+            const nameParts = job.customer.trim().split(' ');
+            customer_first = nameParts[0] || '';
+            customer_last = nameParts.slice(1).join(' ') || '';
+          } else if (job.customer_first) {
+            customer_first = job.customer_first;
+            customer_last = job.customer_last || '';
+          }
+          
+          const jobPayload = {
+            id: job.id,
+            shop_id: shopId,
+            appointment_id: job.appointment_id || null,
+            customer_first: customer_first,
+            customer_last: customer_last,
+            assigned_to: job.assigned_to || null,
+            status: job.status,
+            created_at: job.created_at,
+            updated_at: job.updated_at,
+            completed_at: job.completed_at || null
+          };
+          const { error: jobError } = await supabase
+            .from('jobs')
+            .upsert(jobPayload, { onConflict: 'id' });
+          if (jobError) {
+            console.error('Failed to upsert job:', jobError);
+          } else {
+            console.log(`✅ Job ${job.id} upserted to jobs table`);
+          }
         }
       }
       
@@ -2424,7 +2453,29 @@ async function assignJob(jobId, userId) {
   await renderJobs();
   
   const user = allUsers.find(u => u.id === userId);
-  showNotification(`Job assigned to ${user.first} ${user.last}`);
+  let displayName = '';
+  if (user) {
+    displayName = `${user.first || user.first_name || ''} ${user.last || user.last_name || ''}`.trim();
+  } else {
+    // Fallback: try to resolve name from shop_staff table
+    try {
+      const supabase = getSupabaseClient();
+      const shopId = getCurrentShopId();
+      if (supabase && shopId) {
+        const { data: staff } = await supabase
+          .from('shop_staff')
+          .select('first_name, last_name, email')
+          .eq('auth_id', userId)
+          .eq('shop_id', shopId)
+          .single();
+        if (staff) displayName = `${staff.first_name || ''} ${staff.last_name || ''}`.trim() || staff.email || '';
+      }
+    } catch (e) {
+      console.warn('Could not resolve staff name for assignment', e);
+    }
+  }
+  if (!displayName) displayName = `User ${String(userId).slice(0,6)}`;
+  showNotification(`Job assigned to ${displayName}`);
   
   // Create notification for assigned technician
   try {

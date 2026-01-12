@@ -1117,16 +1117,90 @@ async function applyFilters(base, role) {
 }
 
 // ========== Setup Theme and Logout ==========
+/**
+ * Show styled logout confirmation modal (local to claim-board page)
+ */
+function showLogoutConfirmModal() {
+  const existing = document.getElementById('logout-confirm-modal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'logout-confirm-modal';
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10060;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.2s ease;
+  `;
+  modal.innerHTML = `
+    <div style="background: var(--card, #fff); border-radius:12px; padding:20px; max-width:380px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.3); animation: slideUp 0.2s ease;">
+      <div style="text-align:center; margin-bottom:12px;">
+        <div style="width:48px;height:48px;margin:0 auto 12px;background:linear-gradient(135deg,#ef4444 0%,#dc2626 100%);border-radius:50%;display:flex;align-items:center;justify-content:center;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+        </div>
+        <h3 style="margin:0 0 6px; font-size:1.1rem; color:var(--text);">Sign Out?</h3>
+        <p style="margin:0; color:var(--muted); font-size:0.95rem;">Are you sure you want to sign out of your account?</p>
+      </div>
+      <div style="display:flex; gap:10px;">
+        <button id="logout-cancel-btn" style="flex:1;padding:10px 12px;border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:8px;cursor:pointer;">Cancel</button>
+        <button id="logout-confirm-btn" style="flex:1;padding:10px 12px;border:none;background:linear-gradient(135deg,#ef4444 0%,#dc2626 100%);color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">Sign Out</button>
+      </div>
+    </div>
+  `;
+
+  if (!document.getElementById('logout-modal-styles')) {
+    const style = document.createElement('style');
+    style.id = 'logout-modal-styles';
+    style.textContent = `
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes slideUp { from { transform: translateY(20px); opacity: 0;} to { transform: translateY(0); opacity:1;} }
+    `;
+    document.head.appendChild(style);
+  }
+
+  document.body.appendChild(modal);
+
+  document.getElementById('logout-cancel-btn').onclick = () => modal.remove();
+  document.getElementById('logout-confirm-btn').onclick = async () => {
+    const btn = document.getElementById('logout-confirm-btn');
+    btn.textContent = 'Signing out...';
+    btn.disabled = true;
+    await logout();
+  };
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.remove();
+  });
+
+  const escHandler = (e) => { if (e.key === 'Escape') { modal.remove(); document.removeEventListener('keydown', escHandler); } };
+  document.addEventListener('keydown', escHandler);
+}
+
 function setupPageControls() {
   const themeBtn = byId('themeToggle');
   const mobileThemeBtn = byId('mobileThemeToggle');
   if (themeBtn) themeBtn.onclick = toggleTheme;
   if (mobileThemeBtn) mobileThemeBtn.onclick = (e) => { e.preventDefault(); toggleTheme(); };
-  
   const logoutBtn = byId('logoutBtn');
   const mobileLogoutBtn = byId('mobileLogoutBtn');
-  if (logoutBtn) logoutBtn.onclick = logout;
-  if (mobileLogoutBtn) mobileLogoutBtn.onclick = (e) => { e.preventDefault(); logout(); };
+  if (logoutBtn) logoutBtn.onclick = () => showLogoutConfirmModal();
+  if (mobileLogoutBtn) mobileLogoutBtn.onclick = (e) => {
+    e.preventDefault();
+    // close mobile nav if open
+    const menuToggle = byId('menuToggle');
+    const mainNav = byId('mainNav');
+    if (mainNav && menuToggle && mainNav.classList.contains('active')) {
+      mainNav.classList.remove('active');
+      menuToggle.classList.remove('active');
+    }
+    showLogoutConfirmModal();
+  };
   
   const menuToggle = byId('menuToggle');
   const mainNav = byId('mainNav');

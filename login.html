@@ -48,6 +48,7 @@
 			<label>Email</label><input id="loginEmail" type="email" required>
 			<label>Password</label><input id="loginPass" type="password" required>
 			<div class="toolbar" style="margin-top:10px"><button class="btn primary" type="submit">Login</button></div>
+			<p id="loginErr" class="notice"></p>
 			<div style="margin-top:16px;text-align:center;border-top:1px solid var(--line);padding-top:16px">
 				<p style="margin-bottom:12px;color:var(--text-secondary)">Or sign in with:</p>
 				<button id="googleLoginBtn" class="btn" type="button" style="background:#4285f4;color:white;border:none;padding:10px 20px;border-radius:4px;display:flex;align-items:center;gap:8px;margin:0 auto">
@@ -60,7 +61,7 @@
 					Sign in with Google
 				</button>
 			</div>
-			<p id="loginErr" class="notice"></p>
+
 		</form>
 		<div id="extraAuthBtns" style="margin-top:24px;display:flex;flex-direction:column;gap:10px">
 	<div style="text-align:center;margin-bottom:6px;color:var(--muted);font-size:1.08em;font-weight:500;">Or, if you're new!</div>

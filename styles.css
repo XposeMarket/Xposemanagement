@@ -910,6 +910,11 @@ footer::after{ bottom: -6px; }
 .dot.open{background:#ef4444}.dot.scheduled{background:#3b82f6}.dot.progress{background:#f59e0b}.dot.done{background:#10b981}
 .tooltip{position:absolute;left:50%;transform:translateX(-50%);bottom:6px;background:#111;color:#fff;padding:6px 8px;border-radius:8px;font-size:12px;display:none;white-space:nowrap}.day:hover .tooltip{display:block}
 .notice{font-size:13px;color:var(--muted)} .hidden{display:none}
+/* Make form error notices stand out: use for login and other form errors */
+.notice.error{color:#b91c1c;font-weight:600}
+/* Specific login error element: hide when empty, show bold red when populated */
+#loginErr{color:#b91c1c;font-weight:600}
+#loginErr:empty{display:none}
 /* KPIs centered container */
 .kpis-center{display:flex;justify-content:center;margin-bottom:0}.kpis-center .kpis{width:100%}
 /* Dashboard 3-column layout for calendar with side panels */
