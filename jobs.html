@@ -7,12 +7,13 @@
     <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button><nav id="mainNav">
       <a href="dashboard.html" class="">Dashboard</a>
       <a href="appointments.html" class="">Appointments</a>
+      <a href="foreman-appointments.html" class="foreman-nav">Job Board</a>
+      <a href="claim-board.html" class="foreman-nav">Claim Board</a>
       <a href="jobs.html" class="active">Jobs</a>
       <a href="messages.html" class="">Messages</a>
       <a href="invoices.html" class="">Invoices</a>
       <a href="customers.html" class="">Customers</a>
       <a href="revenue.html" class="">Revenue</a>
-      <a href="inventory.html" class="" id="inventoryNavLink" style="display:none">Inventory</a>
       <a href="settings.html" class="">Settings</a>
       <a href="profile.html" class="">Profile</a>
         <a href="#" id="mobileThemeToggle" class="mobile-nav-btn mobile-special">Theme</a>
@@ -30,6 +31,7 @@
 <!-- Debug banner (hidden in UI) -->
 <!-- ...existing code... -->
 <main class="container" style="padding:16px 0"><h1>Jobs</h1>
+
 
 <!-- Existing card (kept 1:1, just a heading added) -->
 <div class="card">
@@ -279,8 +281,8 @@
   </div>
 </div>
 
-<!-- Parts Catalog Modals -->
-<div id="partPricingModal"></div>
+<!-- Parts Catalog Modals (container placeholder - renamed to avoid global collision with modal script) -->
+<div id="partPricingModalContainer"></div>
 
 <!-- Service Selection Modal -->
 <div id="serviceModal" class="modal-overlay hidden" onclick="closeServiceModal()" style="z-index: 10040;">
@@ -377,4 +379,5 @@
 <script src="components/partsModalHandler.js"></script>
 <!-- Supplier Links Component -->
 <script src="components/supplierLinks.js"></script>
+
 </body></html>

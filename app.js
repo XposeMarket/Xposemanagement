@@ -31,6 +31,134 @@ import { checkSubscriptionAccess } from './helpers/subscription-check-clean.js';
 import { setupInventory } from './inventory.js';
 
 /**
+ * Show styled logout confirmation modal
+ */
+function showLogoutConfirmModal() {
+  // Remove existing modal if present
+  const existing = document.getElementById('logout-confirm-modal');
+  if (existing) existing.remove();
+  
+  const modal = document.createElement('div');
+  modal.id = 'logout-confirm-modal';
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.2s ease;
+  `;
+  
+  modal.innerHTML = `
+    <div style="
+      background: var(--card, #fff);
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 380px;
+      width: 90%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      animation: slideUp 0.2s ease;
+    ">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <div style="
+          width: 56px;
+          height: 56px;
+          margin: 0 auto 16px;
+          background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        ">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+        </div>
+        <h3 style="margin: 0 0 8px; font-size: 1.25rem; color: var(--text);">Sign Out?</h3>
+        <p style="margin: 0; color: var(--muted); font-size: 0.95rem;">Are you sure you want to sign out of your account?</p>
+      </div>
+      <div style="display: flex; gap: 12px;">
+        <button id="logout-cancel-btn" style="
+          flex: 1;
+          padding: 12px 16px;
+          border: 1px solid var(--line);
+          background: var(--bg);
+          color: var(--text);
+          border-radius: 8px;
+          font-size: 0.95rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+        ">Cancel</button>
+        <button id="logout-confirm-btn" style="
+          flex: 1;
+          padding: 12px 16px;
+          border: none;
+          background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+          color: white;
+          border-radius: 8px;
+          font-size: 0.95rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+        ">Sign Out</button>
+      </div>
+    </div>
+  `;
+  
+  // Add animation styles if not present
+  if (!document.getElementById('logout-modal-styles')) {
+    const style = document.createElement('style');
+    style.id = 'logout-modal-styles';
+    style.textContent = `
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes slideUp {
+        from { transform: translateY(20px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  document.body.appendChild(modal);
+  
+  // Handle cancel
+  document.getElementById('logout-cancel-btn').onclick = () => modal.remove();
+  
+  // Handle confirm
+  document.getElementById('logout-confirm-btn').onclick = async () => {
+    const btn = document.getElementById('logout-confirm-btn');
+    btn.textContent = 'Signing out...';
+    btn.disabled = true;
+    await logout();
+  };
+  
+  // Close on backdrop click
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.remove();
+  });
+  
+  // Close on Escape key
+  const escHandler = (e) => {
+    if (e.key === 'Escape') {
+      modal.remove();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
+}
+
+/**
  * Update navigation labels based on industry configuration
  */
 function updateNavigationTerminology() {
@@ -284,10 +412,10 @@ async function __mainBase() {
     byId("themeToggle").addEventListener("click", toggleTheme);
   }
 
-  // Logout button
+  // Logout button - with styled confirmation modal
   if (byId("logoutBtn")) {
-    byId("logoutBtn").addEventListener("click", async () => {
-      await logout();
+    byId("logoutBtn").addEventListener("click", () => {
+      showLogoutConfirmModal();
     });
   }
 
@@ -300,9 +428,9 @@ async function __mainBase() {
     });
   }
   if (byId('mobileLogoutBtn')) {
-    byId('mobileLogoutBtn').addEventListener('click', async (e) => {
+    byId('mobileLogoutBtn').addEventListener('click', (e) => {
       e.preventDefault();
-      await logout();
+      showLogoutConfirmModal();
     });
   }
 
@@ -316,11 +444,29 @@ async function __mainBase() {
     });
   }
 
-  // Always show Inventory link in header when present (display across all pages)
+  // Show Inventory link in header for non-staff users
   try {
     const globalInventoryLink = document.getElementById('inventoryNavLink');
     if (globalInventoryLink) {
-      globalInventoryLink.style.display = '';
+      // Check if staff user
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser) {
+          const { data: staffCheck } = await supabase
+            .from('shop_staff')
+            .select('role')
+            .eq('auth_id', authUser.id)
+            .single();
+          
+          // Only show inventory if NOT staff
+          if (!staffCheck || staffCheck.role !== 'staff') {
+            globalInventoryLink.style.display = '';
+          } else {
+            globalInventoryLink.style.display = 'none';
+          }
+        }
+      }
     }
   } catch (e) {}
 
@@ -361,7 +507,13 @@ async function __mainBase() {
   } else {
     // All other pages require authentication
     console.log('🔒 Setting up authenticated page:', p);
-    await requireAuth();
+    const hasPageAccess = await requireAuth();
+    
+    // If user doesn't have access, requireAuth already redirected - stop here
+    if (!hasPageAccess) {
+      console.log('🚫 Page access denied, stopping initialization');
+      return;
+    }
     
     // Initialize shop switcher for multi-shop users
     // Ensure demo shop exists in localStorage for demo account so UI shows settings/shop list
@@ -399,26 +551,11 @@ async function __mainBase() {
         if (mod && typeof mod.initInvitationModal === 'function') mod.initInvitationModal().catch(() => {});
       }).catch(() => {});
     } catch(e){}
-    // Show Inventory link for any authenticated user (local or Supabase)
+    // Show Inventory link for non-staff authenticated users
     const inventoryLink = document.getElementById('inventoryNavLink');
     if (inventoryLink) {
-      let user = null;
-      try {
-        user = currentUser && currentUser();
-      } catch {}
-      if (user) {
-        inventoryLink.style.display = '';
-      } else {
-        // Try Supabase user (async)
-        import('./helpers/supabase.js').then(({ getSupabaseClient }) => {
-          const supabase = getSupabaseClient();
-          if (!supabase) return;
-          supabase.auth.getUser().then(({ data }) => {
-            const u = data?.user;
-            if (u) inventoryLink.style.display = '';
-          });
-        });
-      }
+      // Don't show for staff - let applyNavPermissions handle it
+      // This will be handled by requireAuth -> applyNavPermissions
     }
     
     // Check subscription access (only for non-admin pages)

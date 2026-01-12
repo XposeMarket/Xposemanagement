@@ -2383,3 +2383,31 @@ tr.staff-claimed {
 tr.staff-claimed:hover {
   background-color: rgba(16, 185, 129, 0.2) !important;
 }
+
+/* Staff Jobs Page: Hide action buttons on mobile (use modal instead) */
+@media (max-width: 768px) {
+  #jobsTable .appt-actions-grid,
+  #awaitTable .appt-actions-grid {
+    display: none !important;
+  }
+  #jobsTable th:last-child,
+  #jobsTable td:last-child,
+  #awaitTable th:last-child,
+  #awaitTable td:last-child {
+    display: none !important;
+  }
+  /* Also hide Job ID column on mobile for staff jobs */
+  #jobsTable th:nth-child(2),
+  #jobsTable td:nth-child(2),
+  #awaitTable th:nth-child(2),
+  #awaitTable td:nth-child(2) {
+    display: none !important;
+  }
+  /* Hide Assigned To column on mobile (always "You" for staff) */
+  #jobsTable th:nth-child(7),
+  #jobsTable td:nth-child(7),
+  #awaitTable th:nth-child(7),
+  #awaitTable td:nth-child(7) {
+    display: none !important;
+  }
+}

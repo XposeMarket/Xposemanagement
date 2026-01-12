@@ -38,11 +38,29 @@ async function initializeSessionShopId() {
       .limit(1);
     
     if (staffShops && staffShops.length > 0) {
-      // Staff member - use their first shop
+      // Staff member - prefer a saved users.shop_id if present and the staff has access to it
+      try {
+        const { data: userRow, error: userRowErr } = await supabase.from('users').select('shop_id').eq('id', authUser.id).limit(1).single();
+        if (!userRowErr && userRow && userRow.shop_id) {
+          // verify the userRow.shop_id is among staffShops for this auth user
+          const staffShopIds = (await supabase.from('shop_staff').select('shop_id').eq('auth_id', authUser.id)).data || [];
+          const hasAccess = (staffShopIds || []).some(s => s.shop_id === userRow.shop_id);
+          if (hasAccess) {
+            session.shopId = userRow.shop_id;
+            localStorage.setItem('xm_session', JSON.stringify(session));
+            console.log('✅ Set session shop ID from users.shop_id (preferred for multi-shop staff):', userRow.shop_id);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('Could not read users.shop_id for preferred shop lookup', e);
+      }
+
+      // Fallback: use their first shop
       const shopId = staffShops[0].shop_id;
       session.shopId = shopId;
       localStorage.setItem('xm_session', JSON.stringify(session));
-      console.log('✅ Set session shop ID from shop_staff:', shopId);
+      console.log('✅ Set session shop ID from shop_staff (fallback):', shopId);
       return;
     }
     
@@ -99,7 +117,9 @@ async function getStaffAsAppUser(supabase, authUser){
         last: staff.last_name || '',
         email: staff.email || authUser.email,
         role: staff.role || 'staff',
-        shop_id: staff.shop_id
+        shop_id: staff.shop_id,
+        shop_staff_id: staff.id,
+        hourly_rate: staff.hourly_rate || 0
       };
     }
     if(authUser.email){
@@ -113,7 +133,9 @@ async function getStaffAsAppUser(supabase, authUser){
           last: staff.last_name || '',
           email: staff.email || authUser.email,
           role: staff.role || 'staff',
-          shop_id: staff.shop_id
+          shop_id: staff.shop_id,
+          shop_staff_id: staff.id,
+          hourly_rate: staff.hourly_rate || 0
         };
       }
     }
@@ -128,6 +150,10 @@ async function getStaffAsAppUser(supabase, authUser){
  */
 function pageName() {
   const p = (location.pathname.split("/").pop() || "index.html").toLowerCase();
+  // Handle staff-portal specifically
+  if (p === "staff-portal.html" || p === "staff-portal") {
+    return "staff-portal";
+  }
   return p.replace(".html", "");
 }
 
@@ -155,14 +181,21 @@ async function applyNavPermissions(userRow = null) {
       try {
         const { data: { user: authUser } } = await supabase.auth.getUser();
         if (authUser) {
-          // First check if this auth user maps to a shop_staff entry (prefer staff)
-          const staffLike = await getStaffAsAppUser(supabase, authUser);
-          if (staffLike) {
-            u = staffLike;
-          } else {
-            const { data: byId } = await supabase.from('users').select('*').eq('id', authUser.id).limit(1);
-            u = (byId && byId[0]) ? byId[0] : null;
-          }
+            // Prefer the canonical `users` row (owners/admins) when present. Only fall back
+            // to `shop_staff` mapping if no `users` record exists for this auth user.
+            try {
+              const { data: byId } = await supabase.from('users').select('*').eq('id', authUser.id).limit(1);
+              if (byId && byId[0]) {
+                u = byId[0];
+              } else {
+                const staffLike = await getStaffAsAppUser(supabase, authUser);
+                if (staffLike) u = staffLike;
+              }
+            } catch (e) {
+              // Fall back to shop_staff mapping on any error
+              const staffLike = await getStaffAsAppUser(supabase, authUser);
+              if (staffLike) u = staffLike;
+            }
         }
       } catch (e) {
         console.warn('applyNavPermissions supabase lookup failed', e);
@@ -171,25 +204,168 @@ async function applyNavPermissions(userRow = null) {
   }
 
   if (!u) return;
-  const allowed = ROLE_PAGES[u.role] || [];
+  const supabase = getSupabaseClient();
+  // If staff-like (staff or foreman), prefer shop-specific shop_staff row for role/hourly_rate using session shopId
+  let isHourlyForShop = false;
+  let shopStaffFound = false;
+  try {
+    if (u && (u.role === 'staff' || u.role === 'foreman') && supabase) {
+      const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+      const curShopId = session.shopId || null;
+      if (curShopId) {
+        try {
+          // Try to resolve a shop_staff row for the current session shop. Prefer auth_id, but
+          // fall back to email-based lookup (some legacy staff rows lack auth_id).
+          const lookupUser = { id: u.auth_id || u.id, email: u.email };
+          const staffLike = await getStaffAsAppUser(supabase, lookupUser);
+          console.log('  shop_staff lookup (getStaffAsAppUser) result:', staffLike);
+          if (staffLike && Number(staffLike.shop_id) === Number(curShopId)) {
+            u.hourly_rate = staffLike.hourly_rate || u.hourly_rate || 0;
+            u.role = staffLike.role || u.role;
+            u.shop_id = staffLike.shop_id || u.shop_id;
+            u.shop_staff_id = staffLike.shop_staff_id || u.shop_staff_id;
+            isHourlyForShop = Number(u.hourly_rate || 0) > 0;
+            shopStaffFound = true;
+          } else {
+            // As a final fallback, try a direct auth_id query scoped to the shop (keeps previous behavior)
+            if (u.auth_id || u.id) {
+              const { data: ssRow, error: ssErr } = await supabase.from('shop_staff').select('*').eq('shop_id', curShopId).eq('auth_id', u.auth_id || u.id).limit(1).single();
+              console.log('  shop_staff direct query result:', ssRow, 'error:', ssErr);
+              if (!ssErr && ssRow) {
+                u.hourly_rate = ssRow.hourly_rate || u.hourly_rate || 0;
+                u.role = ssRow.role || u.role;
+                u.shop_id = ssRow.shop_id || u.shop_id;
+                u.shop_staff_id = ssRow.id || u.shop_staff_id;
+                isHourlyForShop = Number(u.hourly_rate || 0) > 0;
+                shopStaffFound = true;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('applyNavPermissions: could not fetch shop_staff for session shop', e);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('applyNavPermissions: could not fetch shop_staff for session shop', e);
+  }
+  // Copy allowed pages so we don't mutate the shared ROLE_PAGES constant.
+  const allowed = Array.isArray(ROLE_PAGES[u.role]) ? ROLE_PAGES[u.role].slice() : [];
+  const isStaff = (u.role === 'staff' || u.role === 'foreman');
+  // If staff and we found a shop_staff row for the current shop but they're not hourly,
+  // remove staff-portal from allowed set for nav visibility. If we couldn't determine
+  // shop-specific status, leave the staff-portal visible by default.
+  if (isStaff && shopStaffFound && !isHourlyForShop) {
+    const idx = allowed.indexOf('staff-portal');
+    if (idx !== -1) allowed.splice(idx, 1);
+  }
+  
+  console.log('🔒 Applying nav permissions for role:', u.role);
+  console.log('  Allowed pages (before shop check):', allowed);
+  console.log('  Is staff member:', isStaff);
+  console.log('  shopStaffFound:', shopStaffFound, 'isHourlyForShop:', isHourlyForShop);
+  
+  // Handle CSS class-based navigation visibility (for pages like profile.html)
+  if (isStaff) {
+    // Hide owner-only navigation links by default, but allow Dashboard for `foreman`.
+    document.querySelectorAll('.owner-nav').forEach(el => {
+      try {
+        const href = (el.getAttribute && el.getAttribute('href')) ? el.getAttribute('href') : '';
+        if (u.role === 'foreman' && href === 'dashboard.html') {
+          el.style.display = '';
+        } else {
+          el.style.display = 'none';
+        }
+      } catch (e) {
+        el.style.display = 'none';
+      }
+    });
+    // Show or hide staff-only navigation links based on whether staff is hourly for this shop.
+    // If we couldn't determine shop-specific status, show staff-only links.
+    document.querySelectorAll('.staff-only-nav').forEach(el => {
+      el.style.display = (shopStaffFound ? (isHourlyForShop ? '' : 'none') : '');
+    });
+    // Update brand link: if we know the shop-specific payment type, choose accordingly.
+    const brandLink = document.getElementById('brandLink');
+    if (brandLink) {
+      // Foreman should land on dashboard by default unless they're hourly staff
+      if (u.role === 'foreman') {
+        brandLink.href = (shopStaffFound && isHourlyForShop) ? 'staff-portal.html' : 'dashboard.html';
+      } else {
+        brandLink.href = (shopStaffFound ? (isHourlyForShop ? 'staff-portal.html' : 'profile.html') : 'staff-portal.html');
+      }
+    }
+    // Show foreman-only nav links if applicable
+    if (u.role === 'foreman') {
+      document.querySelectorAll('.foreman-nav').forEach(el => el.style.display = '');
+    } else {
+      document.querySelectorAll('.foreman-nav').forEach(el => el.style.display = 'none');
+    }
+  } else {
+    // Show owner navigation, hide staff-only links
+    document.querySelectorAll('.owner-nav').forEach(el => {
+      el.style.display = '';
+    });
+    document.querySelectorAll('.staff-only-nav').forEach(el => {
+      el.style.display = 'none';
+    });
+  }
+  
+  // Handle href-based navigation visibility (for other pages)
   document.querySelectorAll("header nav a").forEach(a => {
     // Always show mobile quick action buttons regardless of role
     if (a.classList && a.classList.contains('mobile-nav-btn')) {
       a.style.display = '';
       return;
     }
+    
+    // Skip elements with owner-nav or staff-only-nav classes (already handled above)
+    if (a.classList && (a.classList.contains('owner-nav') || a.classList.contains('staff-only-nav'))) {
+      return;
+    }
 
     const href = (a.getAttribute("href") || "").toLowerCase();
     const pn = href.replace(".html", "").replace("./", "");
-    if (href && pn && !allowed.includes(pn)) {
+    // If this link points to the global jobs page and the current user is staff,
+    // prefer directing them to the staff-specific jobs page when available.
+    let linkPage = pn;
+    if (pn === 'jobs' && isStaff && allowed.includes('staff-jobs')) {
+      try {
+        a.setAttribute('href', 'staff-jobs.html');
+        linkPage = 'staff-jobs';
+      } catch (e) {
+        // ignore
+      }
+      // If the link text is simply 'Jobs', update it to 'My Jobs' for clarity
+      try {
+        if (a.textContent && a.textContent.trim().toLowerCase() === 'jobs') {
+          a.textContent = 'My Jobs';
+        }
+      } catch (e) {}
+    }
+    
+    // Special handling for inventory - hide from staff
+    if (pn === 'inventory' && isStaff) {
+      console.log('  Hiding inventory from staff');
+      a.style.display = 'none';
+      return;
+    }
+    
+    if (href && linkPage && !allowed.includes(linkPage)) {
+      console.log(`  Hiding ${linkPage} (not in allowed list)`);
       a.style.display = "none";
+    } else {
+      // Make sure allowed pages are visible
+      if (href && linkPage && allowed.includes(linkPage)) {
+        a.style.display = '';
+      }
     }
   });
 }
 
 /**
  * Enforce page access - redirect if no permission
- * FIXED: Doesn't enforce for Supabase users (they're already authenticated)
+ * Returns true if access granted, false if redirecting
  */
 async function enforcePageAccess(userRow = null) {
   // Enforce page access. If a userRow (from Supabase) is provided, use it; otherwise fall back to localStorage.
@@ -208,18 +384,25 @@ async function enforcePageAccess(userRow = null) {
       console.log('  Supabase authUser:', authUser?.email);
       
       if (authUser) {
-        // Prefer shop_staff mapping if present
-        console.log('  Checking shop_staff table...');
-        const staffLike = await getStaffAsAppUser(supabase, authUser);
-        console.log('  shop_staff result:', staffLike);
-        
-        if (staffLike) {
-          u = staffLike;
-        } else {
+        // Prefer the canonical `users` row (owners/admins) when present. Only fall back
+        // to `shop_staff` mapping if no `users` record exists for this auth user.
+        try {
           console.log('  Checking users table...');
           const { data: byId } = await supabase.from('users').select('*').eq('id', authUser.id).limit(1);
           console.log('  users table result:', byId);
-          u = (byId && byId[0]) ? byId[0] : null;
+          if (byId && byId[0]) {
+            u = byId[0];
+          } else {
+            console.log('  Checking shop_staff table...');
+            const staffLike = await getStaffAsAppUser(supabase, authUser);
+            console.log('  shop_staff result:', staffLike);
+            if (staffLike) u = staffLike;
+          }
+        } catch (e) {
+          // On error, fall back to shop_staff mapping
+          console.log('  users table check failed, falling back to shop_staff');
+          const staffLike = await getStaffAsAppUser(supabase, authUser);
+          if (staffLike) u = staffLike;
         }
       }
     } catch (e) {
@@ -231,12 +414,12 @@ async function enforcePageAccess(userRow = null) {
   
   if (!u) {
     console.log('  ⚠️ No user found, skipping page access enforcement');
-    return;
+    return true; // Allow access if we can't determine user
   }
   
   const allowed = ROLE_PAGES[u.role] || [];
   const pn = pageName();
-  const open = ["index", "signup", "create-shop", "admin"];
+  const open = ["index", "signup", "create-shop", "admin", "staff-portal"];
   
   console.log('  User role:', u.role);
   console.log('  Allowed pages:', allowed);
@@ -244,23 +427,41 @@ async function enforcePageAccess(userRow = null) {
   console.log('  Is page allowed?', allowed.includes(pn));
   console.log('  Is page open?', open.includes(pn));
   
-  if (!allowed.includes(pn) && !open.includes(pn)) {
-    console.log('  ❌ Access denied! Redirecting...');
-    if (allowed.includes("dashboard")) {
-      console.log('  → Redirecting to dashboard.html');
-      window.location.href = "dashboard.html";
+    if (!allowed.includes(pn) && !open.includes(pn)) {
+      console.log('  ❌ Access denied! Redirecting...');
+      // If the user is a staff record, only force staff-portal for HOURLY staff (use session-specific hourly_rate)
+      let isHourlyStaff = false;
+      try {
+        const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+        const curShopId = session.shopId || null;
+        if (u && u.role === 'staff' && curShopId) {
+          const { data: ssRow } = await getSupabaseClient().from('shop_staff').select('hourly_rate').eq('auth_id', u.auth_id || u.id).eq('shop_id', curShopId).limit(1).single();
+          isHourlyStaff = Number(ssRow?.hourly_rate || 0) > 0;
+        }
+      } catch (e) {
+        console.warn('enforcePageAccess: could not determine hourly status for staff', e);
+      }
+
+      if (isHourlyStaff && allowed.includes("staff-portal")) {
+        console.log('  → Redirecting hourly staff to staff-portal.html');
+        window.location.href = "staff-portal.html";
+      } else if (allowed.includes("dashboard")) {
+        console.log('  → Redirecting to dashboard.html');
+        window.location.href = "dashboard.html";
+      } else {
+        console.log('  → Redirecting to index.html');
+        window.location.href = "index.html";
+      }
+      return false; // Access denied
     } else {
-      console.log('  → Redirecting to index.html');
-      window.location.href = "index.html";
-    }
-  } else {
     console.log('  ✅ Access granted');
+    return true; // Access granted
   }
 }
 
 /**
  * Require authentication
- * FIXED: Added retry logic to prevent race condition logouts
+ * Returns true if authenticated and has access, false if redirecting
  */
 async function requireAuth() {
   const supabase = getSupabaseClient();
@@ -272,13 +473,14 @@ async function requireAuth() {
     const open = ["index", "signup", "create-shop", "admin", ""];
     if (!user && !open.includes(pn)) {
       window.location.href = "index.html";
-      return;
+      return false;
     }
     if (user) {
-      applyNavPermissions();
-      enforcePageAccess();
+      await applyNavPermissions();
+      const hasAccess = await enforcePageAccess();
+      return hasAccess;
     }
-    return;
+    return true;
   }
 
   try {
@@ -323,7 +525,7 @@ async function requireAuth() {
       if (!open.includes(pn)) {
         window.location.href = "login.html";
       }
-      return;
+      return false;
     }
     
     console.log('✅ User authenticated:', user.email);
@@ -336,7 +538,8 @@ async function requireAuth() {
       const staffLike = await getStaffAsAppUser(supabase, user);
       if (staffLike) {
         await applyNavPermissions(staffLike);
-        await enforcePageAccess(staffLike);
+        const hasAccess = await enforcePageAccess(staffLike);
+        return hasAccess;
       } else {
         try {
           const { data: userRow, error: userRowErr } = await supabase.from('users').select('*').eq('id', user.id).limit(1).single();
@@ -344,13 +547,16 @@ async function requireAuth() {
             console.warn('Could not load users row for permission enforcement:', userRowErr);
           }
           await applyNavPermissions(userRow || null);
-          await enforcePageAccess(userRow || null);
+          const hasAccess = await enforcePageAccess(userRow || null);
+          return hasAccess;
         } catch (innerErr) {
           console.warn('Permission enforcement failed fetching users row:', innerErr);
+          return true; // Allow access on error
         }
       }
     } catch (permErr) {
       console.warn('Permission enforcement failed:', permErr);
+      return true; // Allow access on error
     }
     
   } catch (e) {
@@ -360,6 +566,7 @@ async function requireAuth() {
     if (!open.includes(pn)) {
       window.location.href = "login.html";
     }
+    return false;
   }
 }
 

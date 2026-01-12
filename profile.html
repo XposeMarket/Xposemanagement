@@ -1,19 +1,24 @@
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Profile</title><link rel="stylesheet" href="styles.css"></head><body>
 <header class="top">
   <div class="container row top row">
-    <a class="brand" href="dashboard.html" aria-label="Home">
+    <a class="brand" href="dashboard.html" aria-label="Home" id="brandLink">
       <img id="headerLogo" src="assets/XposeManagementCRMlogo.png" alt="Logo">
     </a>
     <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button><nav id="mainNav">
-      <a href="dashboard.html" class="">Dashboard</a>
-      <a href="appointments.html" class="">Appointments</a>
-      <a href="jobs.html" class="">Jobs</a>
-      <a href="messages.html" class="">Messages</a>
-      <a href="invoices.html" class="">Invoices</a>
-      <a href="customers.html" class="">Customers</a>
-      <a href="revenue.html" class="">Revenue</a>
-      <a href="inventory.html" class="" id="inventoryNavLink" style="display:none">Inventory</a>
-      <a href="settings.html" class="">Settings</a>
+      <a href="staff-portal.html" class="staff-only-nav" style="display:none">Staff Portal</a>
+      <a href="dashboard.html" class="owner-nav">Dashboard</a>
+      <a href="foreman-appointments.html" class="foreman-nav" style="display:none">Job Board</a>
+      <a href="claim-board.html" class="" style="display:none">Claim Board</a>
+      <a href="appointments.html" class="owner-nav">Appointments</a>
+      <a href="jobs.html" class="owner-nav">Jobs</a>
+      <a href="staff-jobs.html" class="staff-only-nav" style="display:none">My Jobs</a>
+      <a href="messages.html" class="owner-nav">Messages</a>
+      <a href="invoices.html" class="owner-nav">Invoices</a>
+      <a href="customers.html" class="owner-nav">Customers</a>
+      <a href="revenue.html" class="owner-nav">Revenue</a>
+      <!-- Inventory link hidden for staff users -->
+      <!-- <a href="inventory.html" class="owner-nav" id="inventoryNavLink" style="display:none">Inventory</a> -->
+      <a href="settings.html" class="owner-nav">Settings</a>
       <a href="profile.html" class="active">Profile</a>
         <a href="#" id="mobileThemeToggle" class="mobile-nav-btn mobile-special">Theme</a>
         <a href="#" id="mobileLogoutBtn" class="mobile-nav-btn mobile-special">Logout</a>
@@ -108,4 +113,90 @@
   </div>
   <p id="passNotice" class="notice"></p>
 </div>
-<footer class="container">© Xpose Management</footer><script src="vendor/supabase.umd.js"></script><script type="module" src="app.js"></script><script src="multi-tenant.js"></script></body></html>
+<footer class="container">© Xpose Management</footer><script src="vendor/supabase.umd.js"></script><script type="module" src="app.js"></script><script src="multi-tenant.js"></script>
+<script type="module">
+  // Hide owner-only navigation for staff members
+  import { getSupabaseClient } from './helpers/supabase.js';
+  
+  async function setupStaffNavigation() {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
+      // Get current shop from session
+      let curShopId = null;
+      try {
+        curShopId = JSON.parse(localStorage.getItem('xm_session') || '{}').shopId || null;
+      } catch (e) {}
+      // Query shop_staff for this user and current shop
+      let staffRow = null;
+      if (curShopId) {
+        const { data: staffRows } = await supabase
+          .from('shop_staff')
+          .select('*')
+          .eq('auth_id', authUser.id)
+          .eq('shop_id', curShopId)
+          .limit(1);
+        if (staffRows && staffRows.length > 0) staffRow = staffRows[0];
+      }
+      let role = staffRow?.role || (authUser.user_metadata?.role || '').toLowerCase();
+      if (role === 'foreman') {
+        // Foreman: always show dashboard, show staff portal if hourly
+        document.querySelectorAll('.owner-nav').forEach(el => {
+          if (el.getAttribute('href') === 'dashboard.html') {
+            el.style.display = '';
+          } else {
+            el.style.display = 'none';
+          }
+        });
+        if (staffRow && Number(staffRow.hourly_rate) > 0) {
+          document.querySelectorAll('.staff-only-nav').forEach(el => {
+            el.style.display = '';
+          });
+          const brandLink = document.getElementById('brandLink');
+          if (brandLink) brandLink.href = 'staff-portal.html';
+          console.log('👷 Foreman (hourly) - dashboard and staff portal shown');
+        } else {
+          document.querySelectorAll('.staff-only-nav').forEach(el => {
+            el.style.display = 'none';
+          });
+          const brandLink = document.getElementById('brandLink');
+          if (brandLink) brandLink.href = 'dashboard.html';
+          console.log('👷 Foreman (flat) - dashboard shown, staff portal hidden');
+        }
+      } else if (staffRow && Number(staffRow.hourly_rate) > 0) {
+        // Hourly staff for this shop: show staff portal
+        document.querySelectorAll('.owner-nav').forEach(el => {
+          el.style.display = 'none';
+        });
+        document.querySelectorAll('.staff-only-nav').forEach(el => {
+          el.style.display = '';
+        });
+        const brandLink = document.getElementById('brandLink');
+        if (brandLink) brandLink.href = 'staff-portal.html';
+        console.log('👤 Hourly staff for this shop - staff portal shown');
+      } else {
+        // Not hourly for this shop: hide staff portal
+        document.querySelectorAll('.owner-nav').forEach(el => {
+          el.style.display = '';
+        });
+        document.querySelectorAll('.staff-only-nav').forEach(el => {
+          el.style.display = 'none';
+        });
+        const brandLink = document.getElementById('brandLink');
+        if (brandLink) brandLink.href = 'dashboard.html';
+        if (staffRow) {
+          console.log('👤 Flat-rate staff for this shop - staff portal hidden');
+        } else {
+          console.log('👑 Owner/admin or not staff for this shop - staff portal hidden');
+        }
+      }
+    } catch (err) {
+      console.error('Error setting up staff navigation:', err);
+    }
+  }
+  // Run on page load
+  setupStaffNavigation();
+</script>
+</body></html>

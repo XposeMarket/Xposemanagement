@@ -12,6 +12,7 @@ import { readLS, writeLS, getShopData } from '../helpers/storage.js';
 import { getSupabaseClient } from '../helpers/supabase.js';
 import { byId } from '../helpers/utils.js';
 import { showServerBanner } from '../helpers/auth.js';
+import { getStaffAwareRedirect } from '../helpers/staff-auth.js';
 
 /**
  * Determine redirect page based on subscription tier
@@ -122,8 +123,8 @@ function setupLogin() {
             }
           }
 
-          // Get redirect page based on subscription
-          const redirectPage = await getRedirectPage(auth_id);
+          // Get redirect page based on user type (staff vs owner) and subscription
+          const redirectPage = await getStaffAwareRedirect(auth_id);
           console.log('🚀🚀🚀 REDIRECTING TO:', redirectPage);
           
           // Add small delay to ensure everything is saved
@@ -243,8 +244,8 @@ function setupLogin() {
             }
           }
 
-          // Get redirect page based on subscription
-          const redirectPage = await getRedirectPage(auth_id);
+          // Get redirect page based on user type (staff vs owner) and subscription
+          const redirectPage = await getStaffAwareRedirect(auth_id);
           console.log('🚀🚀🚀 REDIRECTING TO:', redirectPage);
           
           // Add small delay to ensure everything is saved

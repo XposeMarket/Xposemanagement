@@ -524,7 +524,7 @@ async function loadUsers() {
 /**
  * Save jobs to Supabase
  */
-async function saveJobs(jobs) {
+async function saveJobs(jobs, options = {}) {
   const shopId = getCurrentShopId();
   if (!shopId) return false;
 
@@ -543,10 +543,54 @@ async function saveJobs(jobs) {
         throw fetchError;
       }
       
-      // Upsert with jobs
+      // Merge incoming jobs with existing `data.jobs` to avoid overwriting unrelated entries
+      const existingJobs = currentData?.jobs || [];
+
+      // Build a map of existing jobs by appointment_id for id preservation
+      const existingByAppt = new Map();
+      existingJobs.forEach(ej => { if (ej && ej.appointment_id) existingByAppt.set(String(ej.appointment_id), ej); });
+
+      // Deduplicate incoming jobs by appointment_id, preserving existing id when available
+      const incomingByAppt = new Map();
+      for (const j of jobs) {
+        if (!j) continue;
+        const apptKey = j.appointment_id ? String(j.appointment_id) : null;
+        if (apptKey && incomingByAppt.has(apptKey)) {
+          // Prefer incoming item (latest) but keep existing id if present
+          const prev = incomingByAppt.get(apptKey);
+          // if previous lacked an id but existingByAppt has one, preserve it
+          if ((!j.id || j.id.toString().startsWith('job_')) && existingByAppt.has(apptKey)) {
+            j.id = existingByAppt.get(apptKey).id;
+          } else if (prev && (!prev.id || prev.id.toString().startsWith('job_')) && j.id) {
+            // replace previous with one that has a better id
+          }
+        }
+        // ensure id is set: prefer existing job id if available
+        if (apptKey && existingByAppt.has(apptKey)) {
+          j.id = existingByAppt.get(apptKey).id;
+        }
+        incomingByAppt.set(apptKey || getUUID(), j);
+      }
+
+      const incomingUnique = Array.from(incomingByAppt.values());
+      try {
+        console.log('[Jobs.saveJobs] existingJobsCount=', existingJobs.length, 'incomingUniqueCount=', incomingUnique.length);
+        console.log('[Jobs.saveJobs] incomingUnique ids=', incomingUnique.map(j => ({ id: j.id, appointment_id: j.appointment_id, status: j.status })));
+      } catch (e) {}
+
+      // Build merged jobs array: keep existing jobs for this shop that are not replaced by incoming, then append incomingUnique
+      const mergedForShop = [];
+      const replacedApptIds = new Set(incomingUnique.map(j => j.appointment_id).filter(Boolean));
+      existingJobs.forEach(ej => {
+        if (!ej) return;
+        if (ej.appointment_id && replacedApptIds.has(ej.appointment_id)) return; // replaced
+        mergedForShop.push(ej);
+      });
+      mergedForShop.push(...incomingUnique);
+
       const payload = {
         shop_id: shopId,
-        jobs: jobs,
+        jobs: mergedForShop,
         settings: currentData?.settings || {},
         appointments: currentData?.appointments || [],
         threads: currentData?.threads || [],
@@ -560,12 +604,13 @@ async function saveJobs(jobs) {
       
       if (upsertError) throw upsertError;
       
-      // Also insert/update jobs in jobs table
-      // FIX: Removed the checks that were skipping jobs with underscores
-      for (const job of jobs) {
+      // Also insert/update jobs in jobs table — only upsert the incoming/delta jobs to avoid touching unrelated rows
+      if (!options.skipCanonicalUpsert) {
+        for (const job of incomingUnique) {
         // Parse customer name from job or appointment
         let customer_first = '';
         let customer_last = '';
+        try { console.log('[Jobs.saveJobs] upserting job:', job.id, 'appointment_id:', job.appointment_id, 'status:', job.status); } catch (e) {}
         if (job.customer) {
           const nameParts = job.customer.trim().split(' ');
           customer_first = nameParts[0] || '';
@@ -594,6 +639,7 @@ async function saveJobs(jobs) {
           console.error('Failed to upsert job:', jobError);
         } else {
           console.log(`✅ Job ${job.id} upserted to jobs table`);
+        }
         }
       }
       
@@ -1252,6 +1298,30 @@ function openRemoveModal(job) {
   currentJobForRemove = job;
   const modal = document.getElementById('removeModal');
   if (!modal) return;
+
+  // Default copy
+  const bodyP = modal.querySelector('.modal-body p');
+  const removeApptBtn = modal.querySelector('#removeJobApptBtn');
+  const removeBtn = modal.querySelector('#removeJobBtn');
+  if (bodyP) bodyP.textContent = 'Are you sure you want to remove this job?';
+  if (removeApptBtn) removeApptBtn.style.display = '';
+  if (removeBtn) removeBtn.textContent = 'Remove Job';
+
+  // Detect current user's role and adjust wording/choices for foreman
+  try {
+    getCurrentUserWithRole().then(user => {
+      if (user && user.role === 'foreman') {
+        if (bodyP) bodyP.textContent = 'This will send the job/appointment back to scheduled status — it will not delete the appointment. Proceed?';
+        // Foreman should not see the "Remove Job & Appointment" option
+        if (removeApptBtn) removeApptBtn.style.display = 'none';
+        // Keep main button labeled "Remove Job" per UX request
+        if (removeBtn) removeBtn.textContent = 'Remove Job';
+      }
+    }).catch(() => {
+      // ignore role detection failures and show default modal
+    });
+  } catch (e) {}
+
   modal.classList.remove('hidden');
 }
 
@@ -2049,11 +2119,25 @@ async function updateJobStatus(jobId, newStatus) {
     window.openLaborModal = openLaborModal;
     window.closeRemoveModal = closeRemoveModal;
     // `openLaborModal` is exposed above and used directly by other components.
-  } else {
+    } else {
     if (!['in_progress', 'awaiting_parts'].includes(newStatus)) {
       // If status is not active, remove from jobs page (stays in appointments)
       allJobs = allJobs.filter(j => j.id !== allJobs[index].id);
     }
+
+    // If job is being sent back to scheduled, update linked appointment accordingly
+    if (newStatus === 'scheduled') {
+      const job = allJobs[index];
+      if (job && job.appointment_id) {
+        const apptIdx = allAppointments.findIndex(a => a.id === job.appointment_id);
+        if (apptIdx !== -1) {
+          allAppointments[apptIdx].status = 'scheduled';
+          allAppointments[apptIdx].updated_at = new Date().toISOString();
+          try { await saveAppointments(allAppointments); } catch (e) { console.warn('[jobs.js] failed to save appointments for scheduled:', e); }
+        }
+      }
+    }
+
     // Always update linked appointment status for in_progress and awaiting_parts
     if (['in_progress', 'awaiting_parts'].includes(newStatus)) {
       const job = allJobs[index];
@@ -2260,6 +2344,12 @@ function openAssignModal(job) {
   })();
 }
 
+// Expose assign modal and assign helper globally so other pages can reuse it
+try {
+  window.openAssignModal = openAssignModal;
+  window.assignJob = assignJob;
+} catch (e) { /* ignore in strict contexts */ }
+
 /**
  * Assign job to user
  */
@@ -2323,11 +2413,19 @@ async function handleRemoveJob(removeAppointment = false) {
   if (!currentJobForRemove) return;
   
   const job = currentJobForRemove;
-  
-  // Remove job by setting to completed
-  await updateJobStatus(job.id, 'completed');
-  
-  if (removeAppointment) {
+  // Determine current user's role
+  let user = {};
+  try { user = await getCurrentUserWithRole(); } catch (e) { user = {}; }
+
+  if (user.role === 'foreman') {
+    // For foreman, do not delete — send the job/appointment back to scheduled
+    await updateJobStatus(job.id, 'scheduled');
+  } else {
+    // Non-foreman: Remove job by setting to completed
+    await updateJobStatus(job.id, 'completed');
+  }
+
+  if (removeAppointment && user.role !== 'foreman') {
     // Remove appointment from local array
     allAppointments = allAppointments.filter(a => a.id !== job.appointment_id);
 
@@ -2379,7 +2477,13 @@ async function handleRemoveJob(removeAppointment = false) {
   }
   
   closeRemoveModal();
-  showNotification('Job removed successfully');
+  try {
+    if (user && user.role === 'foreman') {
+      showNotification('Job sent back to scheduled');
+    } else {
+      showNotification('Job removed successfully');
+    }
+  } catch (e) { showNotification('Job removed'); }
 }
 
 /**

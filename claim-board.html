@@ -1,0 +1,179 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Claim Board</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .card { padding: 12px; }
+    .toolbar { display:flex; gap:8px; align-items:center; }
+    .notice { margin-top:12px; }
+    /* Modal styles (copied from appointments.html) */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.35);
+      display: flex;
+      align-items: flex-start;
+      padding-top: 56px;
+      justify-content: center;
+      z-index: 10020;
+      overflow: auto;
+    }
+    .modal-card {
+      width: min(640px, 92vw);
+      background: var(--card, #fff);
+      color: inherit;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      margin: 12px 0;
+    }
+    @media (max-width: 768px) {
+      .modal-backdrop { align-items: center; padding-top: 0; }
+    }
+    .modal-backdrop .modal-card { max-height: calc(90vh); }
+    .modal-backdrop .modal-card .modal-body { overflow: auto !important; max-height: calc(80vh - 120px) !important; }
+    .modal-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border,#e5e5e5); }
+    .modal-body { padding:12px 14px; }
+    .modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 14px; border-top:1px solid var(--border,#e5e5e5); }
+    .btn-close { background: none; border: none; font-size: 24px; cursor: pointer; color: inherit; }
+    .hidden { display:none; }
+  </style>
+</head>
+<body>
+<header class="top">
+  <div class="container row top row">
+    <a class="brand" href="dashboard.html" aria-label="Home">
+      <img id="headerLogo" src="assets/XposeManagementCRMlogo.png" alt="Logo">
+    </a>
+    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    <nav id="mainNav">
+      <a href="dashboard.html" class="foreman-nav">Dashboard</a>
+      <a href="foreman-appointments.html" class="foreman-nav">Job Board</a>
+      <a href="staff-portal.html" class="staff-only-nav">Staff Portal</a>
+      <a href="claim-board.html" class="active">Claim Board</a>
+      <a href="jobs.html" class="">Jobs</a>
+      <a href="profile.html" class="">Profile</a>
+      <a href="#" id="mobileThemeToggle" class="mobile-nav-btn mobile-special">Theme</a>
+      <a href="#" id="mobileLogoutBtn" class="mobile-nav-btn mobile-special">Logout</a>
+    </nav>
+    <div>
+      <button id="themeToggle" class="btn" aria-label="Toggle theme">Theme</button>
+      <button id="logoutBtn" class="btn" aria-label="Logout">Logout</button>
+    </div>
+  </div>
+</header>
+
+<main class="container" style="padding:16px 0">
+  <h1>Claim Board</h1>
+  <div class="card">
+    <div class="toolbar">
+      <input id="apptSearch" placeholder="Search…">
+      <select id="apptStatus">
+        <option value="">All Statuses</option>
+        <option>new</option><option>scheduled</option><option>in_progress</option>
+        <option>awaiting_parts</option><option>completed</option>
+      </select>
+      <button id="apptFilter" class="btn">Apply</button>
+    </div>
+
+    <table class="table" id="apptTable">
+      <thead>
+        <tr>
+          <th style="width: 20px; padding: 0;"></th>
+          <th data-col="created" class="sortable">Created</th>
+          <th data-col="customer" class="sortable">Customer</th>
+          <th data-col="vehicle" class="sortable">Vehicle</th>
+          <th data-col="service" class="sortable">Service</th>
+          <th data-col="scheduled" class="sortable">Scheduled</th>
+          <th data-col="time" class="sortable">Time</th>
+          <th data-col="status" class="sortable">Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p class="notice" id="apptEmpty"></p>
+  </div>
+</main>
+
+<script src="vendor/supabase.umd.js"></script>
+<script type="module" src="pages/claim-board.js"></script>
+
+<!-- View modal borrowed from appointments.html to support View action -->
+<div id="viewApptModal" class="modal-backdrop hidden" onclick="closeViewApptModal()">
+  <div class="modal-card" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <h3>Appointment Details</h3>
+      <button onclick="closeViewApptModal()" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body" id="viewApptContent">
+      <!-- content will be populated -->
+    </div>
+    <div class="modal-foot">
+      <button onclick="closeViewApptModal()" class="btn">Close</button>
+  <button id="editFromViewBtn" class="btn info">Edit Appointment</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Note Edit/Create Modal (copied from appointments.html) ===== -->
+<div id="noteModal" class="modal-backdrop hidden">
+  <div class="modal-card" style="max-width: 600px;">
+    <div class="modal-head">
+      <h3 id="noteModalTitle">Add Note</h3>
+      <button type="button" class="btn" id="closeNoteModal">Close</button>
+    </div>
+    <div class="modal-body">
+      <form id="noteForm">
+        <label>Note</label>
+        <textarea id="noteText" rows="4" placeholder="Enter note..." style="margin-bottom: 12px;"></textarea>
+        
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <label>Attachments (Images/Videos):</label>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <label for="noteMediaInput" class="btn small" style="cursor: pointer; margin: 0;">
+              Choose Files
+            </label>
+            <input type="file" id="noteMediaInput" accept="image/*,video/*" multiple style="display: none;" onchange="handleApptNoteMediaSelect(this)">
+            <span id="noteMediaCount" style="font-size: 13px; color: #666;">No files selected</span>
+          </div>
+          <div id="noteMediaPreview" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;"></div>
+        </div>
+      </form>
+    </div>
+    <div class="modal-foot">
+      <button type="submit" form="noteForm" class="btn info" id="saveNoteBtn">Save Note</button>
+    </div>
+  </div>
+</div>
+
+<!-- Media Preview Modal -->
+<div id="apptMediaPreviewModal" class="modal-backdrop hidden" onclick="closeApptMediaPreview()" style="z-index: 10050;">
+  <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 90vw; max-height: 90vh; padding: 0; background: #000; border-radius: 8px; overflow: hidden;">
+    <button onclick="closeApptMediaPreview()" class="btn-close" style="position: absolute; top: 10px; right: 10px; z-index: 10; background: rgba(0,0,0,0.5); color: white; border-radius: 50%; width: 36px; height: 36px;">&times;</button>
+    <div id="apptMediaPreviewContent" style="display: flex; justify-content: center; align-items: center; max-height: 85vh;"></div>
+  </div>
+</div>
+
+<!-- Delete Note Confirmation Modal -->
+<div id="deleteApptNoteModal" class="modal-backdrop hidden" onclick="closeDeleteApptNoteModal()" style="z-index: 10040;">
+  <div class="modal-card" onclick="event.stopPropagation()" style="max-width: 400px;">
+    <div class="modal-head">
+      <h3>Delete Note</h3>
+      <button onclick="closeDeleteApptNoteModal()" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p>Are you sure you want to delete this note? This action cannot be undone.</p>
+    </div>
+    <div class="modal-foot">
+      <button onclick="closeDeleteApptNoteModal()" class="btn">Cancel</button>
+      <button onclick="confirmDeleteApptNote()" class="btn danger">Delete</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
+

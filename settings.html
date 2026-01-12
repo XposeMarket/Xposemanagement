@@ -21,6 +21,7 @@ function showNotification(message, type = 'success') {
     </a>
     <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button><nav id="mainNav">
       <a href="dashboard.html" class="">Dashboard</a>
+      <a href="foreman-appointments.html" class="foreman-nav" style="display:none">Job Board</a>
       <a href="appointments.html" class="">Appointments</a>
       <a href="jobs.html" class="">Jobs</a>
       <a href="messages.html" class="">Messages</a>
@@ -200,7 +201,7 @@ function showNotification(message, type = 'success') {
   <div style="margin-top:16px">
     <h3>Staff List</h3>
     <div id="shopOwner" style="margin-bottom:8px; font-weight:600">Shop Owner: <span id="shopOwnerName">-</span></div>
-    <table class="table" id="staffTable"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Hourly Rate</th><th>Actions</th></tr></thead><tbody></tbody></table>
+    <table class="table" id="staffTable"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Pay Type</th><th>Hourly Rate</th><th>Actions</th></tr></thead><tbody></tbody></table>
         <style>
           .owner-badge {
             background: #ffd700;
@@ -210,6 +211,21 @@ function showNotification(message, type = 'success') {
             padding: 2px 6px;
             margin-left: 6px;
             font-size: 0.9em;
+          }
+          .pay-type-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+            display: inline-block;
+          }
+          .pay-type-badge.flat-rate {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+          }
+          .pay-type-badge.hourly {
+            background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+            color: white;
           }
         </style>
     <p class="notice">Slots used: <span id="slotsUsed">0</span> / <span id="slotsMax">3</span></p>
@@ -230,6 +246,7 @@ function showNotification(message, type = 'success') {
                 <option value="service_writer">Service Writer</option>
                 <option value="receptionist">Receptionist</option>
                 <option value="admin">Admin</option>
+                <option value="foreman">Foreman</option>
               </select>
               <button id="inviteSendBtn" class="btn primary" type="submit">Send Invitation</button>
             </div>
@@ -294,6 +311,7 @@ function showNotification(message, type = 'success') {
         <label for="roleSelect">Select role for <span id="roleModalTarget">user</span></label>
         <select id="roleSelect" style="width:100%; padding:8px; margin-top:8px">
           <option value="admin">admin</option>
+          <option value="foreman">foreman</option>
           <option value="service_writer">service_writer</option>
           <option value="receptionist">receptionist</option>
           <option value="staff">staff</option>
@@ -303,6 +321,54 @@ function showNotification(message, type = 'success') {
         <button id="roleCancel" class="btn">Cancel</button>
         <button id="roleSave" class="btn primary">Save</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Staff Manage Modal -->
+  <div id="staffManageModal" class="modal-overlay hidden">
+    <div class="modal-content card" style="max-width: 380px; margin: 18vh auto; padding: 24px;">
+      <h3 style="margin: 0 0 8px 0;">Manage Staff Member</h3>
+      <p id="staffManageName" style="color: var(--muted); margin: 0 0 20px 0;">Staff Name</p>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <button id="staffManagePayType" class="btn" style="width: 100%; padding: 14px; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: white; border: none;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Change Pay Type
+        </button>
+        <button id="staffManageRemove" class="btn danger" style="width: 100%; padding: 14px; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          Remove from Shop
+        </button>
+      </div>
+      <button id="staffManageCancel" class="btn" style="width: 100%; margin-top: 16px; padding: 12px;">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Pay Type Selection Modal -->
+  <div id="payTypeModal" class="modal-overlay hidden">
+    <div class="modal-content card" style="max-width: 380px; margin: 18vh auto; padding: 24px;">
+      <h3 style="margin: 0 0 8px 0;">Select Pay Type</h3>
+      <p id="payTypeName" style="color: var(--muted); margin: 0 0 20px 0;">Staff Name</p>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <button id="payTypeFlatRate" class="btn" style="width: 100%; padding: 16px; font-size: 1rem; display: flex; align-items: center; gap: 12px; background: var(--bg); border: 2px solid var(--line); color: var(--text);">
+          <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); display: flex; align-items: center; justify-content: center;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+          </div>
+          <div style="text-align: left;">
+            <div style="font-weight: 600;">Flat Rate</div>
+            <div style="font-size: 0.85rem; color: var(--muted);">Paid per job completed</div>
+          </div>
+        </button>
+        <button id="payTypeHourly" class="btn" style="width: 100%; padding: 16px; font-size: 1rem; display: flex; align-items: center; gap: 12px; background: var(--bg); border: 2px solid var(--line); color: var(--text);">
+          <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #10b981 0%, #34d399 100%); display: flex; align-items: center; justify-content: center;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div style="text-align: left;">
+            <div style="font-weight: 600;">Hourly</div>
+            <div style="font-size: 0.85rem; color: var(--muted);">Paid based on hours clocked</div>
+          </div>
+        </button>
+      </div>
+      <button id="payTypeCancel" class="btn" style="width: 100%; margin-top: 16px; padding: 12px;">Cancel</button>
     </div>
   </div>
 
@@ -357,12 +423,12 @@ document.addEventListener('DOMContentLoaded', function(){
     try{
       // Ensure we have a Supabase client
       const sup = await waitForSupabaseClient(8000);
-      if(!sup){ tbody.innerHTML = '<tr><td colspan="5" style="color:red;">[ERROR] Supabase client unavailable.</td></tr>'; return; }
+      if(!sup){ tbody.innerHTML = '<tr><td colspan="6" style="color:red;">[ERROR] Supabase client unavailable.</td></tr>'; return; }
       // 1. Get current Supabase Auth user
       const { data: authData, error: authErr } = await sup.auth.getUser();
       const authId = authData?.user?.id || null;
       if(!authId){
-        tbody.innerHTML = '<tr><td colspan="5" style="color:red;">[ERROR] No Supabase Auth user found. Please log in.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="color:red;">[ERROR] No Supabase Auth user found. Please log in.</td></tr>';
         return;
       }
       // 2. Query users table for this auth user id (try `id` first, then legacy `auth_id`)
@@ -397,12 +463,12 @@ document.addEventListener('DOMContentLoaded', function(){
       }
 
       if(!currentUser){
-        tbody.innerHTML = '<tr><td colspan="5" style="color:red;">[ERROR] No user record found for your account. Please ensure a `users` row exists with your email or auth_id.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="color:red;">[ERROR] No user record found for your account. Please ensure a `users` row exists with your email or auth_id.</td></tr>';
         return;
       }
 
       if(!currentUser.shop_id){
-        tbody.innerHTML = '<tr><td colspan="5" style="color:red;">[ERROR] Your user record does not have a `shop_id` assigned. Please ask an admin to assign your account to a shop.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="color:red;">[ERROR] Your user record does not have a `shop_id` assigned. Please ask an admin to assign your account to a shop.</td></tr>';
         return;
       }
       // 3. Query shops table for this shop_id
@@ -410,7 +476,7 @@ document.addEventListener('DOMContentLoaded', function(){
       const shop = shopRows && shopRows[0] ? shopRows[0] : null;
       
       if(!shop){
-        tbody.innerHTML = '<tr><td colspan="5" style="color:red;">[ERROR] No shop found for your user/shop assignment.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="color:red;">[ERROR] No shop found for your user/shop assignment.</td></tr>';
         return;
       }
       // shop has been resolved from the authenticated user's shop_id above
@@ -463,7 +529,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
         // Populate staff table
         tbody.innerHTML = '';
-        if(!allTeamMembers.length){ tbody.innerHTML = '<tr><td colspan="5" class="muted">No team members found.</td></tr>'; if(slotsUsedEl) slotsUsedEl.textContent = '0'; }
+        if(!allTeamMembers.length){ tbody.innerHTML = '<tr><td colspan="6" class="muted">No team members found.</td></tr>'; if(slotsUsedEl) slotsUsedEl.textContent = '0'; }
         else {
           let used = 0;
           let shopOwnerId = shop.owner_id ? String(shop.owner_id).trim() : null;
@@ -510,6 +576,33 @@ document.addEventListener('DOMContentLoaded', function(){
               tdRole.appendChild(roleEl);
             }
             tr.appendChild(tdRole);
+            
+            // Pay Type cell
+            const tdPayType = document.createElement('td');
+            tdPayType.setAttribute('data-label', 'Pay Type');
+            // Determine if hourly (has hourly_rate > 0) or flat rate (default)
+            const isHourly = u.hourly_rate && Number(u.hourly_rate) > 0;
+            const payTypeBadge = document.createElement('span');
+            payTypeBadge.className = 'pay-type-badge';
+            payTypeBadge.textContent = isHourly ? 'Hourly' : 'Flat Rate';
+            payTypeBadge.style.padding = '4px 10px';
+            payTypeBadge.style.borderRadius = '12px';
+            payTypeBadge.style.fontSize = '0.85em';
+            payTypeBadge.style.fontWeight = '600';
+            payTypeBadge.style.display = 'inline-block';
+            if (isHourly) {
+              payTypeBadge.style.background = 'linear-gradient(135deg, #10b981 0%, #34d399 100%)';
+              payTypeBadge.style.color = 'white';
+            } else {
+              payTypeBadge.style.background = 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)';
+              payTypeBadge.style.color = 'white';
+            }
+            tdPayType.appendChild(payTypeBadge);
+            if(isOwner){
+              tdPayType.textContent = '—';
+            }
+            tr.appendChild(tdPayType);
+            
             // Hourly Rate cell
             const tdRate = document.createElement('td');
             tdRate.setAttribute('data-label', 'Hourly Rate');
@@ -581,52 +674,17 @@ document.addEventListener('DOMContentLoaded', function(){
             if(isOwner){
               tdAct.textContent = '';
             } else {
-              // Remove button with confirmation
-              const removeBtn = document.createElement('button');
-              removeBtn.className = 'btn danger';
-              removeBtn.textContent = 'Remove';
-              removeBtn.style.marginLeft = '8px';
-              removeBtn.addEventListener('click', async () => {
-                const confirmed = await showConfirm(`Are you sure you want to remove ${u.first||u.first_name||''} ${u.last||u.last_name||''} from this shop?`, 'Remove', 'Cancel');
-                if (!confirmed) return;
-                // Remove from shop_staff
-                if (u.shop_staff_id) {
-                  try {
-                    const delRes = await sup.from('shop_staff').delete().eq('id', u.shop_staff_id).select();
-                    const delErr = delRes?.error || null;
-                    console.log('[RoleChange] shop_staff delete response:', delRes);
-                    if (delErr) {
-                      showNotification('Failed to remove staff member: ' + (delErr.message || delErr), 'error');
-                      return;
-                    }
-                    // Also set shop_id to null in users row (by email or auth_id)
-                    let userUpdateErr = null;
-                    // Prefer updating by auth_id if present
-                    if (u.auth_id) {
-                      const updRes = await sup.from('users').update({ shop_id: null }).eq('auth_id', u.auth_id).select();
-                      console.log('[RoleChange] users update by auth_id response:', updRes);
-                      if (updRes?.error) userUpdateErr = updRes.error;
-                    }
-                    // Fallback to email
-                    if (!userUpdateErr && u.email) {
-                      const updRes2 = await sup.from('users').update({ shop_id: null }).eq('email', u.email).select();
-                      console.log('[RoleChange] users update by email response:', updRes2);
-                      if (updRes2?.error) userUpdateErr = updRes2.error;
-                    }
-                    if (userUpdateErr) {
-                      showNotification('Staff removed, but could not update users row: ' + (userUpdateErr.message || userUpdateErr), 'error');
-                    } else {
-                      showNotification('Staff member removed.', 'success');
-                    }
-                    await renderTeam();
-                  } catch (ex) {
-                    showNotification('Error removing staff member: ' + (ex.message || ex), 'error');
-                  }
-                } else {
-                  showNotification('Could not find staff record to remove.', 'error');
-                }
+              // Manage button that opens modal
+              const manageBtn = document.createElement('button');
+              manageBtn.className = 'btn';
+              manageBtn.textContent = 'Manage';
+              manageBtn.style.background = 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)';
+              manageBtn.style.color = 'white';
+              manageBtn.style.border = 'none';
+              manageBtn.addEventListener('click', () => {
+                openStaffManageModal(u, tr);
               });
-              tdAct.appendChild(removeBtn);
+              tdAct.appendChild(manageBtn);
             }
             tr.appendChild(tdAct);
             tbody.appendChild(tr);
@@ -924,6 +982,187 @@ document.addEventListener('DOMContentLoaded', function(){
         }
 
         closeRoleModal();
+      });
+
+      // Staff Manage Modal helpers
+      const staffManageModal = document.getElementById('staffManageModal');
+      const staffManageName = document.getElementById('staffManageName');
+      const staffManagePayTypeBtn = document.getElementById('staffManagePayType');
+      const staffManageRemoveBtn = document.getElementById('staffManageRemove');
+      const staffManageCancelBtn = document.getElementById('staffManageCancel');
+      
+      // Pay Type Modal helpers
+      const payTypeModal = document.getElementById('payTypeModal');
+      const payTypeName = document.getElementById('payTypeName');
+      const payTypeFlatRateBtn = document.getElementById('payTypeFlatRate');
+      const payTypeHourlyBtn = document.getElementById('payTypeHourly');
+      const payTypeCancelBtn = document.getElementById('payTypeCancel');
+      
+      let staffManageContext = { user: null, row: null };
+      let payTypeContext = { user: null, row: null };
+      
+      function openStaffManageModal(user, row) {
+        staffManageContext = { user, row };
+        const fullName = `${user.first || user.first_name || ''} ${user.last || user.last_name || ''}`.trim() || user.email;
+        staffManageName.textContent = fullName;
+        staffManageModal.classList.remove('hidden');
+      }
+      
+      function closeStaffManageModal() {
+        staffManageContext = { user: null, row: null };
+        staffManageModal.classList.add('hidden');
+      }
+      
+      function openPayTypeModal() {
+        const user = staffManageContext.user;
+        const row = staffManageContext.row;
+        if (!user) return;
+        // preserve context specifically for the pay type modal before clearing the manage modal
+        payTypeContext = { user, row };
+        const fullName = `${user.first || user.first_name || ''} ${user.last || user.last_name || ''}`.trim() || user.email;
+        payTypeName.textContent = fullName;
+        closeStaffManageModal();
+        payTypeModal.classList.remove('hidden');
+      }
+      
+      function closePayTypeModal() {
+        payTypeModal.classList.add('hidden');
+        payTypeContext = { user: null, row: null };
+      }
+      
+      // Wire up Staff Manage Modal buttons
+      staffManageCancelBtn?.addEventListener('click', closeStaffManageModal);
+      
+      staffManagePayTypeBtn?.addEventListener('click', openPayTypeModal);
+      
+      staffManageRemoveBtn?.addEventListener('click', async () => {
+        const user = staffManageContext.user;
+        if (!user) return;
+        
+        closeStaffManageModal();
+        
+        const fullName = `${user.first || user.first_name || ''} ${user.last || user.last_name || ''}`.trim();
+        const confirmed = await showConfirm(`Are you sure you want to remove ${fullName} from this shop?`, 'Remove', 'Cancel');
+        if (!confirmed) return;
+        
+        // Remove from shop_staff
+        if (user.shop_staff_id) {
+          try {
+            const delRes = await sup.from('shop_staff').delete().eq('id', user.shop_staff_id).select();
+            const delErr = delRes?.error || null;
+            console.log('[StaffManage] shop_staff delete response:', delRes);
+            if (delErr) {
+              showNotification('Failed to remove staff member: ' + (delErr.message || delErr), 'error');
+              return;
+            }
+            // Also set shop_id to null in users row (by email or auth_id)
+            let userUpdateErr = null;
+            if (user.auth_id) {
+              const updRes = await sup.from('users').update({ shop_id: null }).eq('auth_id', user.auth_id).select();
+              if (updRes?.error) userUpdateErr = updRes.error;
+            }
+            if (!userUpdateErr && user.email) {
+              const updRes2 = await sup.from('users').update({ shop_id: null }).eq('email', user.email).select();
+              if (updRes2?.error) userUpdateErr = updRes2.error;
+            }
+            if (userUpdateErr) {
+              showNotification('Staff removed, but could not update users row: ' + (userUpdateErr.message || userUpdateErr), 'error');
+            } else {
+              showNotification('Staff member removed.', 'success');
+            }
+            await renderTeam();
+          } catch (ex) {
+            showNotification('Error removing staff member: ' + (ex.message || ex), 'error');
+          }
+        } else {
+          showNotification('Could not find staff record to remove.', 'error');
+        }
+      });
+      
+      // Wire up Pay Type Modal buttons
+      payTypeCancelBtn?.addEventListener('click', closePayTypeModal);
+      
+      payTypeFlatRateBtn?.addEventListener('click', async () => {
+        const user = payTypeContext.user;
+        console.log('[PayType] FlatRate clicked, payTypeContext user:', user);
+        if (!user) return;
+
+        try {
+          // Prefer updating shop_staff, fall back to users table
+          if (user.shop_staff_id) {
+            const res = await sup.from('shop_staff').update({ hourly_rate: 0 }).eq('id', user.shop_staff_id).select();
+            if (res?.error) throw res.error;
+            console.log('[PayType] Updated shop_staff hourly_rate -> 0', res);
+          } else if (user.auth_id || user.id || user.email) {
+            // Try updating users table by auth_id, then id, then email
+            let updRes = null;
+            if (user.auth_id) updRes = await sup.from('users').update({ hourly_rate: 0 }).eq('auth_id', user.auth_id).select();
+            if ((updRes && updRes.error) || !updRes) {
+              if (user.id) updRes = await sup.from('users').update({ hourly_rate: 0 }).eq('id', user.id).select();
+            }
+            if ((updRes && updRes.error) || !updRes) {
+              if (user.email) updRes = await sup.from('users').update({ hourly_rate: 0 }).eq('email', user.email).select();
+            }
+            if (updRes?.error) throw updRes.error;
+            console.log('[PayType] Updated users.hourly_rate -> 0', updRes);
+          } else {
+            throw new Error('No identifier to persist pay type change');
+          }
+
+          showNotification('Pay type set to Flat Rate', 'success');
+          closePayTypeModal();
+          await renderTeam();
+        } catch (ex) {
+          console.error('Failed to update pay type:', ex);
+          showNotification('Failed to update pay type', 'error');
+        }
+      });
+      
+      payTypeHourlyBtn?.addEventListener('click', async () => {
+        const user = payTypeContext.user;
+        console.log('[PayType] Hourly clicked, payTypeContext user:', user);
+        if (!user) return;
+
+        // For hourly, we need an hourly rate. If they don't have one, set a default
+        const currentRate = user.hourly_rate ? Number(user.hourly_rate) : 0;
+        const newRate = currentRate > 0 ? currentRate : 15; // Default to $15/hr if not set
+
+        try {
+          if (user.shop_staff_id) {
+            const res = await sup.from('shop_staff').update({ hourly_rate: newRate }).eq('id', user.shop_staff_id).select();
+            if (res?.error) throw res.error;
+            console.log('[PayType] Updated shop_staff hourly_rate ->', newRate, res);
+          } else if (user.auth_id || user.id || user.email) {
+            // Fallback to users table
+            let updRes = null;
+            if (user.auth_id) updRes = await sup.from('users').update({ hourly_rate: newRate }).eq('auth_id', user.auth_id).select();
+            if ((updRes && updRes.error) || !updRes) {
+              if (user.id) updRes = await sup.from('users').update({ hourly_rate: newRate }).eq('id', user.id).select();
+            }
+            if ((updRes && updRes.error) || !updRes) {
+              if (user.email) updRes = await sup.from('users').update({ hourly_rate: newRate }).eq('email', user.email).select();
+            }
+            if (updRes?.error) throw updRes.error;
+            console.log('[PayType] Updated users.hourly_rate ->', newRate, updRes);
+          } else {
+            throw new Error('No identifier to persist pay type change');
+          }
+
+          showNotification(`Pay type set to Hourly (${newRate}/hr)`, 'success');
+          closePayTypeModal();
+          await renderTeam();
+        } catch (ex) {
+          console.error('Failed to update pay type:', ex);
+          showNotification('Failed to update pay type', 'error');
+        }
+      });
+      
+      // Close modals on backdrop click
+      staffManageModal?.addEventListener('click', (e) => {
+        if (e.target === staffManageModal) closeStaffManageModal();
+      });
+      payTypeModal?.addEventListener('click', (e) => {
+        if (e.target === payTypeModal) closePayTypeModal();
       });
 
       // In-page confirm helper (returns Promise<boolean>) using the page's confirm modal

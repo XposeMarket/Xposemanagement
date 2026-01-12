@@ -317,6 +317,38 @@
 </main>
 <footer class="container">© Xpose Market</footer>
 <script src="vendor/supabase.umd.js"></script>
+<script type="module">
+  // Staff access check - redirect staff immediately before any content loads
+  import { getSupabaseClient } from './helpers/supabase.js';
+  
+  async function checkStaffAccess() {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) return;
+      
+      // Check if user is staff
+      const { data: staffRecord } = await supabase
+        .from('shop_staff')
+        .select('role')
+        .eq('auth_id', authUser.id)
+        .limit(1);
+      
+      if (staffRecord && staffRecord.length > 0 && staffRecord[0].role === 'staff') {
+        console.log('🚫 Staff member detected on inventory page - redirecting to staff portal');
+        window.location.href = 'staff-portal.html';
+        return;
+      }
+    } catch (err) {
+      console.error('Error checking staff access:', err);
+    }
+  }
+  
+  // Run immediately
+  checkStaffAccess();
+</script>
 <script type="module" src="app.js"></script>
 <script src="multi-tenant.js"></script>
 </body>

@@ -1,3 +1,4 @@
+// ...existing code...
 // pages/revenue.js
 // Revenue page logic: weekly overview, staff earnings, job assignments
 
@@ -223,6 +224,144 @@ function renderWeeklyDaysOverview(currentWeek, invoices, appointments, jobs) {
   `).join('');
 }
 
+// Show modal for hourly staff member with daily time clock breakdown
+function showHourlyStaffModal(staffObj, clockEntries, currentWeek) {
+  console.debug('[modal] showHourlyStaffModal', { staffObj, clockEntries, currentWeek });
+  // Remove existing modal if present
+  const existing = document.getElementById('hourly-staff-modal');
+  if (existing) existing.remove();
+  
+  // Build the 7-day week array (Mon-Sun)
+  const weekStart = new Date(currentWeek.start);
+  weekStart.setHours(0, 0, 0, 0);
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    const iso = d.toISOString().slice(0, 10);
+    const dayName = d.toLocaleDateString(undefined, { weekday: 'short' });
+    const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    days.push({ iso, dayName, dateStr, date: d, entries: [], totalMinutes: 0 });
+  }
+  
+  // Group clock entries by day
+  clockEntries.forEach(entry => {
+    if (!entry.clock_in) return;
+    const clockInDate = new Date(entry.clock_in);
+    const iso = clockInDate.toISOString().slice(0, 10);
+    const day = days.find(d => d.iso === iso);
+    if (day) {
+      day.entries.push(entry);
+      if (entry.clock_out) {
+        const clockOut = new Date(entry.clock_out);
+        const diffMs = clockOut - clockInDate;
+        day.totalMinutes += diffMs / 1000 / 60;
+      }
+    }
+  });
+  console.debug('[modal] days after grouping', days);
+  
+  // Calculate totals
+  const totalWeekMinutes = days.reduce((sum, d) => sum + d.totalMinutes, 0);
+  const totalWeekHours = totalWeekMinutes / 60;
+  const hourlyRate = Number(staffObj.hourly_rate || 0);
+  const totalEarned = totalWeekHours * hourlyRate;
+  
+  // Build modal HTML
+  const modal = document.createElement('div');
+  modal.id = 'hourly-staff-modal';
+  modal.className = 'modal-overlay';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1300;display:flex;align-items:center;justify-content:center;';
+  
+  const daysHtml = days.map(day => {
+    const hours = (day.totalMinutes / 60).toFixed(2);
+    const earned = (day.totalMinutes / 60) * hourlyRate;
+    const hasEntries = day.entries.length > 0;
+    
+    // Build entries detail for this day
+    let entriesHtml = '';
+    if (hasEntries) {
+      entriesHtml = day.entries.map(entry => {
+        const clockIn = new Date(entry.clock_in);
+        const clockInTime = clockIn.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        let clockOutTime = 'Still clocked in';
+        let duration = '—';
+        if (entry.clock_out) {
+          const clockOut = new Date(entry.clock_out);
+          clockOutTime = clockOut.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const diffMs = clockOut - clockIn;
+          const diffMins = Math.round(diffMs / 1000 / 60);
+          const hrs = Math.floor(diffMins / 60);
+          const mins = diffMins % 60;
+          duration = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+        }
+        return `
+          <div style="display:flex;justify-content:space-between;padding:6px 12px;background:var(--bg);border-radius:4px;margin-top:4px;font-size:0.9em;">
+            <span>${clockInTime} → ${clockOutTime}</span>
+            <span style="font-weight:600;">${duration}</span>
+          </div>
+        `;
+      }).join('');
+    }
+    
+    return `
+      <div style="padding:12px 0;border-bottom:1px solid var(--line);">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div style="font-weight:600;min-width:80px;">${day.dayName}, ${day.dateStr}</div>
+            <div style="width:24px;height:24px;border-radius:12px;background:${hasEntries ? '#10b981' : 'var(--line)'};color:${hasEntries ? 'white' : 'var(--muted)'};display:flex;align-items:center;justify-content:center;font-size:0.8em;font-weight:600;">${day.entries.length}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px;">
+            <div style="text-align:right;">
+              <div style="font-weight:600;">${hours} hrs</div>
+              <div style="font-size:0.85em;color:var(--muted);">${formatCurrency(earned)}</div>
+            </div>
+          </div>
+        </div>
+        ${entriesHtml ? `<div style="margin-top:8px;">${entriesHtml}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+  
+  modal.innerHTML = `
+    <div class="modal-content card" style="max-width:540px;width:90%;max-height:85vh;overflow:hidden;display:flex;flex-direction:column;">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:16px;border-bottom:1px solid var(--line);">
+        <div>
+          <h3 style="margin:0;">${staffObj.first_name || ''} ${staffObj.last_name || ''}</h3>
+          <div style="color:var(--muted);font-size:0.9em;">Hourly Rate: ${formatCurrency(hourlyRate)}/hr</div>
+        </div>
+        <button class="btn small" id="closeHourlyModal">Close</button>
+      </div>
+      
+      <div style="padding:16px;background:linear-gradient(135deg, #10b981 0%, #34d399 100%);color:white;">
+        <div style="display:flex;justify-content:space-around;text-align:center;">
+          <div>
+            <div style="font-size:2em;font-weight:700;">${totalWeekHours.toFixed(2)}</div>
+            <div style="font-size:0.9em;opacity:0.9;">Total Hours</div>
+          </div>
+          <div>
+            <div style="font-size:2em;font-weight:700;">${formatCurrency(totalEarned)}</div>
+            <div style="font-size:0.9em;opacity:0.9;">Total Earned</div>
+          </div>
+        </div>
+      </div>
+      
+      <div style="flex:1;overflow-y:auto;padding:0 16px;">
+        <div style="padding:12px 0;font-weight:600;color:var(--muted);font-size:0.9em;border-bottom:1px solid var(--line);">Daily Breakdown</div>
+        ${daysHtml}
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Close handlers
+  document.getElementById('closeHourlyModal').onclick = () => modal.remove();
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.remove();
+  });
+}
+
 // Main page logic
 async function setupRevenuePage() {
   const supabase = getSupabaseClient();
@@ -270,6 +409,8 @@ async function setupRevenuePage() {
       return;
     }
 
+    // ...existing code...
+
     // Fetch all staff for the current shop
     let staffList = [];
     try {
@@ -291,27 +432,151 @@ async function setupRevenuePage() {
     if (staffList.length === 0) {
       document.getElementById('staff-list').innerHTML = '<div>No staff found for this shop.</div>';
     } else {
-      const staffHtml = staffList.map((s, idx) => `
-        <div class="staff-panel" style="padding:12px 16px; border-bottom:1px solid var(--line);">
+      // Fetch time_clock daily summary data for hourly staff for the current week
+      let timeClockData = [];
+      try {
+        const startDate = currentWeek.start.toISOString().slice(0,10);
+        const endDate = currentWeek.end.toISOString().slice(0,10);
+        const { data: clockData, error: clockErr } = await supabase
+          .from('time_clock_daily_summary')
+          .select('*')
+          .eq('shop_id', shopId)
+          .gte('work_date', startDate)
+          .lte('work_date', endDate);
+        if (!clockErr) timeClockData = clockData || [];
+      } catch (e) {
+        console.warn('Could not fetch time_clock_daily_summary data:', e);
+      }
+
+      // Group daily summary rows by staff_id
+      const staffClockData = {};
+      console.debug('[revenue] time_clock_daily_summary rows fetched:', (timeClockData || []).length, timeClockData && timeClockData.slice && timeClockData.slice(0,5));
+      timeClockData.forEach(entry => {
+        const staffId = entry.staff_id;
+        if (!staffId) return;
+        if (!staffClockData[staffId]) staffClockData[staffId] = [];
+        staffClockData[staffId].push(entry);
+      });
+
+      // If the daily summary view returned no rows, attempt to fallback to raw time_clock rows
+      if ((!timeClockData || timeClockData.length === 0)) {
+        try {
+          console.debug('[revenue] time_clock_daily_summary empty — falling back to raw time_clock rows for week');
+          const startIso = currentWeek.start.toISOString();
+          const endIso = currentWeek.end.toISOString();
+          const { data: rawClock, error: rawErr } = await supabase
+            .from('time_clock')
+            .select('*')
+            .eq('shop_id', shopId)
+            .gte('clock_in', startIso)
+            .lte('clock_in', endIso);
+          const rawRows = (rawErr || !rawClock) ? [] : (rawClock || []);
+          console.debug('[revenue] raw time_clock rows fetched:', rawRows.length, rawRows && rawRows.slice && rawRows.slice(0,5));
+          // Aggregate minutes per staff per day into staffClockData-like structure
+          const aggByStaff = {};
+          rawRows.forEach(r => {
+            if (!r.clock_in) return;
+            if (!r.clock_out) return; // ignore open clocks
+            const inT = new Date(r.clock_in);
+            const outT = new Date(r.clock_out);
+            if (isNaN(inT.getTime()) || isNaN(outT.getTime())) return;
+            const mins = Math.round((outT - inT) / 60000);
+            const sid = r.staff_id || r.staff_auth_id || null;
+            if (!sid) return;
+            if (!aggByStaff[sid]) aggByStaff[sid] = 0;
+            aggByStaff[sid] += Math.max(0, mins);
+          });
+          Object.keys(aggByStaff).forEach(sid => {
+            staffClockData[sid] = [{ staff_id: sid, total_minutes: aggByStaff[sid] }];
+          });
+          console.debug('[revenue] synthesized staffClockData from raw time_clock:', Object.keys(staffClockData).length, staffClockData);
+        } catch (e) {
+          console.warn('[revenue] fallback raw time_clock fetch failed:', e);
+        }
+      }
+
+      // Calculate weekly hours for each hourly staff member from daily summaries
+      function calcWeeklyHoursFromClock(entries) {
+        let totalMinutes = 0;
+        entries.forEach(entry => {
+          // daily summary may provide total_minutes or total_hours
+          const mins = Number(entry.total_minutes || Math.round(Number(entry.total_hours || 0) * 60) || 0);
+          totalMinutes += mins;
+        });
+        return totalMinutes / 60; // Return hours
+      }
+
+      const staffHtml = staffList.map((s, idx) => {
+        const isHourly = s.hourly_rate && Number(s.hourly_rate) > 0;
+        const clockEntries = staffClockData[s.auth_id] || staffClockData[s.id] || staffClockData[s.email] || [];
+        const weeklyHours = isHourly ? calcWeeklyHoursFromClock(clockEntries) : 0;
+        const weeklyEarned = isHourly ? weeklyHours * Number(s.hourly_rate) : 0;
+        console.debug('[revenue] staff weekly calc', { staffId: s.id, auth_id: s.auth_id, email: s.email, isHourly, clockEntriesLength: (clockEntries||[]).length, weeklyHours, weeklyEarned });
+        
+        return `
+        <div class="staff-panel ${isHourly ? 'hourly-staff' : 'flat-rate-staff'}" 
+             style="padding:12px 16px; border-bottom:1px solid var(--line);${isHourly ? 'cursor:pointer;' : ''}"
+             data-staff-id="${s.id}"
+             data-staff-auth-id="${s.auth_id}"
+             data-is-hourly="${isHourly}">
           <div class="staff-left">
-            <div class="staff-name" style="font-weight:bold; font-size:1.05em;">${s.first_name || ''} ${s.last_name || ''}</div>
+            <div class="staff-name" style="font-weight:bold; font-size:1.05em;">
+              ${s.first_name || ''} ${s.last_name || ''}
+              ${isHourly ? '<span style="background:#10b981;color:white;padding:2px 8px;border-radius:12px;font-size:0.75em;margin-left:8px;">Hourly</span>' : '<span style="background:#6366f1;color:white;padding:2px 8px;border-radius:12px;font-size:0.75em;margin-left:8px;">Flat Rate</span>'}
+            </div>
             <div class="staff-email" style="color:var(--muted);">${s.email || ''}</div>
           </div>
           <div class="staff-right">
             <div class="staff-meta">
               <div style="margin-bottom:6px;"><span style="margin-right:8px;">Role: <strong>${s.role || 'staff'}</strong></span></div>
-              <div>Hourly Rate: <strong>${s.hourly_rate ? formatCurrency(s.hourly_rate) : 'N/A'}</strong></div>
+              <div>Hourly Rate: <strong>${s.hourly_rate ? formatCurrency(Number(s.hourly_rate)) : 'N/A (Flat Rate)'}</strong></div>
             </div>
             <div class="staff-stats">
-              <div style="font-size:0.95em;">Hours (week): <strong data-staff-hours="${s.id}">...</strong></div>
-              <div style="font-size:0.95em;margin-top:6px;">Earned (week): <strong data-staff-earned="${s.id}">...</strong></div>
+              ${isHourly ? `
+                <div style="font-size:0.95em;">Hours (week): <strong>${weeklyHours.toFixed(2)} h</strong></div>
+                <div style="font-size:0.95em;margin-top:6px;">Earned (week): <strong>${formatCurrency(weeklyEarned)}</strong></div>
+                <div style="font-size:0.8em;color:var(--muted);margin-top:4px;">Click to view daily breakdown</div>
+              ` : `
+                <div style="font-size:0.95em;">Hours (week): <strong data-staff-hours="${s.id}">...</strong></div>
+                <div style="font-size:0.95em;margin-top:6px;">Earned (week): <strong data-staff-earned="${s.id}">...</strong></div>
+              `}
             </div>
           </div>
         </div>
-      `).join('');
+      `}).join('');
       document.getElementById('staff-list').innerHTML = `<div style="border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--card);">${staffHtml}</div>`;
-      // Attach click handlers to staff panels to show weekly jobs for that staff
-      Array.from(document.querySelectorAll('.staff-panel')).forEach(panel => {
+      
+      // Attach click handlers for HOURLY staff to show time clock modal
+      document.querySelectorAll('.staff-panel.hourly-staff').forEach(panel => {
+        panel.addEventListener('click', async (e) => {
+          const staffId = panel.getAttribute('data-staff-id');
+          const staffAuthId = panel.getAttribute('data-staff-auth-id');
+          const staffObj = staffList.find(s => s.id === staffId || s.auth_id === staffAuthId);
+          if (!staffObj) return;
+
+          // Use same fallback as main panel: try auth_id, id, then email
+          let clockEntries = staffClockData[staffObj.auth_id] || staffClockData[staffObj.id] || staffClockData[staffObj.email] || [];
+
+          // If entries are from time_clock_daily_summary (no clock_in), synthesize modal-friendly entries
+          if (clockEntries.length && !clockEntries[0].clock_in && clockEntries[0].work_date) {
+            clockEntries = clockEntries.map(row => {
+              // Synthesize a pseudo-entry for the modal: one per day, with total_minutes as duration
+              const day = row.work_date;
+              const mins = Number(row.total_minutes || Math.round(Number(row.total_hours || 0) * 60) || 0);
+              // Fake a clock_in at 9:00am, clock_out at 9:00am + mins
+              const clockIn = new Date(day + 'T09:00:00');
+              const clockOut = new Date(clockIn.getTime() + mins * 60000);
+              return { clock_in: clockIn.toISOString(), clock_out: clockOut.toISOString(), _summary: true };
+            });
+          }
+
+          // Build the weekly breakdown modal
+          showHourlyStaffModal(staffObj, clockEntries, currentWeek);
+        });
+      });
+      
+      // Attach click handlers for FLAT RATE staff (existing behavior - show jobs)
+      Array.from(document.querySelectorAll('.staff-panel.flat-rate-staff')).forEach(panel => {
         panel.style.cursor = 'pointer';
         panel.addEventListener('click', async (e) => {
           // Find staff id from panel content by matching the name/email rendered
@@ -817,11 +1082,12 @@ async function setupRevenuePage() {
 
         // Always show labor value, even if unassigned
         let staffRate = 0;
+        let staff = null;
         // Try to get staff rate from assigned staff, else fallback to default (or 0)
         const assigned = jobObj && (jobObj.assigned_to || jobObj.assigned);
         if (assigned) {
-          const staff = staffList.find(s => s.id === assigned || s.auth_id === assigned) || [];
-          staffRate = Number(staff.hourly_rate || staff.rate || 0);
+          staff = staffList.find(s => s.id === assigned || s.auth_id === assigned) || null;
+          staffRate = Number(staff ? (staff.hourly_rate || staff.rate || 0) : 0);
         }
         // If no assigned staff, but there is labor, use the first labor item's rate if available
         if (!assigned && items && items.length) {
@@ -866,7 +1132,10 @@ async function setupRevenuePage() {
           });
         }
 
-        const staffRevenue = staffRate * totalHours;
+        // If the assigned staff is hourly-paid, do NOT treat job labor as staff revenue here.
+        // Hourly staff payroll is derived from time_clock; leaving labor revenue inside the job's net.
+        const assignedIsHourly = staff && Number(staff.hourly_rate || 0) > 0;
+        const staffRevenue = assignedIsHourly ? 0 : (staffRate * totalHours);
         const net = (totalRevenue || 0) - (partsCost || 0) - staffRevenue;
 
         // Update DOM placeholders
@@ -876,7 +1145,7 @@ async function setupRevenuePage() {
         const netEl = document.querySelector(`[data-net="${jobId}"]`);
         if (totalEl) totalEl.textContent = Number.isFinite(totalRevenue) ? formatCurrency(totalRevenue) : 'N/A';
         if (partsEl) partsEl.textContent = Number.isFinite(partsCost) ? formatCurrency(partsCost) : 'N/A';
-        if (staffEl) staffEl.textContent = Number.isFinite(staffRevenue) ? formatCurrency(staffRevenue) : 'N/A';
+        if (staffEl) staffEl.textContent = assignedIsHourly ? 'N/A (Hourly)' : (Number.isFinite(staffRevenue) ? formatCurrency(staffRevenue) : 'N/A');
         if (netEl) netEl.textContent = Number.isFinite(net) ? formatCurrency(net) : 'N/A';
       }
     })();
@@ -895,10 +1164,11 @@ async function setupRevenuePage() {
     }
       // Always show labor value, even if unassigned
       let staffRate = 0;
+      let staff = null;
       const assigned = j.assigned_to || j.assigned;
       if (assigned) {
-        const staff = staffList.find(s => s.id === assigned || s.auth_id === assigned) || [];
-        staffRate = Number(staff.hourly_rate || staff.rate || 0);
+        staff = staffList.find(s => s.id === assigned || s.auth_id === assigned) || null;
+        staffRate = Number(staff ? (staff.hourly_rate || staff.rate || 0) : 0);
       }
       // If no assigned staff, but there is labor, use the first labor item's rate if available
       if (!assigned && items && items.length) {
@@ -943,13 +1213,53 @@ async function setupRevenuePage() {
         if (fallbackHours > 0) totalHours = fallbackHours;
       }
 
-      const staffCost = staffRate * totalHours;
+      const assignedIsHourly = staff && Number(staff.hourly_rate || 0) > 0;
+      const staffCost = assignedIsHourly ? 0 : (staffRate * totalHours);
       return { jobId: j.id, assigned, totalHours, staffCost, totalRevenue, partsCost };
     });
     const jobTotals = await Promise.all(jobTotalsPromises);
     const weekTotalRevenue = jobTotals.reduce((sum, jt) => sum + jt.totalRevenue, 0);
     const weekPartsCost = jobTotals.reduce((sum, jt) => sum + jt.partsCost, 0);
-    const weekStaffCost = jobTotals.reduce((sum, jt) => sum + jt.staffCost, 0);
+    const jobWeekStaffCost = jobTotals.reduce((sum, jt) => sum + jt.staffCost, 0);
+
+    // Additionally include time_clock-based staff hours (for hourly-paid staff)
+    let timeClockStaffCost = 0;
+      try {
+        // Use daily summary to aggregate minutes per staff for the week
+        const startDate = currentWeek.start.toISOString().slice(0,10);
+        const endDate = currentWeek.end.toISOString().slice(0,10);
+        const { data: tcData, error: tcErr } = await supabase
+          .from('time_clock_daily_summary')
+          .select('*')
+          .eq('shop_id', shopId)
+          .gte('work_date', startDate)
+          .lte('work_date', endDate);
+        const tcRows = (tcErr || !tcData) ? [] : (tcData || []);
+
+        // Map staff_id (auth uid) to minutes summed across days
+        const clockMinutesByStaff = {};
+        tcRows.forEach(r => {
+          const staffKey = r.staff_id || null;
+          if (!staffKey) return;
+          const mins = Number(r.total_minutes || Math.round(Number(r.total_hours || 0) * 60) || 0);
+          clockMinutesByStaff[staffKey] = (clockMinutesByStaff[staffKey] || 0) + Math.max(0, mins);
+        });
+
+        // For each staff in staffList, compute earned amount from clock minutes using their hourly_rate
+        staffList.forEach(s => {
+          const staffKey = s.auth_id || s.id;
+          const minutes = clockMinutesByStaff[staffKey] || 0;
+          if (minutes <= 0) return;
+          const hours = minutes / 60;
+          const rate = Number(s.hourly_rate || s.rate || 0);
+          const earned = hours * rate;
+          timeClockStaffCost += earned;
+        });
+      } catch (e) {
+        console.warn('Could not fetch/aggregate time_clock_daily_summary for staff costs:', e);
+      }
+
+    const weekStaffCost = jobWeekStaffCost + timeClockStaffCost;
     // Subtract tax from net profit in weekly overview
     let weekTax = 0;
     for (const jt of jobTotals) {
@@ -1009,23 +1319,67 @@ async function setupRevenuePage() {
       const staffTotals = {};
       jobTotals.forEach(jt => {
         // Always sum total labor, even if unassigned
-        const staffKey = jt.assigned || 'unassigned';
+        const assignedRaw = jt.assigned || 'unassigned';
+        let staffKey = assignedRaw;
+        if (assignedRaw !== 'unassigned') {
+          const found = staffList.find(s => s.id === assignedRaw || s.auth_id === assignedRaw || (`${(s.first_name||'')} ${(s.last_name||'')}`).trim() === assignedRaw || (s.email && s.email === assignedRaw));
+          if (found) staffKey = found.id;
+        }
         if (!staffTotals[staffKey]) staffTotals[staffKey] = { hours: 0, earned: 0 };
         staffTotals[staffKey].hours += Number(jt.totalHours || 0);
         staffTotals[staffKey].earned += Number(jt.staffCost || 0);
       });
 
+      // Incorporate time_clock totals (fetch again to ensure fresh aggregation)
+      try {
+        const { data: tcData2, error: tcErr2 } = await supabase
+          .from('time_clock')
+          .select('*')
+          .eq('shop_id', shopId)
+          .gte('clock_in', currentWeek.start.toISOString())
+          .lte('clock_in', currentWeek.end.toISOString());
+        const tcRows2 = (tcErr2 || !tcData2) ? [] : (tcData2 || []);
+        const clockMinutesByStaff2 = {};
+        tcRows2.forEach(r => {
+          if (!r.clock_in) return;
+          if (!r.clock_out) return;
+          const staffKey = r.staff_id || r.staff_auth_id || null;
+          if (!staffKey) return;
+          const inT = new Date(r.clock_in);
+          const outT = new Date(r.clock_out);
+          if (isNaN(inT.getTime()) || isNaN(outT.getTime())) return;
+          const mins = Math.round((outT - inT) / 60000);
+          clockMinutesByStaff2[staffKey] = (clockMinutesByStaff2[staffKey] || 0) + Math.max(0, mins);
+        });
+
+        // Add clock-derived hours/earnings into staffTotals
+        staffList.forEach(s => {
+          const staffKey = s.auth_id || s.id;
+          const minutes = clockMinutesByStaff2[staffKey] || 0;
+          if (minutes <= 0) return;
+          const hours = minutes / 60;
+          const rate = Number(s.hourly_rate || s.rate || 0);
+          const earned = hours * rate;
+          if (!staffTotals[staffKey]) staffTotals[staffKey] = { hours: 0, earned: 0 };
+          staffTotals[staffKey].hours += hours;
+          staffTotals[staffKey].earned += earned;
+        });
+      } catch (e) {
+        console.warn('Failed to incorporate time_clock into staff totals:', e);
+      }
+
       // Update DOM placeholders for each staff
       staffList.forEach(s => {
-        const key = s.id || s.auth_id;
-        const totals = staffTotals[key] || { hours: 0, earned: 0 };
+        const keyId = s.id;
+        const keyAuth = s.auth_id;
+        const totals = (staffTotals[keyId] || staffTotals[keyAuth]) || { hours: 0, earned: 0 };
         const hoursEl = document.querySelector(`[data-staff-hours="${s.id}"]`);
         const earnedEl = document.querySelector(`[data-staff-earned="${s.id}"]`);
         if (hoursEl) hoursEl.textContent = (totals.hours ? totals.hours.toFixed(2) : '0.00') + ' h';
         if (earnedEl) earnedEl.textContent = totals.earned ? formatCurrency(totals.earned) : formatCurrency(0);
       });
     } catch (e) {
-      // ignore aggregation errors
+      console.warn('Error aggregating staff totals:', e);
     }
 
     // Load and display ordered parts

@@ -93,23 +93,37 @@ function setupProfile() {
         console.log('✅ Authenticated user:', authUser.email);
         
         // Load user profile from users table using auth ID
-        const { data: userData, error: userError } = await supabase
+        const { data: userRows, error: userError } = await supabase
           .from('users')
           .select('*')
-          .eq('id', authUser.id)
-          .single();
-        
+          .eq('id', authUser.id);
+        let userData = (userRows && userRows.length > 0) ? userRows[0] : null;
         if (userError) {
           console.error('Error loading user profile:', userError);
-          
-          // Fallback to auth metadata
+        }
+        if (!userData) {
+          // Try to get shop_staff row for current shop
+          let curShopId = null;
+          try {
+            curShopId = JSON.parse(localStorage.getItem('xm_session') || '{}').shopId || null;
+          } catch (e) {}
+          let staffRow = null;
+          if (curShopId) {
+            const { data: staffRows } = await supabase
+              .from('shop_staff')
+              .select('*')
+              .eq('auth_id', authUser.id)
+              .eq('shop_id', curShopId)
+              .limit(1);
+            if (staffRows && staffRows.length > 0) staffRow = staffRows[0];
+          }
           currentUser = {
             email: authUser.email,
             first: authUser.user_metadata?.first || '',
             last: authUser.user_metadata?.last || '',
-            role: authUser.user_metadata?.role || 'staff'
+            role: staffRow?.role || authUser.user_metadata?.role || 'staff'
           };
-          console.log('📋 Using auth metadata:', currentUser);
+          console.log('📋 Using auth metadata/shop_staff:', currentUser);
         } else {
           currentUser = userData;
           console.log('✅ Loaded user profile:', currentUser);

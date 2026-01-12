@@ -21,7 +21,8 @@ export const ROLE_PAGES = {
   owner: ["dashboard", "invoice", "appointments", "jobs", "messages", "invoices", "customers", "settings", "profile", "admin", "revenue", "inventory"],
   service_writer: ["dashboard", "invoice", "customers", "appointments", "messages", "invoices", "profile", "inventory"],
   receptionist: ["dashboard", "messages", "customers", "appointments", "profile", "inventory"],
-  staff: ["dashboard", "appointments", "jobs", "profile", "inventory"]
+  staff: ["staff-portal", "profile", "claim-board", "jobs", "staff-jobs"],
+  foreman: ["dashboard", "profile", "staff-portal", "foreman-appointments", "claim-board", "jobs"]
 };
 
 export const STATUS_COLORS = {

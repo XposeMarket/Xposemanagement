@@ -30,8 +30,34 @@ function getSupabaseClient() {
     }
   }
 
-  // Vendor library not available yet
-  console.warn('⚠️ Supabase vendor library not loaded yet');
+  // Vendor library not available yet — start a one-time watcher to initialize when ready
+  if (!window._supabaseInitWatcher) {
+    let attempts = 0;
+    const maxAttempts = 20; // ~4 seconds at 200ms interval
+    window._supabaseInitWatcher = setInterval(() => {
+      attempts += 1;
+      try {
+        if (window.supabase && window.supabase.createClient) {
+          const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+          window._supabaseClient = client;
+          console.log('✅ Supabase client initialized (delayed)');
+          clearInterval(window._supabaseInitWatcher);
+          window._supabaseInitWatcher = null;
+        } else if (attempts >= maxAttempts) {
+          // Stop trying after a short period
+          clearInterval(window._supabaseInitWatcher);
+          window._supabaseInitWatcher = null;
+          console.debug('Supabase vendor library not found after polling');
+        }
+      } catch (err) {
+        console.debug('Supabase init watcher error:', err);
+        clearInterval(window._supabaseInitWatcher);
+        window._supabaseInitWatcher = null;
+      }
+    }, 200);
+  }
+
+  // Return null for now — caller can retry later or rely on deferred initialization
   return null;
 }
 

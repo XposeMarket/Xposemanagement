@@ -1,0 +1,644 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Staff Management - Xpose Management</title>
+    <link rel="stylesheet" href="styles.css">
+    
+    <style>
+        /* Staff Management Styles */
+        .staff-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .staff-card {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border);
+            transition: all 0.2s ease;
+        }
+        
+        .staff-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        
+        .staff-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+        
+        .staff-info h3 {
+            margin: 0 0 5px 0;
+            color: var(--text);
+        }
+        
+        .staff-email {
+            color: var(--text-light);
+            font-size: 14px;
+        }
+        
+        .staff-role {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .role-admin {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        
+        .role-manager {
+            background: #f3e5f5;
+            color: #7b1fa2;
+        }
+        
+        .role-technician {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+        
+        .role-staff {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+        
+        .staff-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 15px 0;
+        }
+        
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #28a745;
+        }
+        
+        .status-indicator.inactive {
+            background: #dc3545;
+        }
+        
+        .staff-permissions {
+            margin: 15px 0;
+        }
+        
+        .permission-tag {
+            display: inline-block;
+            padding: 3px 8px;
+            background: #f1f3f5;
+            border-radius: 4px;
+            font-size: 12px;
+            margin: 2px;
+        }
+        
+        .staff-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .staff-actions button {
+            flex: 1;
+            padding: 8px 12px;
+            font-size: 14px;
+        }
+        
+        /* Time Clock Summary */
+        .time-summary {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 10px;
+            margin: 15px 0;
+        }
+        
+        .time-summary-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            margin: 5px 0;
+        }
+        
+        /* Add Staff Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-overlay.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .modal-header h2 {
+            margin: 0;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        
+        .permission-group {
+            margin: 20px 0;
+        }
+        
+        .permission-group h4 {
+            margin: 0 0 10px 0;
+            color: #666;
+            font-size: 14px;
+            text-transform: uppercase;
+        }
+        
+        .permission-checkbox {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+        }
+        
+        .permission-checkbox input {
+            margin-right: 10px;
+        }
+        
+        /* Time Report Section */
+        .time-report {
+            margin-top: 30px;
+        }
+        
+        .report-filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .report-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .report-table th {
+            background: var(--accent);
+            color: white;
+            padding: 10px;
+            text-align: left;
+        }
+        
+        .report-table td {
+            padding: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .report-table tr:hover {
+            background: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <header id="mainHeader">
+        <div class="header-content">
+            <h1>Staff Management</h1>
+            <nav id="mainNav">
+                <a href="dashboard.html">Dashboard</a>
+                <a href="staff-manage.html" class="active">Staff</a>
+                <a href="settings.html">Settings</a>
+            </nav>
+            <div id="userMenu"></div>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Add Staff Button -->
+        <div class="toolbar">
+            <button class="btn primary" onclick="showAddStaffModal()">
+                <span>+ Add Staff Member</span>
+            </button>
+            <button class="btn secondary" onclick="showTimeReport()">
+                <span>Time Reports</span>
+            </button>
+        </div>
+
+        <!-- Staff Grid -->
+        <div id="staffGrid" class="staff-grid">
+            <!-- Staff cards will be inserted here -->
+        </div>
+
+        <!-- Time Report Section -->
+        <div id="timeReport" class="time-report card" style="display: none;">
+            <h2>Time Clock Report</h2>
+            <div class="report-filters">
+                <input type="date" id="reportStartDate" />
+                <input type="date" id="reportEndDate" />
+                <button class="btn primary" onclick="generateReport()">Generate Report</button>
+                <button class="btn secondary" onclick="exportReport()">Export CSV</button>
+            </div>
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>Staff Member</th>
+                        <th>Total Days</th>
+                        <th>Total Hours</th>
+                        <th>Average Hours/Day</th>
+                    </tr>
+                </thead>
+                <tbody id="reportBody">
+                    <!-- Report data will be inserted here -->
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <!-- Add/Edit Staff Modal -->
+    <div id="staffModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Add Staff Member</h2>
+                <button class="close-btn" onclick="closeStaffModal()">&times;</button>
+            </div>
+            <form id="staffForm">
+                <input type="hidden" id="staffId" />
+                
+                <label>Email Address *</label>
+                <input type="email" id="staffEmail" required />
+                <small>Staff member must sign up with this email to access the system</small>
+                
+                <label>Full Name</label>
+                <input type="text" id="staffName" />
+                
+                <label>Role</label>
+                <select id="staffRole">
+                    <option value="staff">Staff</option>
+                    <option value="technician">Technician</option>
+                    <option value="manager">Manager</option>
+                    <option value="admin">Admin</option>
+                </select>
+                
+                <label>Phone</label>
+                <input type="tel" id="staffPhone" />
+                
+                <label>Hourly Rate</label>
+                <input type="number" id="staffRate" step="0.01" min="0" />
+                
+                <div class="permission-group">
+                    <h4>Permissions</h4>
+                    <div class="permission-checkbox">
+                        <input type="checkbox" id="perm_dashboard" value="view_dashboard" />
+                        <label for="perm_dashboard">View Dashboard & Analytics</label>
+                    </div>
+                    <div class="permission-checkbox">
+                        <input type="checkbox" id="perm_appointments" value="manage_appointments" />
+                        <label for="perm_appointments">Manage Appointments</label>
+                    </div>
+                    <div class="permission-checkbox">
+                        <input type="checkbox" id="perm_jobs" value="manage_jobs" />
+                        <label for="perm_jobs">Manage Jobs</label>
+                    </div>
+                    <div class="permission-checkbox">
+                        <input type="checkbox" id="perm_invoices" value="manage_invoices" />
+                        <label for="perm_invoices">Manage Invoices</label>
+                    </div>
+                    <div class="permission-checkbox">
+                        <input type="checkbox" id="perm_inventory" value="manage_inventory" />
+                        <label for="perm_inventory">Manage Inventory</label>
+                    </div>
+                    <div class="permission-checkbox">
+                        <input type="checkbox" id="perm_customers" value="manage_customers" />
+                        <label for="perm_customers">Manage Customers</label>
+                    </div>
+                    <div class="permission-checkbox">
+                        <input type="checkbox" id="perm_staff" value="manage_staff" />
+                        <label for="perm_staff">Manage Other Staff</label>
+                    </div>
+                    <div class="permission-checkbox">
+                        <input type="checkbox" id="perm_reports" value="view_reports" />
+                        <label for="perm_reports">View Reports</label>
+                    </div>
+                    <div class="permission-checkbox">
+                        <input type="checkbox" id="perm_messages" value="send_messages" />
+                        <label for="perm_messages">Send Messages</label>
+                    </div>
+                    <div class="permission-checkbox">
+                        <input type="checkbox" id="perm_payments" value="process_payments" />
+                        <label for="perm_payments">Process Payments</label>
+                    </div>
+                </div>
+                
+                <div class="toolbar">
+                    <button type="button" class="btn secondary" onclick="closeStaffModal()">Cancel</button>
+                    <button type="submit" class="btn primary">Save Staff Member</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="module">
+        import { getSupabaseClient } from './helpers/supabase.js';
+        import { currentUser } from './helpers/user.js';
+        
+        const supabase = getSupabaseClient();
+        let currentStaff = [];
+        
+        async function initStaffManagement() {
+            const user = await currentUser();
+            if (!user) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+            if (!session.shopId) {
+                alert('No shop selected');
+                window.location.href = 'dashboard.html';
+                return;
+            }
+            
+            await loadStaffMembers();
+        }
+        
+        async function loadStaffMembers() {
+            const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+            
+            const { data: staff, error } = await supabase
+                .from('shop_staff')
+                .select('*')
+                .eq('shop_id', session.shopId)
+                .order('created_at', { ascending: false });
+                
+            if (error) {
+                console.error('Error loading staff:', error);
+                return;
+            }
+            
+            currentStaff = staff || [];
+            renderStaffGrid();
+        }
+        
+        function renderStaffGrid() {
+            const grid = document.getElementById('staffGrid');
+            
+            if (currentStaff.length === 0) {
+                grid.innerHTML = `
+                    <div class="card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                        <h3>No Staff Members Yet</h3>
+                        <p>Add your first staff member to get started</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            grid.innerHTML = currentStaff.map(staff => `
+                <div class="staff-card">
+                    <div class="staff-header">
+                        <div class="staff-info">
+                            <h3>${staff.full_name || staff.email.split('@')[0]}</h3>
+                            <div class="staff-email">${staff.email}</div>
+                        </div>
+                        <span class="staff-role role-${staff.role}">${staff.role}</span>
+                    </div>
+                    
+                    <div class="staff-status">
+                        <span class="status-indicator ${staff.is_active !== false ? '' : 'inactive'}"></span>
+                        <span>${staff.is_active !== false ? 'Active' : 'Inactive'}</span>
+                    </div>
+                    
+                    ${staff.permissions && staff.permissions.length > 0 ? `
+                        <div class="staff-permissions">
+                            ${staff.permissions.map(p => `
+                                <span class="permission-tag">${formatPermission(p)}</span>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                    
+                    <div class="staff-actions">
+                        <button class="btn secondary" onclick="editStaff('${staff.id}')">Edit</button>
+                        <button class="btn danger" onclick="toggleStaffStatus('${staff.id}', ${staff.is_active !== false})">
+                            ${staff.is_active !== false ? 'Deactivate' : 'Activate'}
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function formatPermission(permission) {
+            const formatted = permission.replace(/_/g, ' ');
+            return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+        }
+        
+        window.showAddStaffModal = function() {
+            document.getElementById('modalTitle').textContent = 'Add Staff Member';
+            document.getElementById('staffForm').reset();
+            document.getElementById('staffId').value = '';
+            document.getElementById('staffModal').classList.add('active');
+        };
+        
+        window.closeStaffModal = function() {
+            document.getElementById('staffModal').classList.remove('active');
+        };
+        
+        window.editStaff = async function(staffId) {
+            const staff = currentStaff.find(s => s.id === staffId);
+            if (!staff) return;
+            
+            document.getElementById('modalTitle').textContent = 'Edit Staff Member';
+            document.getElementById('staffId').value = staff.id;
+            document.getElementById('staffEmail').value = staff.email;
+            document.getElementById('staffName').value = staff.full_name || '';
+            document.getElementById('staffRole').value = staff.role;
+            document.getElementById('staffPhone').value = staff.phone || '';
+            document.getElementById('staffRate').value = staff.hourly_rate || '';
+            
+            // Set permissions
+            document.querySelectorAll('.permission-checkbox input').forEach(checkbox => {
+                checkbox.checked = staff.permissions && staff.permissions.includes(checkbox.value);
+            });
+            
+            document.getElementById('staffModal').classList.add('active');
+        };
+        
+        window.toggleStaffStatus = async function(staffId, currentStatus) {
+            // Default to true if is_active is undefined
+            const isCurrentlyActive = currentStatus !== false;
+            const action = isCurrentlyActive ? 'deactivate' : 'activate';
+            if (!confirm(`Are you sure you want to ${action} this staff member?`)) return;
+            
+            const { error } = await supabase
+                .from('shop_staff')
+                .update({ 
+                    is_active: !isCurrentlyActive,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', staffId);
+                
+            if (error) {
+                console.error('Error updating staff status:', error);
+                alert('Error updating staff status');
+                return;
+            }
+            
+            await loadStaffMembers();
+        };
+        
+        // Handle form submission
+        document.getElementById('staffForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+            const staffId = document.getElementById('staffId').value;
+            
+            // Collect permissions
+            const permissions = [];
+            document.querySelectorAll('.permission-checkbox input:checked').forEach(checkbox => {
+                permissions.push(checkbox.value);
+            });
+            
+            const staffData = {
+                shop_id: session.shopId,
+                email: document.getElementById('staffEmail').value,
+                full_name: document.getElementById('staffName').value || null,
+                role: document.getElementById('staffRole').value,
+                phone: document.getElementById('staffPhone').value || null,
+                hourly_rate: parseFloat(document.getElementById('staffRate').value) || null,
+                permissions: permissions,
+                updated_at: new Date().toISOString()
+            };
+            
+            if (staffId) {
+                // Update existing staff
+                const { error } = await supabase
+                    .from('shop_staff')
+                    .update(staffData)
+                    .eq('id', staffId);
+                    
+                if (error) {
+                    console.error('Error updating staff:', error);
+                    alert('Error updating staff member');
+                    return;
+                }
+            } else {
+                // Check if user exists in auth
+                const { data: authUsers } = await supabase.auth.admin.listUsers();
+                const authUser = authUsers?.users?.find(u => u.email === staffData.email);
+                
+                if (!authUser) {
+                    alert('This user needs to sign up first before being added as staff.');
+                    return;
+                }
+                
+                staffData.auth_id = authUser.id;
+                
+                // Add new staff
+                const { error } = await supabase
+                    .from('shop_staff')
+                    .insert(staffData);
+                    
+                if (error) {
+                    console.error('Error adding staff:', error);
+                    if (error.code === '23505') {
+                        alert('This user is already a staff member');
+                    } else {
+                        alert('Error adding staff member');
+                    }
+                    return;
+                }
+            }
+            
+            closeStaffModal();
+            await loadStaffMembers();
+        });
+        
+        // Time Report Functions
+        window.showTimeReport = function() {
+            const reportSection = document.getElementById('timeReport');
+            reportSection.style.display = reportSection.style.display === 'none' ? 'block' : 'none';
+            
+            // Set default dates
+            const today = new Date();
+            const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+            document.getElementById('reportStartDate').value = firstDay.toISOString().split('T')[0];
+            document.getElementById('reportEndDate').value = today.toISOString().split('T')[0];
+        };
+        
+        window.generateReport = async function() {
+            const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+            const startDate = document.getElementById('reportStartDate').value;
+            const endDate = document.getElementById('reportEndDate').value;
+            
+            if (!startDate || !endDate) {
+                alert('Please select date range');
+                return;
+            }
+            
+            const { data: report, error } = await supabase
+                .rpc('get_staff_hours_report', {
+                    p_shop_id: session.shopId,
+                    p_start_date: startDate,
+                    p_end_date: endDate
+                });
+                
+            if (error) {
+                console.error('Error generating report:', error);
+                alert('Error generating report');
+                return;
+            }
+            
+            const tbody = document.getElementById('reportBody');
+            tbody.innerHTML = report.map(row => `
+                <tr>
+                    <td>${row.staff_name || row.staff_email}</td>
+                    <td>${row.total_days}</td>
+                    <td>${row.total_hours}</td>
+                    <td>${row.average_hours_per_day}</td>
+                </tr>
+            `).join('');
+        };
+        
+        window.exportReport = function() {
+            // TODO: Implement CSV export
+            alert('Export feature coming soon');
+        };
+        
+        // Initialize
+        initStaffManagement();
+    </script>
+</body>
+</html>

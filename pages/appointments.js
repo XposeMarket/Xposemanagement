@@ -2195,6 +2195,11 @@ async function renderAppointments(appointments = allAppointments) {
     
     tbody.appendChild(tr);
   });
+
+  // Notify listeners that appointments were rendered (useful for pages that customize rows)
+  try {
+    window.dispatchEvent(new CustomEvent('appointmentsRendered', { detail: { appointments } }));
+  } catch (e) {}
 }
 
 /**
@@ -2886,6 +2891,11 @@ async function updateAppointmentStatus(apptId, newStatus) {
   // Auto-create or update job if status is in_progress or awaiting_parts
   if (['in_progress', 'awaiting_parts'].includes(newStatus)) {
     const appt = allAppointments[index];
+    // If appointment has been marked to suppress automatic job creation, skip
+    if (appt && appt.suppress_auto_job) {
+      console.log('[Appointments] Skipping auto-create job because appointment.suppress_auto_job is set for', appt.id);
+      return;
+    }
     // Load jobs from localStorage
     let jobs = [];
     try {
@@ -2894,6 +2904,37 @@ async function updateAppointmentStatus(apptId, newStatus) {
     } catch (e) {}
     // Check if job already exists for this appointment
     let job = jobs.find(j => j.appointment_id === appt.id);
+    // If not found in local cache, try to find canonical job in `jobs` table
+    if (!job) {
+      try {
+        const { data: canonicalJob, error: jobFetchErr } = await getSupabaseClient()
+          .from('jobs')
+          .select('*')
+          .eq('appointment_id', appt.id)
+          .limit(1)
+          .single();
+        if (!jobFetchErr && canonicalJob) {
+          // Normalize canonical row into local job shape
+          job = {
+            id: canonicalJob.id,
+            shop_id: canonicalJob.shop_id,
+            appointment_id: canonicalJob.appointment_id,
+            customer: `${canonicalJob.customer_first || ''} ${canonicalJob.customer_last || ''}`.trim() || (appt.customer || ''),
+            customer_first: canonicalJob.customer_first || appt.customer_first || '',
+            customer_last: canonicalJob.customer_last || appt.customer_last || '',
+            assigned_to: canonicalJob.assigned_to || null,
+            status: canonicalJob.status || newStatus,
+            created_at: canonicalJob.created_at || new Date().toISOString(),
+            updated_at: canonicalJob.updated_at || new Date().toISOString(),
+            completed_at: canonicalJob.completed_at || null
+          };
+          jobs.push(job);
+        }
+      } catch (e) {
+        console.warn('[Appointments] Failed to fetch canonical job for appointment', appt.id, e);
+      }
+    }
+
     if (!job) {
       job = {
         id: getUUID(),
@@ -2924,7 +2965,11 @@ async function updateAppointmentStatus(apptId, newStatus) {
     // Also sync jobs to Supabase
     try {
       const { saveJobs } = await import('./jobs.js');
-      await saveJobs(jobs);
+      try {
+        console.log('[Appointments] saveJobs called with jobs:', jobs.map(j => ({ id: j.id, appointment_id: j.appointment_id, status: j.status })));
+      } catch (e) {}
+      // Only sync the single changed job to avoid upserting unrelated rows
+      await saveJobs([job]);
       console.log('✅ Jobs synced to Supabase');
     } catch (e) {
       console.error('Failed to sync jobs to Supabase:', e);
@@ -2946,10 +2991,10 @@ async function updateAppointmentStatus(apptId, newStatus) {
     } catch (e) {
       console.error('Failed to remove job:', e);
     }
-    // Also sync jobs to Supabase
+    // Also sync jobs to Supabase (update data.jobs but skip canonical upsert to avoid touching unrelated rows)
     try {
       const { saveJobs } = await import('./jobs.js');
-      await saveJobs(jobs);
+      await saveJobs(jobs, { skipCanonicalUpsert: true });
       console.log('✅ Jobs synced to Supabase');
     } catch (e) {
       console.error('Failed to sync jobs to Supabase:', e);
@@ -4422,4 +4467,31 @@ async function setupAppointments() {
 }
 
 // Export the customer upsert function so it can be used from the modal save buttons
-export { setupAppointments, upsertCustomerToSupabase, saveAppointments };
+export { setupAppointments, upsertCustomerToSupabase, saveAppointments, loadAppointments, renderAppointments, openViewModal };
+
+// Initialize note modal bindings for pages that reuse the appointment modals
+function initAppointmentNotes() {
+  // Expose saveNote for pages that don't run full setupAppointments
+  try { window.saveNote = saveNote; } catch (e) {}
+  try { window.openAddNoteModal = openAddNoteModal; } catch (e) {}
+  try { window.closeNoteModal = closeNoteModal; } catch (e) {}
+
+  // Attach DOM listeners if elements are present
+  const addNoteBtn = document.getElementById('addNoteBtn');
+  if (addNoteBtn) addNoteBtn.addEventListener('click', openAddNoteModal);
+  const closeNoteBtn = document.getElementById('closeNoteModal');
+  if (closeNoteBtn) closeNoteBtn.addEventListener('click', closeNoteModal);
+  const noteForm = document.getElementById('noteForm');
+  if (noteForm) noteForm.addEventListener('submit', saveNote);
+
+  // Ensure file input handler is exposed (already done above but re-export for safety)
+  if (window.handleApptNoteMediaSelect) window.handleApptNoteMediaSelect = handleApptNoteMediaSelect;
+}
+
+// Allow other pages to set which appointments are currently displayed
+function setDisplayedAppointments(list) {
+  if (!Array.isArray(list)) return;
+  allAppointments = list;
+}
+
+export { initAppointmentNotes, startNotesPolling, stopNotesPolling, setDisplayedAppointments };

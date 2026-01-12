@@ -1,0 +1,954 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Staff Portal - Xpose Management</title>
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- PWA manifest and icons -->
+    <link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="android-chrome-192x192.png">
+    <link rel="manifest" href="site.webmanifest">
+    <meta name="theme-color" content="#0E2B4A">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Xpose Staff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    
+    <!-- Load Supabase -->
+    <script src="vendor/supabase.umd.js"></script>
+    
+    <style>
+        /* Staff Portal Specific Styles */
+        .staff-portal-container {
+            min-height: 100vh;
+            background: #4f46e5; /* Solid indigo color */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .staff-portal-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .shop-logo {
+            width: 120px;
+            height: 120px;
+            background: var(--accent);
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .welcome-message {
+            font-size: 32px;
+            color: #333;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+        
+        .shop-name {
+            font-size: 36px;
+            color: var(--accent);
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .staff-name {
+            font-size: 20px;
+            color: #666;
+            margin-bottom: 40px;
+        }
+        
+        .clock-status {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .clock-status.clocked-in {
+            background: #d4edda;
+            border: 2px solid #28a745;
+        }
+        
+        .clock-time {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .duration {
+            font-size: 24px;
+            font-weight: 600;
+            color: #28a745;
+        }
+        
+        .action-buttons {
+            display: grid;
+            gap: 15px;
+        }
+        
+        .portal-btn {
+            padding: 20px 40px;
+            font-size: 20px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .portal-btn.primary {
+            background: #4f46e5; /* Solid indigo */
+            color: white;
+        }
+        
+        .portal-btn.primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+        
+        .portal-btn.secondary {
+            background: #f8f9fa;
+            color: #333;
+            border: 2px solid #dee2e6;
+        }
+        
+        .portal-btn.secondary:hover {
+            background: #e9ecef;
+            transform: translateY(-2px);
+        }
+        
+        .portal-btn.success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .portal-btn.success:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+        
+        .portal-btn.danger {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .portal-btn.danger:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+        
+        .logout-link {
+            margin-top: 30px;
+            color: #666;
+            text-decoration: none;
+            font-size: 14px;
+            display: inline-block;
+        }
+        
+        .logout-link:hover {
+            text-decoration: underline;
+        }
+        
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--accent);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .time-display {
+            background: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            display: inline-block;
+            font-family: monospace;
+            font-size: 28px;
+            font-weight: 600;
+            color: #28a745;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        /* Recent Activity */
+        .recent-activity {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid #dee2e6;
+        }
+        
+        .activity-title {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 15px;
+            text-align: left;
+        }
+        
+        .activity-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        /* Constrain recent activity list to two items before scrolling */
+        .recent-activity {
+            /* activity item height approximated; adjust var if you change item padding/line-height */
+            --activity-item-height: 72px;
+        }
+
+        #activityList {
+            max-height: calc(var(--activity-item-height) * 2 + 8px); /* two items + small buffer */
+            overflow-y: auto;
+            padding-right: 6px; /* avoid content touching scrollbar */
+        }
+
+        /* Small scrollbar styling for modern browsers */
+        #activityList::-webkit-scrollbar { width: 8px; }
+        #activityList::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 6px; }
+
+        /* Times styling: make time text slightly smaller and darker for readability */
+        .activity-item .meta {
+            font-size: 0.95rem;
+            color: #666; /* original grey for the date */
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .activity-item .activity-details {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+        }
+
+        .activity-item .line {
+            display: flex;
+            gap: 8px;
+            align-items: baseline;
+        }
+
+        .activity-item .label {
+            font-size: 0.85rem;
+            color: #888; /* lighter grey for labels */
+            min-width: 100px;
+        }
+
+        .activity-item .time {
+            font-size: 0.95rem;
+            color: #222; /* darker for actual times */
+            font-weight: 700;
+        }
+
+        .activity-item .activity-duration {
+            font-size: 0.95rem;
+            color: #222;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        /* Shop selection button style for multi-shop modal */
+        #shopChoices { display:flex; flex-direction:column; gap:10px; margin-top:8px; }
+        .shop-choice {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            padding: 14px 16px;
+            border-radius: 12px;
+            border: 1px solid #c2c8d6; /* darker border for visibility */
+            background: #ffffff;
+            color: #111827;
+            text-align: left;
+            font-weight: 700;
+            transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(2,6,23,0.06);
+        }
+        .shop-choice:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 18px 40px rgba(2,6,23,0.18);
+            background: #f1f5f9; /* slightly darker hover */
+            border-color: #9fb0ce;
+        }
+        .shop-choice:active {
+            transform: translateY(-2px) scale(0.999);
+        }
+        .shop-choice:focus {
+            outline: 2px solid rgba(79,70,229,0.14);
+            outline-offset: 2px;
+        }
+
+        @media (max-width: 600px) {
+            .staff-portal-card {
+                padding: 30px 20px;
+            }
+            
+            .welcome-message {
+                font-size: 24px;
+            }
+            
+            .shop-name {
+                font-size: 28px;
+            }
+            
+            .portal-btn {
+                padding: 15px 30px;
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="staff-portal-container">
+        <div class="staff-portal-card">
+            <!-- Shop Logo/Initial -->
+            <div class="shop-logo" id="shopLogo">
+                <span id="shopInitial">X</span>
+            </div>
+            
+            <!-- Welcome Message -->
+            <div class="welcome-message">Welcome to</div>
+            <div class="shop-name" id="shopName">Loading...</div>
+            <div class="staff-name" id="staffName"></div>
+            
+            <!-- Clock Status Display -->
+            <div id="clockStatus" class="clock-status" style="display: none;">
+                <div class="clock-time">Clocked in at: <span id="clockInTime"></span></div>
+                <div class="duration">Duration: <span class="time-display" id="durationDisplay">00:00:00</span></div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <!-- Clock In/Out Button -->
+                <button id="clockBtn" class="portal-btn primary" onclick="toggleClock()">
+                    <span id="clockBtnText">Clock In</span>
+                </button>
+                
+                <!-- View Profile Button -->
+                <a href="profile.html" class="portal-btn secondary">
+                    View My Profile
+                </a>
+            </div>
+            
+            <!-- Logout -->
+            <a href="#" onclick="logout(); return false;" class="logout-link">Sign Out</a>
+
+            <!-- Recent Activity -->
+            <div id="recentActivity" class="recent-activity" style="display: none;">
+                <div class="activity-title">Recent Clock-ins</div>
+                <div id="activityList"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script type="module">
+        import { getSupabaseClient } from './helpers/supabase.js';
+        import { currentUser } from './helpers/user.js';
+        import { getUserShops, switchShop } from './helpers/multi-shop.js';
+        
+        const supabase = getSupabaseClient();
+        let currentClockIn = null;
+        let durationInterval = null;
+        
+        // Initialize page
+        async function initStaffPortal() {
+            // Check authentication
+            // Check if user is authenticated via Supabase
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            if (!authUser) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+                        // If staff belongs to multiple shops, show selection modal before proceeding
+                        try {
+                            // Only show the modal once per session (avoid showing on every visit)
+                            const alreadyShown = sessionStorage.getItem('xm_shop_select_shown') === 'true';
+                            const userShops = await getUserShops(authUser.id);
+                            if (!alreadyShown && userShops && userShops.length > 1) {
+                                showShopSelectModal(userShops);
+                                return; // wait for selection which will redirect or re-init
+                            }
+                        } catch (e) {
+                            console.warn('Could not fetch user shops for modal:', e);
+                        }
+
+                        // Get shop info from session
+                        const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+                        const shopId = session.shopId;
+            
+                        if (!shopId) {
+                                alert('No shop selected. Please contact your administrator.');
+                                window.location.href = 'login.html';
+                                return;
+                        }
+
+                        // Enforce: only allow access to staff portal if this staff is HOURLY for the selected shop
+                        try {
+                            const { data: { user: authUser } } = await supabase.auth.getUser();
+                            if (!authUser) { window.location.href = 'login.html'; return; }
+                            const { data: ssRow, error: ssErr } = await supabase
+                                .from('shop_staff')
+                                .select('hourly_rate')
+                                .eq('shop_id', shopId)
+                                .eq('auth_id', authUser.id)
+                                .limit(1)
+                                .single();
+                            // If no shop_staff row or hourly_rate is not > 0, redirect to profile
+                            if (ssErr || !ssRow || Number(ssRow.hourly_rate || 0) <= 0) {
+                                console.log('Staff portal access blocked: staff is flat-rate or not found for this shop, redirecting to profile');
+                                window.location.href = 'profile.html';
+                                return;
+                            }
+                        } catch (e) {
+                            console.warn('Error verifying shop_staff for staff-portal access:', e);
+                            window.location.href = 'profile.html';
+                            return;
+                        }
+            
+            // Load shop info
+            const { data: shop, error: shopError } = await supabase
+                .from('shops')
+                .select('*')
+                .eq('id', shopId)
+                .single();
+                
+            if (shopError || !shop) {
+                console.error('Error loading shop:', shopError);
+                alert('Error loading shop information');
+                return;
+            }
+            
+            // Display shop info
+            document.getElementById('shopName').textContent = shop.name;
+            document.getElementById('shopInitial').textContent = shop.name.charAt(0).toUpperCase();
+            document.getElementById('staffName').textContent = authUser.email;
+            
+            // Customize shop logo color
+            if (shop.accent_color) {
+                document.getElementById('shopLogo').style.background = shop.accent_color;
+            }
+            
+            // Check for active clock-in
+            await checkClockStatus();
+            
+            // Load recent activity
+            await loadRecentActivity();
+        }
+        
+        // Check if currently clocked in
+        async function checkClockStatus() {
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+            
+            const { data: activeClock, error } = await supabase
+                .from('time_clock')
+                .select('*')
+                .eq('staff_id', authUser.id)
+                .eq('shop_id', session.shopId)
+                .is('clock_out', null)
+                .order('clock_in', { ascending: false })
+                .limit(1)
+                .single();
+                
+            if (activeClock) {
+                currentClockIn = activeClock;
+                showClockedInState();
+            } else {
+                showClockedOutState();
+            }
+        }
+        
+        // Show clocked in state
+        function showClockedInState() {
+            const clockStatus = document.getElementById('clockStatus');
+            const clockBtn = document.getElementById('clockBtn');
+            const clockBtnText = document.getElementById('clockBtnText');
+            
+            clockStatus.style.display = 'block';
+            clockStatus.classList.add('clocked-in');
+            
+            // Display clock in time
+            const clockInTime = new Date(currentClockIn.clock_in);
+            document.getElementById('clockInTime').textContent = clockInTime.toLocaleTimeString();
+            
+            // Update button
+            clockBtn.classList.remove('primary', 'success');
+            clockBtn.classList.add('danger');
+            clockBtnText.textContent = 'Clock Out';
+            
+            // Start duration timer
+            startDurationTimer();
+        }
+        
+        // Show clocked out state
+        function showClockedOutState() {
+            const clockStatus = document.getElementById('clockStatus');
+            const clockBtn = document.getElementById('clockBtn');
+            const clockBtnText = document.getElementById('clockBtnText');
+            
+            clockStatus.style.display = 'none';
+            clockStatus.classList.remove('clocked-in');
+            
+            // Update button
+            clockBtn.classList.remove('danger');
+            clockBtn.classList.add('success');
+            clockBtnText.textContent = 'Clock In';
+            
+            // Stop duration timer
+            if (durationInterval) {
+                clearInterval(durationInterval);
+                durationInterval = null;
+            }
+        }
+        
+        // Start duration timer
+        function startDurationTimer() {
+            const updateDuration = () => {
+                if (!currentClockIn) return;
+                
+                const now = new Date();
+                const clockInTime = new Date(currentClockIn.clock_in);
+                const duration = Math.floor((now - clockInTime) / 1000);
+                
+                const hours = Math.floor(duration / 3600);
+                const minutes = Math.floor((duration % 3600) / 60);
+                const seconds = duration % 60;
+                
+                const display = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                document.getElementById('durationDisplay').textContent = display;
+            };
+            
+            updateDuration();
+            durationInterval = setInterval(updateDuration, 1000);
+        }
+        
+        // Show confirmation modal
+        function showConfirmModal(title, message, onConfirm, confirmText = 'Confirm', isDanger = false) {
+            // Remove existing modal if present
+            const existing = document.getElementById('confirm-modal');
+            if (existing) existing.remove();
+            
+            const modal = document.createElement('div');
+            modal.id = 'confirm-modal';
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.5);
+                z-index: 9999;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                animation: fadeIn 0.2s ease;
+            `;
+            
+            const bgColor = isDanger ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' : 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)';
+            
+            modal.innerHTML = `
+                <div style="
+                    background: white;
+                    border-radius: 16px;
+                    padding: 28px;
+                    max-width: 380px;
+                    width: 90%;
+                    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+                    animation: slideUp 0.2s ease;
+                ">
+                    <div style="text-align: center; margin-bottom: 24px;">
+                        <h3 style="margin: 0 0 8px; font-size: 1.35rem; color: #333;">${title}</h3>
+                        <p style="margin: 0; color: #666; font-size: 0.95rem;">${message}</p>
+                    </div>
+                    <div style="display: flex; gap: 12px;">
+                        <button id="modal-cancel-btn" style="
+                            flex: 1;
+                            padding: 14px 16px;
+                            border: 2px solid #dee2e6;
+                            background: #f8f9fa;
+                            color: #333;
+                            border-radius: 10px;
+                            font-size: 1rem;
+                            font-weight: 500;
+                            cursor: pointer;
+                            transition: all 0.2s;
+                        ">Cancel</button>
+                        <button id="modal-confirm-btn" style="
+                            flex: 1;
+                            padding: 14px 16px;
+                            border: none;
+                            background: ${bgColor};
+                            color: white;
+                            border-radius: 10px;
+                            font-size: 1rem;
+                            font-weight: 600;
+                            cursor: pointer;
+                            transition: all 0.2s;
+                        ">${confirmText}</button>
+                    </div>
+                </div>
+            `;
+            
+            // Add animation styles if not present
+            if (!document.getElementById('confirm-modal-styles')) {
+                const styleEl = document.createElement('style');
+                styleEl.id = 'confirm-modal-styles';
+                styleEl.textContent = `
+                    @keyframes fadeIn {
+                        from { opacity: 0; }
+                        to { opacity: 1; }
+                    }
+                    @keyframes slideUp {
+                        from { transform: translateY(20px); opacity: 0; }
+                        to { transform: translateY(0); opacity: 1; }
+                    }
+                `;
+                document.head.appendChild(styleEl);
+            }
+            
+            document.body.appendChild(modal);
+            
+            // Handle cancel
+            document.getElementById('modal-cancel-btn').onclick = () => modal.remove();
+            
+            // Handle confirm
+            document.getElementById('modal-confirm-btn').onclick = async () => {
+                const btn = document.getElementById('modal-confirm-btn');
+                btn.textContent = 'Please wait...';
+                btn.disabled = true;
+                await onConfirm();
+                modal.remove();
+            };
+            
+            // Close on backdrop click
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) modal.remove();
+            });
+        }
+
+        // Show shop selection modal for multi-shop staff
+        function showShopSelectModal(userShops) {
+            // Remove existing modal if present
+            const existing = document.getElementById('shop-select-modal');
+            if (existing) existing.remove();
+
+            const modal = document.createElement('div');
+            modal.id = 'shop-select-modal';
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.5);
+                z-index: 9999;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            `;
+
+            const listHtml = userShops.map(s => `
+                <button data-shop-id="${s.shop_id}" class="shop-choice" style="display:block;width:100%;padding:12px;margin-bottom:8px;border-radius:8px;border:none;background:#fff;text-align:left;font-weight:600;">${s.shop.name || 'Unknown Shop'} <span style="float:right;font-weight:400;color:#666;">${s.role||''}</span></button>
+            `).join('');
+
+            modal.innerHTML = `
+                <div style="background:white;border-radius:12px;padding:20px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+                    <h3 style="margin:0 0 8px 0;">Select Shop</h3>
+                    <p style="margin:0 0 12px 0;color:#666;">You belong to multiple shops. Please select which shop to use for this session.</p>
+                    <div id="shopChoices">${listHtml}</div>
+                    <div style="margin-top:12px;text-align:right;"><button id="cancelShopSelect" class="btn">Cancel</button></div>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+            // Mark modal shown for this session so it won't reappear on subsequent visits
+            try { sessionStorage.setItem('xm_shop_select_shown', 'true'); } catch(e){/* ignore */}
+
+            // Attach handlers
+            modal.querySelectorAll('.shop-choice').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const shopId = btn.getAttribute('data-shop-id');
+                    if (!shopId) return;
+                    try {
+                        const ok = await switchShop(shopId);
+                        if (!ok) {
+                            alert('Failed to set shop. Please try again.');
+                            return;
+                        }
+                        // After switching, fetch the shop_staff row for this auth user in that shop
+                        const { data: { user: authUser } } = await supabase.auth.getUser();
+                        if (!authUser) {
+                            // if no auth user, go to login
+                            window.location.href = 'login.html';
+                            return;
+                        }
+                        try {
+                            const { data: ssRow, error: ssErr } = await supabase
+                                .from('shop_staff')
+                                .select('hourly_rate')
+                                .eq('shop_id', shopId)
+                                .eq('auth_id', authUser.id)
+                                .limit(1)
+                                .single();
+                            const isHourly = !!(ssRow && Number(ssRow.hourly_rate || 0) > 0);
+                            // Remove modal
+                            modal.remove();
+                            if (isHourly) {
+                                // Ensure modal won't show again this session
+                                try { sessionStorage.setItem('xm_shop_select_shown', 'true'); } catch(e){/* ignore */}
+                                // Re-initialize portal now that session.shopId is set
+                                await initStaffPortal();
+                            } else {
+                                // Flat-rate: redirect to profile
+                                window.location.href = 'profile.html';
+                            }
+                        } catch (e2) {
+                            console.warn('Could not read shop_staff after switch, defaulting to profile redirect', e2);
+                            modal.remove();
+                            window.location.href = 'profile.html';
+                        }
+                    } catch (ex) {
+                        console.error('Error switching shop:', ex);
+                        alert('Failed to switch shop');
+                    }
+                });
+            });
+
+            document.getElementById('cancelShopSelect').addEventListener('click', () => {
+                modal.remove();
+            });
+        }
+
+        // Toggle clock in/out
+        window.toggleClock = async function() {
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+            
+            if (currentClockIn) {
+                // Clock out - show confirmation modal
+                showConfirmModal(
+                    'Clock Out?',
+                    'Are you sure you want to clock out?',
+                    async () => {
+                        const { data, error } = await supabase
+                            .from('time_clock')
+                            .update({ 
+                                clock_out: new Date().toISOString(),
+                                updated_at: new Date().toISOString()
+                            })
+                            .eq('id', currentClockIn.id);
+                            
+                        if (error) {
+                            console.error('Error clocking out:', error);
+                            alert('Error clocking out. Please try again.');
+                            return;
+                        }
+                        
+                        currentClockIn = null;
+                        showClockedOutState();
+                        await loadRecentActivity();
+                        
+                        // Show success message
+                        showToast('Successfully clocked out!', 'success');
+                    },
+                    'Clock Out',
+                    true // isDanger
+                );
+            } else {
+                // Clock in - no confirmation needed
+                const { data, error } = await supabase
+                    .from('time_clock')
+                    .insert({
+                        shop_id: session.shopId,
+                        staff_id: authUser.id,
+                        staff_email: authUser.email,
+                        staff_name: authUser.user_metadata?.full_name || authUser.email.split('@')[0],
+                        clock_in: new Date().toISOString()
+                    })
+                    .select()
+                    .single();
+                    
+                if (error) {
+                    console.error('Error clocking in:', error);
+                    alert('Error clocking in. Please try again.');
+                    return;
+                }
+                
+                currentClockIn = data;
+                showClockedInState();
+                
+                // Show success message
+                showToast('Successfully clocked in!', 'success');
+            }
+        };
+        
+        // Load recent activity
+        async function loadRecentActivity() {
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+            
+            const { data: recentClocks, error } = await supabase
+                .from('time_clock')
+                .select('*')
+                .eq('staff_id', authUser.id)
+                .eq('shop_id', session.shopId)
+                .not('clock_out', 'is', null)
+                .order('clock_in', { ascending: false })
+                .limit(5);
+                
+            if (error) {
+                console.error('Error loading recent activity:', error);
+                return;
+            }
+            
+            const activityList = document.getElementById('activityList');
+            const recentActivity = document.getElementById('recentActivity');
+            
+            if (recentClocks && recentClocks.length > 0) {
+                recentActivity.style.display = 'block';
+                activityList.innerHTML = recentClocks.map(clock => {
+                    const clockIn = new Date(clock.clock_in);
+                    const clockOut = new Date(clock.clock_out);
+
+                    // Safeguard: if clock_out is missing, treat as ongoing
+                    const outExists = !!(clock.clock_out);
+
+                    const durationMs = outExists ? (clockOut - clockIn) : (Date.now() - clockIn.getTime());
+                    const durationMinutes = Math.max(0, Math.round(durationMs / 60000));
+                    const hours = Math.floor(durationMinutes / 60);
+                    const minutes = durationMinutes % 60;
+
+                    const dateStr = clockIn.toLocaleDateString();
+                    const inTime = clockIn.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const outTime = outExists ? clockOut.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
+
+                    return `
+                        <div class="activity-item">
+                            <div class="activity-details">
+                                <div class="meta">${dateStr}</div>
+                                <div class="line"><span class="label">Clocked in:</span><span class="time">${inTime}</span></div>
+                                <div class="line"><span class="label">Clocked out:</span><span class="time">${outExists ? outTime : ''}</span></div>
+                            </div>
+                            <div class="activity-duration">${hours}h ${minutes}m</div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                recentActivity.style.display = 'none';
+            }
+        }
+        
+        // Show toast notification
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            toast.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: ${type === 'success' ? '#28a745' : '#17a2b8'};
+                color: white;
+                padding: 15px 25px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                z-index: 1000;
+                animation: slideIn 0.3s ease;
+            `;
+            
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+        
+        // Logout function
+        window.logout = async function() {
+            showConfirmModal(
+                'Sign Out?',
+                'Are you sure you want to sign out?' + (currentClockIn ? ' You will be automatically clocked out.' : ''),
+                async () => {
+                    // Clock out if currently clocked in
+                    if (currentClockIn) {
+                        await supabase
+                            .from('time_clock')
+                            .update({ 
+                                clock_out: new Date().toISOString(),
+                                updated_at: new Date().toISOString()
+                            })
+                            .eq('id', currentClockIn.id);
+                    }
+                    
+                    await supabase.auth.signOut();
+                    localStorage.clear();
+                    window.location.href = 'login.html';
+                },
+                'Sign Out',
+                true // isDanger
+            );
+        };
+        
+        // Add animations
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+                to {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+            }
+            
+            @keyframes slideOut {
+                from {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+        
+        // Initialize on load
+        initStaffPortal();
+    </script>
+</body>
+</html>
