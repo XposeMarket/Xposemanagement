@@ -2041,8 +2041,31 @@ async function updateJobStatus(jobId, newStatus) {
   if (index === -1) return;
   // updateJobStatus called for job
 
+  const now = new Date().toISOString();
   allJobs[index].status = newStatus;
-  allJobs[index].updated_at = new Date().toISOString();
+  allJobs[index].updated_at = now;
+  
+  // Update jobs table in database
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const { error } = await supabase
+        .from('jobs')
+        .update({ 
+          status: newStatus,
+          updated_at: now
+        })
+        .eq('id', jobId);
+      
+      if (error) {
+        console.error('Failed to update jobs table:', error);
+      } else {
+        console.log(`✅ Updated job ${jobId} status in database to ${newStatus}`);
+      }
+    } catch (err) {
+      console.error('Error updating jobs table:', err);
+    }
+  }
 
   // If completed, set completed_at and handle invoice creation/closure
   if (newStatus === 'completed') {
@@ -2080,9 +2103,26 @@ async function updateJobStatus(jobId, newStatus) {
 
         // Update linked appointment status to 'completed' so other pages reflect the change
         try {
+          const apptNow = new Date().toISOString();
           allAppointments[apptIdx].status = 'completed';
-          allAppointments[apptIdx].updated_at = new Date().toISOString();
-          // Marked appointment as completed for job
+          allAppointments[apptIdx].updated_at = apptNow;
+          
+          // Update appointments table in database
+          if (supabase && allAppointments[apptIdx].id) {
+            const { error: apptError } = await supabase
+              .from('appointments')
+              .update({ 
+                status: 'completed',
+                updated_at: apptNow
+              })
+              .eq('id', allAppointments[apptIdx].id);
+            
+            if (apptError) {
+              console.error('Failed to update appointments table:', apptError);
+            } else {
+              console.log(`✅ Updated appointment ${allAppointments[apptIdx].id} status to completed`);
+            }
+          }
         } catch (e) {
           console.warn('[jobs.js] Failed to mark linked appointment completed:', e);
         }
@@ -2120,22 +2160,20 @@ async function updateJobStatus(jobId, newStatus) {
     window.closeRemoveModal = closeRemoveModal;
     // `openLaborModal` is exposed above and used directly by other components.
     } else {
+    // Handle 'scheduled' status specially - this should use sendJobBackToScheduled instead,
+    // but if called here, redirect to proper handling
+    if (newStatus === 'scheduled') {
+      console.warn('[Jobs] updateJobStatus called with scheduled - redirecting to sendJobBackToScheduled');
+      const job = allJobs[index];
+      if (job) {
+        await sendJobBackToScheduled(job);
+      }
+      return; // Exit early, sendJobBackToScheduled handles everything
+    }
+    
     if (!['in_progress', 'awaiting_parts'].includes(newStatus)) {
       // If status is not active, remove from jobs page (stays in appointments)
       allJobs = allJobs.filter(j => j.id !== allJobs[index].id);
-    }
-
-    // If job is being sent back to scheduled, update linked appointment accordingly
-    if (newStatus === 'scheduled') {
-      const job = allJobs[index];
-      if (job && job.appointment_id) {
-        const apptIdx = allAppointments.findIndex(a => a.id === job.appointment_id);
-        if (apptIdx !== -1) {
-          allAppointments[apptIdx].status = 'scheduled';
-          allAppointments[apptIdx].updated_at = new Date().toISOString();
-          try { await saveAppointments(allAppointments); } catch (e) { console.warn('[jobs.js] failed to save appointments for scheduled:', e); }
-        }
-      }
     }
 
     // Always update linked appointment status for in_progress and awaiting_parts
@@ -2146,8 +2184,30 @@ async function updateJobStatus(jobId, newStatus) {
         const apptIdx = allAppointments.findIndex(a => a.id === job.appointment_id);
         if (apptIdx !== -1) {
           // Updating appointment status to newStatus
+          const apptNow = new Date().toISOString();
           allAppointments[apptIdx].status = newStatus;
-          allAppointments[apptIdx].updated_at = new Date().toISOString();
+          allAppointments[apptIdx].updated_at = apptNow;
+          
+          // Update appointments table in database
+          if (supabase && allAppointments[apptIdx].id) {
+            try {
+              const { error: apptError } = await supabase
+                .from('appointments')
+                .update({ 
+                  status: newStatus,
+                  updated_at: apptNow
+                })
+                .eq('id', allAppointments[apptIdx].id);
+              
+              if (apptError) {
+                console.error('Failed to update appointments table:', apptError);
+              } else {
+                console.log(`✅ Updated appointment ${allAppointments[apptIdx].id} status to ${newStatus}`);
+              }
+            } catch (err) {
+              console.error('Error updating appointments table:', err);
+            }
+          }
         } else {
           // Appointment not found for job
         }
@@ -2417,13 +2477,10 @@ async function handleRemoveJob(removeAppointment = false) {
   let user = {};
   try { user = await getCurrentUserWithRole(); } catch (e) { user = {}; }
 
-  if (user.role === 'foreman') {
-    // For foreman, do not delete — send the job/appointment back to scheduled
-    await updateJobStatus(job.id, 'scheduled');
-  } else {
-    // Non-foreman: Remove job by setting to completed
-    await updateJobStatus(job.id, 'completed');
-  }
+  // For all roles (foreman, admin, owner), send the job back to scheduled status
+  // This ensures the appointment is updated to 'scheduled' and the job is
+  // removed from the jobs lists to avoid creating ghost/duplicate jobs later.
+  await sendJobBackToScheduled(job);
 
   if (removeAppointment && user.role !== 'foreman') {
     // Remove appointment from local array
@@ -2484,6 +2541,139 @@ async function handleRemoveJob(removeAppointment = false) {
       showNotification('Job removed successfully');
     }
   } catch (e) { showNotification('Job removed'); }
+}
+
+/**
+ * Send job back to scheduled status (used by foreman remove action)
+ * This properly removes the job from the jobs table/data and updates
+ * the linked appointment status to 'scheduled'.
+ */
+async function sendJobBackToScheduled(job) {
+  if (!job) return;
+  
+  const supabase = getSupabaseClient();
+  const shopId = getCurrentShopId();
+  const appointmentId = job.appointment_id;
+  
+  console.log('[Jobs] Sending job back to scheduled:', job.id, 'appointment:', appointmentId);
+  
+  // 1. Remove job from local allJobs array
+  allJobs = allJobs.filter(j => j.id !== job.id);
+  
+  // 2. Update appointment status to 'scheduled' in local array
+  if (appointmentId) {
+    const apptIdx = allAppointments.findIndex(a => a.id === appointmentId);
+    if (apptIdx !== -1) {
+      allAppointments[apptIdx].status = 'scheduled';
+      allAppointments[apptIdx].updated_at = new Date().toISOString();
+      // Set suppress_auto_job flag to prevent job from being auto-recreated
+      allAppointments[apptIdx].suppress_auto_job = true;
+      console.log('[Jobs] Updated appointment status to scheduled:', appointmentId);
+    }
+  }
+  
+  // 3. Save changes to Supabase
+  if (supabase && shopId) {
+    try {
+      // Get current data
+      const { data: currentData, error: fetchError } = await supabase
+        .from('data')
+        .select('*')
+        .eq('shop_id', shopId)
+        .single();
+      
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        throw fetchError;
+      }
+      
+      // Remove the job from data.jobs
+      const existingJobs = currentData?.jobs || [];
+      const updatedJobs = existingJobs.filter(j => j.id !== job.id && j.appointment_id !== appointmentId);
+      
+      // Update the appointment in data.appointments
+      const existingAppts = currentData?.appointments || [];
+      const updatedAppts = existingAppts.map(a => {
+        if (a.id === appointmentId) {
+          return {
+            ...a,
+            status: 'scheduled',
+            updated_at: new Date().toISOString(),
+            suppress_auto_job: true
+          };
+        }
+        return a;
+      });
+      
+      // Save to data table
+      const payload = {
+        shop_id: shopId,
+        jobs: updatedJobs,
+        appointments: updatedAppts,
+        settings: currentData?.settings || {},
+        threads: currentData?.threads || [],
+        invoices: currentData?.invoices || [],
+        updated_at: new Date().toISOString()
+      };
+      
+      const { error: upsertError } = await supabase
+        .from('data')
+        .upsert(payload, { onConflict: 'shop_id' });
+      
+      if (upsertError) throw upsertError;
+      console.log('✅ [Jobs] Data table updated - job removed, appointment set to scheduled');
+      
+      // 4. Delete job from standalone jobs table
+      const { error: deleteJobError } = await supabase
+        .from('jobs')
+        .delete()
+        .eq('id', job.id);
+      
+      if (deleteJobError) {
+        console.warn('[Jobs] Could not delete job from jobs table:', deleteJobError);
+      } else {
+        console.log('✅ [Jobs] Job deleted from jobs table:', job.id);
+      }
+      
+      // 5. Update appointment in standalone appointments table
+      if (appointmentId) {
+        const { error: updateApptError } = await supabase
+          .from('appointments')
+          .update({
+            status: 'scheduled',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', appointmentId);
+        
+        if (updateApptError) {
+          console.warn('[Jobs] Could not update appointment in appointments table:', updateApptError);
+        } else {
+          console.log('✅ [Jobs] Appointment status updated to scheduled in appointments table');
+        }
+      }
+      
+    } catch (ex) {
+      console.error('[Jobs] Supabase update failed during sendJobBackToScheduled:', ex);
+    }
+  }
+  
+  // 6. Also update localStorage for offline/fallback consistency
+  try {
+    const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
+    localData.jobs = (localData.jobs || []).filter(j => j.id !== job.id && j.appointment_id !== appointmentId);
+    localData.appointments = (localData.appointments || []).map(a => {
+      if (a.id === appointmentId) {
+        return { ...a, status: 'scheduled', updated_at: new Date().toISOString(), suppress_auto_job: true };
+      }
+      return a;
+    });
+    localStorage.setItem('xm_data', JSON.stringify(localData));
+    window.dispatchEvent(new Event('xm_data_updated'));
+  } catch (e) {
+    console.warn('[Jobs] Failed to update localStorage:', e);
+  }
+  
+  // 7. Re-render the jobs page
+  await renderJobs();
 }
 
 /**

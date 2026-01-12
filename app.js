@@ -459,8 +459,8 @@ async function __mainBase() {
             .eq('auth_id', authUser.id)
             .single();
           
-          // Only show inventory if NOT staff
-          if (!staffCheck || staffCheck.role !== 'staff') {
+          // Only show inventory if NOT staff/foreman
+          if (!staffCheck || (staffCheck.role !== 'staff' && staffCheck.role !== 'foreman')) {
             globalInventoryLink.style.display = '';
           } else {
             globalInventoryLink.style.display = 'none';

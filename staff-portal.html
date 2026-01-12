@@ -354,7 +354,7 @@
                 </button>
                 
                 <!-- View Profile Button -->
-                <a href="profile.html" class="portal-btn secondary">
+                <a id="viewProfileBtn" href="profile.html" class="portal-btn secondary">
                     View My Profile
                 </a>
             </div>
@@ -388,6 +388,30 @@
                 window.location.href = 'login.html';
                 return;
             }
+                // Determine role (prefer shop_staff mapping)
+                let role = '';
+                try {
+                    const { data: staffRow, error: staffErr } = await supabase.from('shop_staff').select('role').eq('auth_id', authUser.id).limit(1).single();
+                    if (!staffErr && staffRow && staffRow.role) {
+                        role = staffRow.role;
+                    } else {
+                        const { data: userRow } = await supabase.from('users').select('role').eq('id', authUser.id).limit(1).single();
+                        role = userRow?.role || '';
+                    }
+                } catch (e) {
+                    // ignore
+                }
+
+                // Update the View Profile button to role-specific target and label
+                try {
+                    const viewBtn = document.getElementById('viewProfileBtn');
+                    if (viewBtn) {
+                        viewBtn.textContent = 'View Shop';
+                        if (role === 'foreman') viewBtn.setAttribute('href', 'dashboard.html');
+                        else if (role === 'staff') viewBtn.setAttribute('href', 'claim-board.html');
+                        else viewBtn.setAttribute('href', 'profile.html');
+                    }
+                } catch (e) {}
             
                         // If staff belongs to multiple shops, show selection modal before proceeding
                         try {

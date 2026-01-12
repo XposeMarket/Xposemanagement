@@ -69,6 +69,14 @@ USING (
   )
 );
 
+-- Allow users to insert their own shop_staff mapping when they sign up / join a shop
+CREATE POLICY "Users can insert own staff record"
+ON shop_staff
+FOR INSERT
+WITH CHECK (
+  auth_id::text = auth.uid()::text
+);
+
 -- ============================================
 -- PERMISSION CONSTANTS
 -- ============================================

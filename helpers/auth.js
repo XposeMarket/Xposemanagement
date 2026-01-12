@@ -24,6 +24,19 @@ async function initializeSessionShopId() {
       console.log('✅ Shop ID already in session:', session.shopId);
       return;
     }
+    // Update all staff-portal links to be labeled 'View Shop' and redirect
+    // role-specifically: foreman -> dashboard, staff -> claim-board, others -> profile
+    try {
+      const portalLinks = document.querySelectorAll('a[href="staff-portal.html"]');
+      portalLinks.forEach(el => {
+        try {
+          el.textContent = 'View Shop';
+          if (u.role === 'foreman') el.setAttribute('href', 'dashboard.html');
+          else if (u.role === 'staff') el.setAttribute('href', 'claim-board.html');
+          else el.setAttribute('href', 'profile.html');
+        } catch (e) { /* ignore per-element failures */ }
+      });
+    } catch (e) { /* ignore overall failures */ }
     
     // Get current user
     const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -301,6 +314,81 @@ async function applyNavPermissions(userRow = null) {
     } else {
       document.querySelectorAll('.foreman-nav').forEach(el => el.style.display = 'none');
     }
+    // Additional UI tweaks for Foremen accessing the Dashboard: hide actions/panels they shouldn't use
+    if (u.role === 'foreman') {
+      try {
+        // Hide quick-create buttons under the Dashboard title
+        ['#btnNewAppt', '#btnNewInv', '#btnNewCust'].forEach(sel => {
+          const el = document.querySelector(sel);
+          if (el) { el.style.display = 'none'; console.log('  Hiding dashboard quick-action:', sel); }
+        });
+
+        // Hide the Open Invoices card (left sidebar) by finding the heading link to invoices
+        const invHeadingLink = document.querySelector('h3 a[href="invoices.html"]');
+        if (invHeadingLink) {
+          const invCard = invHeadingLink.closest('.card');
+          if (invCard) { invCard.style.display = 'none'; console.log('  Hiding Open Invoices card'); }
+        } else {
+          // Fallback: hide element with id openInvoicesList
+          const openList = document.getElementById('openInvoicesList');
+          if (openList) { const card = openList.closest('.card'); if (card) { card.style.display = 'none'; console.log('  Hiding Open Invoices card (fallback)'); } }
+        }
+
+        // Hide Quick Stats panel
+        const quickStats = document.getElementById('quickStatsCard');
+        if (quickStats) { quickStats.style.display = 'none'; console.log('  Hiding Quick Stats card'); }
+
+        // Hide Revenue Trend card (use revenueChart element to locate card)
+        const revCanvas = document.getElementById('revenueChart');
+        if (revCanvas) {
+          const revCard = revCanvas.closest('.card');
+          if (revCard) { revCard.style.display = 'none'; console.log('  Hiding Revenue Trend card'); }
+        } else {
+          // fallback: hide any card with header text containing 'Revenue Trend'
+          Array.from(document.querySelectorAll('.card')).forEach(c => {
+            const h = c.querySelector('h3');
+            if (h && (h.textContent || '').toLowerCase().includes('revenue')) { c.style.display = 'none'; console.log('  Hiding Revenue card (fallback)'); }
+          });
+        }
+        // Move the "Appointments Today" card to the right sidebar for foremen
+        try {
+          const apptList = document.getElementById('appointmentsTodayList');
+          const apptCard = apptList ? apptList.closest('.card') : null;
+          const rightSidebar = document.querySelector('.right-sidebar');
+          if (apptCard && rightSidebar && !rightSidebar.contains(apptCard)) {
+            // Insert at top of right sidebar
+            rightSidebar.insertBefore(apptCard, rightSidebar.firstElementChild || null);
+            console.log('  Moved Appointments Today card to right sidebar for foreman');
+          }
+        } catch (e) { console.warn('applyNavPermissions: failed to move Appointments Today card to right sidebar', e); }
+        // Show claim board jobs card if present and trigger a render
+        try {
+          const claimCard = document.getElementById('claimBoardJobsCard');
+          if (claimCard) {
+            claimCard.style.display = '';
+            console.log('  Showing Claim Board Jobs card for foreman');
+          }
+          if (window.renderClaimBoardJobs && typeof window.renderClaimBoardJobs === 'function') {
+            try { window.renderClaimBoardJobs(); } catch (e) { console.warn('Failed to call renderClaimBoardJobs', e); }
+          }
+        } catch (e) { console.warn('applyNavPermissions: failed to show/refresh Claim Board Jobs card', e); }
+      } catch (e) {
+        console.warn('applyNavPermissions: failed to hide dashboard-only panels for foreman', e);
+      }
+    }
+    else {
+      // If not a foreman, ensure the Appointments Today card is back in the left sidebar
+      try {
+        const apptList = document.getElementById('appointmentsTodayList');
+        const apptCard = apptList ? apptList.closest('.card') : null;
+        const leftSidebar = document.querySelector('.left-sidebar');
+        if (apptCard && leftSidebar && !leftSidebar.contains(apptCard)) {
+          // Place it at the end of left sidebar (after active jobs)
+          leftSidebar.appendChild(apptCard);
+          console.log('  Moved Appointments Today card back to left sidebar');
+        }
+      } catch (e) { /* ignore */ }
+    }
   } else {
     // Show owner navigation, hide staff-only links
     document.querySelectorAll('.owner-nav').forEach(el => {
@@ -326,23 +414,8 @@ async function applyNavPermissions(userRow = null) {
 
     const href = (a.getAttribute("href") || "").toLowerCase();
     const pn = href.replace(".html", "").replace("./", "");
-    // If this link points to the global jobs page and the current user is staff,
-    // prefer directing them to the staff-specific jobs page when available.
+    // Normalize link page name
     let linkPage = pn;
-    if (pn === 'jobs' && isStaff && allowed.includes('staff-jobs')) {
-      try {
-        a.setAttribute('href', 'staff-jobs.html');
-        linkPage = 'staff-jobs';
-      } catch (e) {
-        // ignore
-      }
-      // If the link text is simply 'Jobs', update it to 'My Jobs' for clarity
-      try {
-        if (a.textContent && a.textContent.trim().toLowerCase() === 'jobs') {
-          a.textContent = 'My Jobs';
-        }
-      } catch (e) {}
-    }
     
     // Special handling for inventory - hide from staff
     if (pn === 'inventory' && isStaff) {

@@ -5,16 +5,19 @@
       <img id="headerLogo" src="assets/XposeManagementCRMlogo.png" alt="Logo">
     </a>
     <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button><nav id="mainNav">
+      <a href="staff-portal.html" class="foreman-nav" style="display:none">Staff Portal</a>
       <a href="dashboard.html" class="active">Dashboard</a>
       <a href="foreman-appointments.html" class="foreman-nav" style="display:none">Job Board</a>
+      <a href="claim-board.html" class="foreman-nav" style="display:none">Claim Board</a>
       <a href="appointments.html" class="">Appointments</a>
       <a href="jobs.html" class="">Jobs</a>
+      <a href="staff-jobs.html" class="foreman-nav" style="display:none">My Jobs</a>
       <a href="messages.html" class="">Messages</a>
       <a href="invoices.html" class="">Invoices</a>
       <a href="customers.html" class="">Customers</a>
       <a href="revenue.html" class="">Revenue</a>
-        <a href="inventory.html" class="" id="inventoryNavLink" style="display:none">Inventory</a>
-        <a href="settings.html" class="">Settings</a>
+      <a href="inventory.html" class="owner-nav" id="inventoryNavLink">Inventory</a>
+      <a href="settings.html" class="">Settings</a>
       <a href="profile.html" class="">Profile</a>
       <a href="#" id="mobileThemeToggle" class="mobile-nav-btn mobile-special">Theme</a>
       <a href="#" id="mobileLogoutBtn" class="mobile-nav-btn mobile-special">Logout</a>
@@ -129,6 +132,16 @@
       <h3 style="margin:0 0 12px 0;font-size:14px">Revenue Trend</h3>
       <div id="revenueChartContainer" style="position:relative;height:140px;width:100%">
         <canvas id="revenueChart"></canvas>
+      </div>
+    </div>
+    <!-- Claim Board Jobs (Foremen only) -->
+    <div id="claimBoardJobsCard" class="card" style="display:none; margin-top:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0">Claim Board Jobs</h3>
+        <div id="claimBoardJobsTotal" style="font-size:18px;font-weight:700;color:var(--accent)">0</div>
+      </div>
+      <div id="claimBoardJobsList" style="display:flex;flex-direction:column;gap:8px; max-height:420px; overflow:auto;">
+        <p class="notice" id="claimJobsEmpty">No claim board jobs</p>
       </div>
     </div>
     <!-- Quick Stats Modal -->

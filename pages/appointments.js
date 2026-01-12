@@ -2835,10 +2835,35 @@ async function updateAppointmentStatus(apptId, newStatus) {
   if (index === -1) return;
   
   const oldStatus = allAppointments[index].status;
+  const now = new Date().toISOString();
   allAppointments[index].status = newStatus;
-  allAppointments[index].updated_at = new Date().toISOString();
+  allAppointments[index].updated_at = now;
 
+  // Update JSONB data
   await saveAppointments(allAppointments);
+  
+  // ALSO update the appointments table
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const { error } = await supabase
+        .from('appointments')
+        .update({ 
+          status: newStatus,
+          updated_at: now
+        })
+        .eq('id', apptId);
+      
+      if (error) {
+        console.error('Failed to update appointments table:', error);
+      } else {
+        console.log(`✅ Updated appointment ${apptId} status in database to ${newStatus}`);
+      }
+    } catch (err) {
+      console.error('Error updating appointments table:', err);
+    }
+  }
+  
   await renderAppointments();
 
   // Create notification for status changes
@@ -2890,11 +2915,17 @@ async function updateAppointmentStatus(apptId, newStatus) {
 
   // Auto-create or update job if status is in_progress or awaiting_parts
   if (['in_progress', 'awaiting_parts'].includes(newStatus)) {
+    console.log(`[updateAppointmentStatus] Status is ${newStatus}, creating/updating job...`);
     const appt = allAppointments[index];
-    // If appointment has been marked to suppress automatic job creation, skip
-    if (appt && appt.suppress_auto_job) {
-      console.log('[Appointments] Skipping auto-create job because appointment.suppress_auto_job is set for', appt.id);
-      return;
+    
+    // Clear any suppress_auto_job flag when manually changing status
+    // This allows admins to override the foreman workflow if needed
+    if (appt.suppress_auto_job) {
+      console.log('[updateAppointmentStatus] Clearing suppress_auto_job flag (manual status change)');
+      delete appt.suppress_auto_job;
+      allAppointments[index] = appt;
+      // Save the updated appointment without the flag
+      await saveAppointments(allAppointments);
     }
     // Load jobs from localStorage
     let jobs = [];
@@ -2936,9 +2967,10 @@ async function updateAppointmentStatus(apptId, newStatus) {
     }
 
     if (!job) {
+      const shopId = getCurrentShopId();
       job = {
         id: getUUID(),
-        shop_id: appt.shop_id,
+        shop_id: shopId,
         appointment_id: appt.id,
         customer: appt.customer || '',
         customer_first: appt.customer_first || '',
@@ -2949,9 +2981,11 @@ async function updateAppointmentStatus(apptId, newStatus) {
         updated_at: new Date().toISOString()
       };
       jobs.push(job);
+      console.log(`[updateAppointmentStatus] Created new job:`, job);
     } else {
       job.status = newStatus;
       job.updated_at = new Date().toISOString();
+      console.log(`[updateAppointmentStatus] Updated existing job:`, job);
     }
     // Save jobs to localStorage
     try {
@@ -2964,15 +2998,19 @@ async function updateAppointmentStatus(apptId, newStatus) {
     }
     // Also sync jobs to Supabase
     try {
+      console.log('[updateAppointmentStatus] Importing jobs.js...');
       const { saveJobs } = await import('./jobs.js');
+      console.log('[updateAppointmentStatus] saveJobs imported successfully');
       try {
-        console.log('[Appointments] saveJobs called with jobs:', jobs.map(j => ({ id: j.id, appointment_id: j.appointment_id, status: j.status })));
+        console.log('[Appointments] saveJobs called with job:', { id: job.id, appointment_id: job.appointment_id, status: job.status, shop_id: job.shop_id });
       } catch (e) {}
       // Only sync the single changed job to avoid upserting unrelated rows
+      console.log('[updateAppointmentStatus] Calling saveJobs([job])...');
       await saveJobs([job]);
-      console.log('✅ Jobs synced to Supabase');
+      console.log('✅ [updateAppointmentStatus] Jobs synced to Supabase successfully');
     } catch (e) {
-      console.error('Failed to sync jobs to Supabase:', e);
+      console.error('[updateAppointmentStatus] Failed to sync jobs to Supabase:', e);
+      console.error('[updateAppointmentStatus] Error stack:', e.stack);
     }
   } else {
     // If status is not active, remove job from jobs

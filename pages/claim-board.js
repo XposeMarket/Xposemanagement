@@ -357,6 +357,7 @@ function createRemoveModalClaim() {
     } catch (e) { console.warn('Failed to set suppress flag for appointment', e); }
     await performSendJobBackToScheduled(apptId);
   };
+  
 }
 
 /**
@@ -878,6 +879,7 @@ async function initClaimBoard(isPollingRefresh = false) {
             });
             actionsGrid.appendChild(removeBtn);
           }
+          
         } else {
           if (!actionsGrid.querySelector('.claim-btn')) {
             const claimBtn = document.createElement('button');
@@ -1041,6 +1043,8 @@ async function performSendJobBackToScheduled(apptId) {
   await initClaimBoard();
 }
 
+// Hard delete logic removed — temporarily disabled
+
 async function applyFilters(base, role) {
   const q = (document.getElementById('apptSearch')?.value || '').toLowerCase().trim();
   const status = (document.getElementById('apptStatus')?.value || '').trim();
@@ -1127,7 +1131,10 @@ function setupPageControls() {
   const menuToggle = byId('menuToggle');
   const mainNav = byId('mainNav');
   if (menuToggle && mainNav) {
-    menuToggle.onclick = () => mainNav.classList.toggle('open');
+    menuToggle.onclick = () => {
+      mainNav.classList.toggle('active');
+      menuToggle.classList.toggle('active');
+    };
   }
   
   setThemeFromUser();

@@ -989,7 +989,10 @@ function setupPageControls() {
   const menuToggle = byId('menuToggle');
   const mainNav = byId('mainNav');
   if (menuToggle && mainNav) {
-    menuToggle.onclick = () => mainNav.classList.toggle('open');
+    menuToggle.onclick = () => {
+      mainNav.classList.toggle('active');
+      menuToggle.classList.toggle('active');
+    };
   }
   
   setThemeFromUser();

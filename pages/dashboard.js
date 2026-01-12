@@ -10,6 +10,7 @@ import { LS } from '../helpers/constants.js';
 import { readLS, getShopData } from '../helpers/storage.js';
 import { getSupabaseClient } from '../helpers/supabase.js';
 import { byId, fmtMoney, formatTime12 } from '../helpers/utils.js';
+import { currentUser, getCurrentUser } from '../helpers/user.js';
 import { calcInvProfit } from '../helpers/invoices.js';
 import { 
   initializeShopConfig, 
@@ -239,11 +240,105 @@ async function setupDashboard() {
     });
   }
 
+  // Render Claim Board Jobs for foremen (shows unassigned jobs, max 5 visible with internal scroller)
+  function renderClaimBoardJobs() {
+    const card = byId('claimBoardJobsCard');
+    const list = byId('claimBoardJobsList');
+    const totalEl = byId('claimBoardJobsTotal');
+    if (!card || !list || !totalEl) return;
+
+    // Determine if current user is foreman via local currentUser(); fall back to Supabase user
+    let u = currentUser();
+    const ensureForeman = async () => {
+      if (!u) {
+        try { u = await getCurrentUser(); } catch (e) { u = null; }
+      }
+      return (u && (u.role === 'foreman' || (u?.shop_staff_role === 'foreman')));
+    };
+
+    ensureForeman().then(isForeman => {
+      if (!isForeman) {
+        // Do not forcibly hide the card here — permission layer controls visibility.
+        return;
+      }
+
+      // Show card for foreman
+      card.style.display = '';
+
+      // Prefer fresh query from Supabase for jobs matching claim-board logic
+      (async () => {
+        let jobs = [];
+        try {
+          const supabase = getSupabaseClient();
+          const shopId = (function(){ try { return JSON.parse(localStorage.getItem('xm_session')||'{}').shopId || null; } catch(e){ return null; } })();
+          if (supabase && shopId) {
+            const { data: jobsFromDb, error: jobsErr } = await supabase.from('jobs').select('*').eq('shop_id', shopId).in('status', ['in_progress','awaiting_parts']);
+            if (jobsErr) {
+              console.warn('[claim-board-panel] Supabase jobs query failed:', jobsErr);
+            }
+            jobs = (jobsFromDb || []).filter(j => {
+              // Treat null/empty/'N/A' as unassigned
+              const a = j.assigned_to;
+              return (!a || String(a).trim() === '' || String(a).toUpperCase() === 'N/A');
+            });
+          } else {
+            // Fallback to local cached data
+            jobs = (data.jobs || []).filter(j => (j.status === 'in_progress' || j.status === 'awaiting_parts') && (!j.assigned_to || String(j.assigned_to).trim() === '' || String(j.assigned_to).toUpperCase() === 'N/A'));
+          }
+        } catch (e) {
+          console.warn('[claim-board-panel] error fetching jobs:', e);
+          jobs = (data.jobs || []).filter(j => (j.status === 'in_progress' || j.status === 'awaiting_parts') && (!j.assigned_to || String(j.assigned_to).trim() === '' || String(j.assigned_to).toUpperCase() === 'N/A'));
+        }
+
+        totalEl.textContent = String(jobs.length);
+
+        if (!jobs.length) {
+          list.innerHTML = '<p class="notice" id="claimJobsEmpty">No claim board jobs</p>';
+          return;
+        }
+
+        list.innerHTML = '';
+        const maxVisible = 5;
+        const visible = jobs.slice(0, maxVisible);
+        visible.forEach(j => {
+          const row = document.createElement('div');
+          row.style.cssText = 'padding:8px;border:1px solid var(--line);border-radius:8px;cursor:pointer;transition:all 0.2s ease;background:var(--card);display:flex;justify-content:space-between;align-items:center;gap:8px';
+          const left = document.createElement('div');
+          left.innerHTML = `<div style="font-size:13px"><strong>${j.customer || j.customer_first || j.customer_name || 'Unknown'}</strong><br><span class="notice">${(j.created_at||j.updated_at||'').slice(0,10)}</span></div>`;
+          const right = document.createElement('div');
+          right.style.textAlign = 'right';
+          right.innerHTML = `<div style="font-weight:700">${j.vehicle || ''}</div><div style="font-size:12px;color:var(--muted)">${j.service || j.services || ''}</div>`;
+          row.appendChild(left);
+          row.appendChild(right);
+
+          row.addEventListener('click', () => {
+            try { localStorage.setItem('openJobId', j.id || j.job_id || ''); } catch (e) {}
+            // navigate to claim-board so foreman can act on it
+            location.href = 'claim-board.html';
+          });
+
+          list.appendChild(row);
+        });
+
+        if (jobs.length > maxVisible) {
+          const more = document.createElement('div');
+          more.style.cssText = 'padding:8px;text-align:center;color:var(--muted)';
+          more.textContent = `+ ${jobs.length - maxVisible} more...`;
+          list.appendChild(more);
+        }
+      })();
+    }).catch(e => { console.warn('renderClaimBoardJobs check failed', e); });
+  }
+
+  // Expose for external callers (e.g. auth permission logic)
+  try { window.renderClaimBoardJobs = renderClaimBoardJobs; } catch (e) { /* ignore in restricted envs */ }
+
   // Listen for invoice creation/edit events and refresh customerMap
   window.addEventListener('invoiceCreatedOrEdited', async () => {
     await refreshCustomerMap();
     renderOpenInvoices();
     renderAppointmentsToday();
+    renderClaimBoardJobs();
     // Also re-render other invoice-dependent UI if needed
   });
   
@@ -436,6 +531,9 @@ async function setupDashboard() {
       list.appendChild(row);
     });
   }
+
+  // Render claim board jobs on initial setup as well
+  try { renderClaimBoardJobs(); } catch (e) { /* ignore */ }
   
   /**
    * Invoice sort filter handler
