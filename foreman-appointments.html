@@ -128,20 +128,26 @@
     </div>
     <div class="modal-body">
       <form id="noteForm">
-        <label>Note</label>
-        <textarea id="noteText" rows="4" placeholder="Enter note..." style="margin-bottom: 12px;"></textarea>
-        
-        <div style="display: flex; flex-direction: column; gap: 8px;">
+        <label for="noteSubject">Subject (optional):</label>
+        <input id="noteSubject" placeholder="Brief subject for this note" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px; margin-bottom:8px;">
+
+        <div style="margin-top:4px; margin-bottom:8px;">
+          <label style="display:block; margin-bottom:6px;">Send To:</label>
+          <div id="noteSendToPills" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom:8px;">
           <label>Attachments (Images/Videos):</label>
           <div style="display: flex; align-items: center; gap: 12px;">
-            <label for="noteMediaInput" class="btn small" style="cursor: pointer; margin: 0;">
-              Choose Files
-            </label>
+            <label for="noteMediaInput" class="btn small" style="cursor: pointer; margin: 0;">Choose Files</label>
             <input type="file" id="noteMediaInput" accept="image/*,video/*" multiple style="display: none;" onchange="handleApptNoteMediaSelect(this)">
             <span id="noteMediaCount" style="font-size: 13px; color: #666;">No files selected</span>
           </div>
           <div id="noteMediaPreview" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px;"></div>
         </div>
+
+        <label for="noteText">Note</label>
+        <textarea id="noteText" rows="4" placeholder="Enter note..." style="margin-bottom: 12px; width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;"></textarea>
       </form>
     </div>
     <div class="modal-foot">
