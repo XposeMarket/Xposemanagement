@@ -187,13 +187,19 @@ async function pollForDataUpdates() {
     // the Claim Board will respect the appointment status and remove the row.
     let jobs = [];
     try {
+      // Fetch all jobs for the shop (we'll filter unassigned later).
+      // Important: do NOT restrict assigned_to here — we need the full set
+      // to know whether an appointment already has a job row so we don't
+      // re-derive one and show it on the Claim Board when the job exists
+      // but is assigned.
       const { data: jobsTable, error: jobsErr } = await supabase
         .from('jobs')
         .select('*')
-        .eq('shop_id', shopId)
-        .is('assigned_to', null);
+        .eq('shop_id', shopId);
 
-      const jobsFromTable = (!jobsErr && Array.isArray(jobsTable)) ? jobsTable : [];
+      const jobsFromTableAll = (!jobsErr && Array.isArray(jobsTable)) ? jobsTable : [];
+      // Unassigned subset used for display
+      const jobsFromTable = jobsFromTableAll.filter(j => !j.assigned_to);
 
       // Fetch appointments that represent active jobable statuses
       const { data: apptsTable, error: apptErr } = await supabase
@@ -205,12 +211,15 @@ async function pollForDataUpdates() {
       const apptsFromTable = (!apptErr && Array.isArray(apptsTable)) ? apptsTable : [];
 
       // Convert appointments that don't already have a job row into job-like objects
-      const derivedFromAppts = (apptsFromTable || []).filter(a => !jobsFromTable.find(j => String(j.appointment_id) === String(a.id))).map(a => ({
+      const derivedFromAppts = (apptsFromTable || []).filter(a => !jobsFromTableAll.find(j => String(j.appointment_id) === String(a.id))).map(a => ({
         id: a.id,
         appointment_id: a.id,
         customer: a.customer || '',
         vehicle: a.vehicle || '',
         service: a.service || a.service_requested || '',
+        // Support multiple possible field names for scheduled date/time
+        preferred_date: a.preferred_date || a.scheduled_date || a.start_date || a.scheduled_at || null,
+        preferred_time: a.preferred_time || a.scheduled_time || a.start_time || (a.scheduled_at ? new Date(a.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }) : null),
         status: a.status || 'in_progress',
         created_at: a.created_at,
         updated_at: a.updated_at
@@ -934,12 +943,14 @@ async function initClaimBoard(isPollingRefresh = false) {
 
           const apptsFromTable = (!apptErr && Array.isArray(apptsTable)) ? apptsTable : [];
 
-          const derivedFromAppts = (apptsFromTable || []).filter(a => !jobsFromTable.find(j => String(j.appointment_id) === String(a.id))).map(a => ({
+          const derivedFromAppts = (apptsFromTable || []).filter(a => !jobsFromTableAll.find(j => String(j.appointment_id) === String(a.id))).map(a => ({
             id: a.id,
             appointment_id: a.id,
             customer: a.customer || '',
             vehicle: a.vehicle || '',
             service: a.service || a.service_requested || '',
+            preferred_date: a.preferred_date || a.scheduled_date || a.start_date || a.scheduled_at || null,
+            preferred_time: a.preferred_time || a.scheduled_time || a.start_time || (a.scheduled_at ? new Date(a.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }) : null),
             status: a.status || 'in_progress',
             created_at: a.created_at,
             updated_at: a.updated_at
@@ -999,7 +1010,7 @@ async function initClaimBoard(isPollingRefresh = false) {
       console.warn('[claim-board] Could not load appointments for enrichment:', e);
     }
 
-    const renderedAppts = unassigned.map(j => {
+      const renderedAppts = unassigned.map(j => {
       const apptKey = String(j.appointment_id || j.id || '');
       const appt = apptLookup.get(apptKey) || {};
       const customer = j.customer || appt.customer || ((appt.customer_first || appt.customer_last) ? `${appt.customer_first || ''} ${appt.customer_last || ''}`.trim() : 'N/A');
@@ -1011,6 +1022,8 @@ async function initClaimBoard(isPollingRefresh = false) {
         vehicle: vehicle || 'N/A',
         service: service || 'N/A',
         status: j.status || 'in_progress',
+        preferred_date: j.preferred_date || appt.preferred_date || appt.scheduled_date || appt.start_date || appt.scheduled_at || null,
+        preferred_time: j.preferred_time || appt.preferred_time || appt.scheduled_time || appt.start_time || (appt.scheduled_at ? new Date(appt.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }) : null),
         created_at: j.created_at || new Date().toISOString(),
         updated_at: j.updated_at || new Date().toISOString()
       };
