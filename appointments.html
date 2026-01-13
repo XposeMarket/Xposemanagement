@@ -378,10 +378,14 @@
     </div>
     <div class="modal-body">
       <form id="noteForm">
+        <label>Subject</label>
+        <input id="noteSubject" placeholder="Short title for the note" style="margin-bottom: 8px;">
         <label>Note</label>
         <textarea id="noteText" rows="4" placeholder="Enter note..." style="margin-bottom: 12px;"></textarea>
         
         <div style="display: flex; flex-direction: column; gap: 8px;">
+          <label>Send To</label>
+          <div id="noteSendToPills" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px;"></div>
           <label>Attachments (Images/Videos):</label>
           <div style="display: flex; align-items: center; gap: 12px;">
             <label for="noteMediaInput" class="btn small" style="cursor: pointer; margin: 0;">

@@ -23,6 +23,8 @@ let allAppointments = [];
 let currentViewApptId = null;
 // Track if current user is staff (not admin)
 let isStaffUser = false;
+// Cached role
+let cachedUserRole = null;
 // Sorting state for appointments table
 let apptSortCol = 'created';
 let apptSortDir = 'desc'; // 'asc' | 'desc'
@@ -138,6 +140,58 @@ function stopNotesPolling() {
     notesPollingInterval = null;
     console.log('[NotesPolling] Stopped polling');
   }
+}
+
+/**
+ * Fetch the current user's role (shop_staff.role or users.role).
+ * Caches result in `cachedUserRole`.
+ */
+async function fetchCurrentUserRole() {
+  if (cachedUserRole) return cachedUserRole;
+  const supabase = getSupabaseClient();
+  const shopId = getCurrentShopId();
+  try {
+    if (supabase) {
+      const { data: authData } = await supabase.auth.getUser();
+      const authId = authData?.user?.id;
+      if (authId && shopId) {
+        try {
+          const { data: staffRow } = await supabase
+            .from('shop_staff')
+            .select('role')
+            .eq('auth_id', authId)
+            .eq('shop_id', shopId)
+            .limit(1)
+            .single();
+          if (staffRow && staffRow.role) {
+            cachedUserRole = staffRow.role;
+            return cachedUserRole;
+          }
+        } catch (e) {}
+
+        try {
+          const { data: userRow } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', authId)
+            .limit(1)
+            .single();
+          if (userRow && userRow.role) {
+            cachedUserRole = userRow.role;
+            return cachedUserRole;
+          }
+        } catch (e) {}
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+    const users = JSON.parse(localStorage.getItem('xm_users') || '[]');
+    const u = users.find(x => x.email === session.email) || {};
+    cachedUserRole = u.role || u.shop_staff_role || 'staff';
+    return cachedUserRole;
+  } catch (e) { return 'staff'; }
 }
 
 // ========== Status Polling for Appointments ==========
@@ -3686,6 +3740,52 @@ function showNotification(message, type = 'success') {
 let currentNoteId = null;
 let currentNotesAppointmentId = null;
 let allNotes = [];
+// Pending send-to roles selection for note modal (Set of role strings)
+if (!window.pendingApptNoteSendTo) window.pendingApptNoteSendTo = new Set();
+
+const NOTE_ROLES = [
+  { key: 'admin', label: 'Admin/Owner' },
+  { key: 'service_writer', label: 'Service Writer' },
+  { key: 'receptionist', label: 'Receptionist' },
+  { key: 'foreman', label: 'Foreman' },
+  { key: 'staff', label: 'Staff' },
+  { key: 'all', label: 'All' }
+];
+
+function renderNoteSendToPills() {
+  try {
+    const container = document.getElementById('noteSendToPills');
+    if (!container) return;
+    container.innerHTML = '';
+    NOTE_ROLES.forEach(r => {
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'btn small';
+      pill.textContent = r.label;
+      pill.dataset.role = r.key;
+      pill.style.borderRadius = '999px';
+      pill.style.padding = '6px 10px';
+      pill.style.background = window.pendingApptNoteSendTo.has(r.key) ? '#10b981' : '#f3f4f6';
+      pill.style.color = window.pendingApptNoteSendTo.has(r.key) ? '#fff' : '#111827';
+      pill.onclick = (e) => {
+        e.preventDefault();
+        const key = pill.dataset.role;
+        if (!key) return;
+        // If selecting 'all', clear others; if selecting others, remove 'all'
+        if (key === 'all') {
+          window.pendingApptNoteSendTo.clear();
+          window.pendingApptNoteSendTo.add('all');
+        } else {
+          window.pendingApptNoteSendTo.delete('all');
+          if (window.pendingApptNoteSendTo.has(key)) window.pendingApptNoteSendTo.delete(key);
+          else window.pendingApptNoteSendTo.add(key);
+        }
+        renderNoteSendToPills();
+      };
+      container.appendChild(pill);
+    });
+  } catch (e) { console.warn('renderNoteSendToPills failed', e); }
+}
 
 /**
  * Load notes for a specific appointment
@@ -3756,10 +3856,48 @@ async function loadAppointmentNotes(appointmentId) {
     }
     
     // Attach user data to each note
-    return notes.map(note => ({
-      ...note,
-      user: userMap.get(note.created_by) || null
-    }));
+    // Enforce send-to visibility: only return notes the current user may see
+    const role = await fetchCurrentUserRole().catch(() => 'staff');
+    const isAdminView = (role === 'admin' || role === 'owner');
+
+    // Get current user identity so creators always see their own notes
+    let currentUser = null;
+    let currentAuthId = null;
+    try {
+      currentUser = await getCurrentUserWithRole().catch(() => null);
+      const { data: authData } = await getSupabaseClient().auth.getUser();
+      currentAuthId = authData?.user?.id || null;
+    } catch (e) {}
+
+    const enriched = notes.map(note => {
+      // Normalize send_to: allow text[] or JSON-encoded string
+      let sendTo = note.send_to;
+      if (!Array.isArray(sendTo)) {
+        if (typeof sendTo === 'string') {
+          try { sendTo = JSON.parse(sendTo); } catch (e) { sendTo = [sendTo]; }
+        } else {
+          sendTo = [];
+        }
+      }
+      return { ...note, user: userMap.get(note.created_by) || null, send_to: sendTo };
+    });
+
+    if (isAdminView) return enriched;
+
+    // Filter notes by send_to array (allow if send_to includes 'all' or current role, or if send_to missing)
+    return enriched.filter(n => {
+      try {
+        // Creator always sees their own notes
+        if (n.created_by && (n.created_by === (currentUser?.id) || n.created_by === (currentUser?.auth_id) || n.created_by === currentAuthId)) return true;
+        if (!n.send_to || n.send_to.length === 0) return true; // legacy notes visible to all
+        if (Array.isArray(n.send_to)) {
+          if (n.send_to.includes('all')) return true;
+          if (n.send_to.includes(role)) return true;
+          // support keys like 'admin' meaning admin/owner group - skip here
+        }
+      } catch (e) {}
+      return false;
+    });
   } catch (err) {
     console.error('Error loading appointment notes:', err);
     return [];
@@ -3854,20 +3992,56 @@ function createNotePanel(note, showActions = true) {
   authorName.style.fontSize = '14px';
   authorName.style.color = '#333';
   let userName = 'Unknown User';
+  let senderRole = null;
   if (note.user) {
-    const fullName = `${note.user.first_name || ''} ${note.user.last_name || ''}`.trim();
+    const fullName = `${note.user.first_name || note.user.first || ''} ${note.user.last_name || note.user.last || ''}`.trim();
     userName = fullName || note.user.email || 'Unknown User';
+    senderRole = note.user.role || note.user.role_name || null;
   }
   authorName.textContent = userName;
-  
+
   const dateInfo = document.createElement('span');
   dateInfo.style.cssText = 'font-size: 12px; color: #666;';
   const createdDate = new Date(note.created_at);
-  const wasEdited = new Date(note.updated_at).getTime() !== createdDate.getTime();
-  dateInfo.textContent = createdDate.toLocaleString() + (wasEdited ? ' (edited)' : '');
-  
-  header.appendChild(authorName);
+  dateInfo.textContent = createdDate.toLocaleString();
+
+  const authorRow = document.createElement('div');
+  authorRow.style.cssText = 'display:flex; align-items:center; gap:8px;';
+  authorRow.appendChild(authorName);
+  let roleKey = (senderRole || '').toString().toLowerCase();
+  let pillLabel = '';
+  let pillBg = '#fbbf24';
+  let pillColor = '#111827';
+  if (roleKey === 'staff') { pillLabel = 'Staff'; pillBg = '#10b981'; pillColor = '#fff'; }
+  else if (roleKey === 'foreman') { pillLabel = 'Foreman'; pillBg = '#3b82f6'; pillColor = '#fff'; }
+  else if (roleKey === 'admin' || roleKey === 'owner') { pillLabel = 'Admin/Owner'; pillBg = '#ef4444'; pillColor = '#fff'; }
+  else if (roleKey) { pillLabel = roleKey.charAt(0).toUpperCase() + roleKey.slice(1); pillBg = '#fbbf24'; pillColor = '#111827'; }
+  if (pillLabel) {
+    const rolePill = document.createElement('span');
+    rolePill.textContent = pillLabel;
+    rolePill.style.cssText = `display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; background:${pillBg}; color:${pillColor}; font-weight:600;`;
+    authorRow.appendChild(rolePill);
+  }
+  header.appendChild(authorRow);
   header.appendChild(dateInfo);
+  // Show subject if present
+  if (note.subject) {
+    const subj = document.createElement('div');
+    subj.style.cssText = 'font-size: 13px; color: #111827; font-weight: 600; margin-top:4px;';
+    subj.textContent = note.subject;
+    header.appendChild(subj);
+  }
+  // Show Sent To info
+  try {
+    const sentToText = (note.send_to && Array.isArray(note.send_to) && note.send_to.length) ? note.send_to.map(s => {
+      const mapping = NOTE_ROLES.find(r => r.key === s);
+      return mapping ? mapping.label : s;
+    }).join(', ') : 'All';
+    const sentTo = document.createElement('div');
+    sentTo.style.cssText = 'font-size:12px; color: #4b5563;';
+    sentTo.textContent = `Sent to: ${sentToText}`;
+    header.appendChild(sentTo);
+  } catch (e) {}
   
   // Note text content
   const content = document.createElement('p');
@@ -3894,7 +4068,7 @@ function createNotePanel(note, showActions = true) {
   if (note.media_urls && note.media_urls.length > 0) {
     const mediaContainer = document.createElement('div');
     // More margin when there's a checkmark button (unread) - 2 buttons need more space
-    const rightMargin = noteIsRead ? '45px' : '85px';
+    const rightMargin = noteIsRead ? '60px' : '100px';
     mediaContainer.style.cssText = `display: flex; flex-wrap: wrap; gap: 8px; max-width: 200px; justify-content: flex-end; margin-right: ${rightMargin};`;
     
     note.media_urls.forEach(media => {
@@ -3944,11 +4118,16 @@ function openAddNoteModal() {
   const modal = document.getElementById('noteModal');
   const title = document.getElementById('noteModalTitle');
   const textarea = document.getElementById('noteText');
+  const subj = document.getElementById('noteSubject');
   
   if (!modal || !title || !textarea) return;
   
   title.textContent = 'Add Note';
   textarea.value = '';
+  if (subj) subj.value = '';
+  // reset send-to selection
+  window.pendingApptNoteSendTo = new Set();
+  renderNoteSendToPills();
   // Ensure this modal appears above any other open modal by temporarily raising z-index
   try {
     modal.dataset._prevZ = modal.style.zIndex || '';
@@ -3966,11 +4145,21 @@ function openEditNoteModal(note) {
   const modal = document.getElementById('noteModal');
   const title = document.getElementById('noteModalTitle');
   const textarea = document.getElementById('noteText');
+  const subj = document.getElementById('noteSubject');
   
   if (!modal || !title || !textarea) return;
   
   title.textContent = 'Edit Note';
   textarea.value = note.note;
+  if (subj) subj.value = note.subject || '';
+  // populate send-to selection
+  try {
+    // Normalize: if note.send_to contains 'all' plus others, drop 'all'
+    let initSend = Array.isArray(note.send_to) ? note.send_to.slice() : [];
+    if (initSend.includes('all') && initSend.length > 1) initSend = initSend.filter(s => s !== 'all');
+    window.pendingApptNoteSendTo = new Set(initSend);
+  } catch (e) { window.pendingApptNoteSendTo = new Set(); }
+  renderNoteSendToPills();
   // Ensure this modal appears above any other open modal by temporarily raising z-index
   try {
     modal.dataset._prevZ = modal.style.zIndex || '';
@@ -4350,18 +4539,29 @@ async function saveNote(e) {
     
     if (currentNoteId) {
       // Update existing note (no media update for edits)
+        const subject = document.getElementById('noteSubject')?.value || null;
+        let sendToArr = Array.from(window.pendingApptNoteSendTo || []);
+        // If both 'all' and specific roles are present, prefer specific roles (remove 'all')
+        if (sendToArr.includes('all') && sendToArr.length > 1) sendToArr = sendToArr.filter(s => s !== 'all');
+        console.log('[ApptNotes] saving update, send_to:', sendToArr);
       const { error } = await supabase
         .from('appointment_notes')
-        .update({ note: noteText })
+        .update({ note: noteText, subject: subject, send_to: sendToArr })
         .eq('id', currentNoteId);
       
       if (error) throw error;
     } else {
       // Create new note with media
+      const subject = document.getElementById('noteSubject')?.value || null;
+      let sendToArr = Array.from(window.pendingApptNoteSendTo || []);
+      if (sendToArr.includes('all') && sendToArr.length > 1) sendToArr = sendToArr.filter(s => s !== 'all');
+      console.log('[ApptNotes] creating note, send_to:', sendToArr);
       const noteData = {
         appointment_id: currentNotesAppointmentId,
         note: noteText || '(Media attached)',
-        created_by: authId
+        created_by: authId,
+        subject: subject,
+        send_to: sendToArr
       };
       
       if (mediaUrls.length > 0) {

@@ -14,6 +14,7 @@ import { getSupabaseClient } from '../helpers/supabase.js';
 import { LS } from '../helpers/constants.js';
 import { saveAppointments } from './appointments.js?v=1767391500';
 import { createShopNotification } from '../helpers/shop-notifications.js';
+import { getCurrentShopId } from '../helpers/multi-shop.js';
 
 // Current job being edited
 let currentJobId = null;
@@ -162,155 +163,177 @@ let lastDisplayedJobIds = new Set();
 
 function injectJobHighlightStyles() {
   if (document.getElementById('jobs-highlight-styles')) return;
-  const style = document.createElement('style');
-  style.id = 'jobs-highlight-styles';
-  style.textContent = `
-    @keyframes jobsClaimFade {
-      0% { background-color: rgba(16, 185, 129, 0); }
-      10% { background-color: rgba(16, 185, 129, 0.25); }
-      50% { background-color: rgba(16, 185, 129, 0.15); }
-      90% { background-color: rgba(16, 185, 129, 0.25); }
-      100% { background-color: rgba(16, 185, 129, 0); }
-    }
-    tr.jobs-new-job-highlight { animation-name: jobsClaimFade; animation-duration: ${HIGHLIGHT_DURATION}ms; animation-timing-function: ease-in-out; animation-iteration-count: 1; animation-fill-mode: forwards; }
-    tr.jobs-new-job-highlight td:first-child::before { content: ''; display: inline-block; width: 8px; height: 8px; background: #10b981; border-radius: 50%; margin-right: 4px; animation: pulse 1s ease-in-out infinite; }
-    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
-    tr.jobs-new-job-fadeout { animation-play-state: paused !important; transition: background-color ${HIGHLIGHT_FADE_MS}ms ease !important; background-color: rgba(16, 185, 129, 0) !important; }
-  `;
-  document.head.appendChild(style);
-}
+    // Use the same layout as appointments' createNotePanel but without edit action
+    const panel = document.createElement('div');
+    const noteIsRead = isNoteRead(note.id);
+    panel.style.cssText = `border: 1px solid ${noteIsRead ? '#ddd' : '#3b82f6'}; border-radius: 8px; padding: 12px; background: ${noteIsRead ? '#f9f9f9' : '#f0f7ff'}; position: relative;`;
+    panel.dataset.noteId = note.id;
 
-function startFadeOutForJobRow(id) {
-  try {
-    const row = document.querySelector(`#jobsTable tbody tr[data-job-id="${id}"]`) || document.querySelector(`#awaitTable tbody tr[data-job-id="${id}"]`);
-    if (!row) return;
-    const comp = getComputedStyle(row).backgroundColor;
-    row.style.backgroundColor = comp;
-    row.style.transition = `background-color ${HIGHLIGHT_FADE_MS}ms ease`;
-    row.classList.remove('jobs-new-job-highlight');
-    // Force reflow
-    // eslint-disable-next-line no-unused-expressions
-    row.offsetWidth;
-    row.style.backgroundColor = 'rgba(16, 185, 129, 0)';
-  } catch (e) {}
-}
+    // Button container (top right)
+    const btnContainer = document.createElement('div');
+    btnContainer.style.cssText = 'position: absolute; top: 8px; right: 8px; display: flex; gap: 4px;';
 
-function applyJobHighlightsToRows() {
-  const rows = document.querySelectorAll('#jobsTable tbody tr, #awaitTable tbody tr');
-  rows.forEach(row => {
-    const jobId = row.dataset.jobId;
-    if (jobId && newJobHighlights.has(jobId)) {
-      if (!row.classList.contains('jobs-new-job-highlight')) {
-        row.classList.remove('jobs-new-job-highlight');
-        // eslint-disable-next-line no-unused-expressions
-        row.offsetWidth;
-        row.classList.add('jobs-new-job-highlight');
-      }
-    } else {
-      row.classList.remove('jobs-new-job-highlight');
-    }
-  });
-}
-
-function generateStatusHash(items) {
-  if (!items || items.length === 0) return 'empty';
-  return items.map(i => `${i.id}:${i.status}:${i.updated_at || ''}`).sort().join('|');
-}
-
-async function pollForStatuses() {
-  try {
-    // Refresh the full jobs set from the source of truth so we can detect
-    // additions and removals as well as status changes. This ensures polling
-    // keeps the Jobs page in sync without requiring a full page refresh.
-    const jobs = await loadJobs();
-    const currentHash = generateStatusHash(jobs || []);
-    const currentIds = new Set((jobs || []).map(j => j.id).filter(Boolean));
-    if (lastKnownStatusHash === null) {
-      // First poll: initialize hashes and displayed id set but do NOT highlight anything
-      lastKnownStatusHash = currentHash;
-      allJobs = jobs || [];
-      lastDisplayedJobIds = currentIds;
-      return;
+    // Mark as read button (checkmark) - only show if unread
+    if (!noteIsRead) {
+      const readBtn = document.createElement('button');
+      readBtn.className = 'btn small';
+      readBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+      readBtn.style.cssText = 'padding: 4px 8px; border-radius: 4px; background: #10b981; color: white;';
+      readBtn.title = 'Mark as read';
+      readBtn.onclick = async (e) => {
+        e.stopPropagation();
+        markNoteAsRead(note.id);
+        // Update panel styling
+        panel.style.border = '1px solid #ddd';
+        panel.style.background = '#f9f9f9';
+        // Hide the read button
+        readBtn.style.display = 'none';
+        // Refresh the table to update dot indicator
+        await renderJobs();
+        showNotification('Note marked as read', 'success');
+      };
+      btnContainer.appendChild(readBtn);
     }
 
-    if (currentHash !== lastKnownStatusHash) {
-      console.log('[StatusPolling] Jobs changed (add/remove/status), refreshing jobs table...');
-      lastKnownStatusHash = currentHash;
-      allJobs = jobs || [];
-      // Determine newly displayed job ids for highlighting
-      try {
-        injectJobHighlightStyles();
-        // Only highlight IDs that are newly present compared to lastDisplayedJobIds
-        for (const id of currentIds) {
-          if (!lastDisplayedJobIds.has(id)) {
-            newJobHighlights.set(id, Date.now());
-            (function(rowId) {
-              setTimeout(() => {
-                try { startFadeOutForJobRow(rowId); } catch (e) {}
-                setTimeout(() => {
-                  newJobHighlights.delete(rowId);
-                  try { applyJobHighlightsToRows(); } catch (e) {}
-                }, HIGHLIGHT_FADE_MS);
-              }, HIGHLIGHT_DURATION);
-            })(id);
-          }
+    // Delete button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn small danger';
+    deleteBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg>';
+    deleteBtn.style.cssText = 'padding: 4px 8px; border-radius: 4px;';
+    deleteBtn.title = 'Delete note';
+    deleteBtn.onclick = (e) => {
+      e.stopPropagation();
+      openDeleteNoteModal(note.id);
+    };
+    btnContainer.appendChild(deleteBtn);
+
+    panel.appendChild(btnContainer);
+
+    // Main content wrapper (flex row for text left, media right)
+    const contentWrapper = document.createElement('div');
+    contentWrapper.style.cssText = 'display: flex; gap: 16px; align-items: flex-start;';
+
+    // Left side - text content
+    const textContent = document.createElement('div');
+    textContent.style.cssText = 'flex: 1; min-width: 0; padding-right: 30px;';
+
+    // Header with author and date
+    const header = document.createElement('div');
+    header.style.cssText = 'display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px;';
+
+    const authorName = document.createElement('strong');
+    authorName.style.fontSize = '14px';
+    authorName.style.color = '#333';
+    let userName = 'Unknown User';
+    let senderRole = null;
+    if (note.user) {
+      const fullName = `${note.user.first_name || note.user.first || ''} ${note.user.last_name || note.user.last || ''}`.trim();
+      userName = fullName || note.user.email || 'Unknown User';
+      senderRole = note.user.role || note.user.role_name || null;
+    }
+    authorName.textContent = userName;
+
+    const dateInfo = document.createElement('span');
+    dateInfo.style.cssText = 'font-size: 12px; color: #666;';
+    const createdDate = new Date(note.created_at);
+    dateInfo.textContent = createdDate.toLocaleString();
+
+    // Create author row with name + role pill (inline)
+    const authorRow = document.createElement('div');
+    authorRow.style.cssText = 'display:flex; align-items:center; gap:8px;';
+    authorRow.appendChild(authorName);
+
+    // Determine pill label and color
+    let roleKey = (senderRole || '').toString().toLowerCase();
+    let pillLabel = '';
+    let pillBg = '#fbbf24';
+    let pillColor = '#111827';
+    if (roleKey === 'staff') { pillLabel = 'Staff'; pillBg = '#10b981'; pillColor = '#fff'; }
+    else if (roleKey === 'foreman') { pillLabel = 'Foreman'; pillBg = '#3b82f6'; pillColor = '#fff'; }
+    else if (roleKey === 'admin' || roleKey === 'owner') { pillLabel = 'Admin/Owner'; pillBg = '#ef4444'; pillColor = '#fff'; }
+    else if (roleKey) { pillLabel = roleKey.charAt(0).toUpperCase() + roleKey.slice(1); pillBg = '#fbbf24'; pillColor = '#111827'; }
+
+    if (pillLabel) {
+      const rolePill = document.createElement('span');
+      rolePill.textContent = pillLabel;
+      rolePill.style.cssText = `display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; background:${pillBg}; color:${pillColor}; font-weight:600;`;
+      authorRow.appendChild(rolePill);
+    }
+
+    header.appendChild(authorRow);
+    header.appendChild(dateInfo);
+    // Show subject if present
+    if (note.subject) {
+      const subj = document.createElement('div');
+      subj.style.cssText = 'font-size: 13px; color: #111827; font-weight: 600; margin-top:4px;';
+      subj.textContent = note.subject;
+      header.appendChild(subj);
+    }
+    // Show Sent To info
+    try {
+      const sentToText = (note.send_to && Array.isArray(note.send_to) && note.send_to.length) ? note.send_to.map(s => {
+        const mapping = NOTE_ROLES.find(r => r.key === s);
+        return mapping ? mapping.label : s;
+      }).join(', ') : 'All';
+      const sentTo = document.createElement('div');
+      sentTo.style.cssText = 'font-size:12px; color: #4b5563;';
+      sentTo.textContent = `Sent to: ${sentToText}`;
+      header.appendChild(sentTo);
+    } catch (e) {}
+
+    // Note text content
+    const content = document.createElement('p');
+    content.style.cssText = 'margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; color: #333;';
+    content.textContent = note.note;
+
+    textContent.appendChild(header);
+    textContent.appendChild(content);
+    contentWrapper.appendChild(textContent);
+
+    // Right side - media thumbnails
+    if (note.media_urls && note.media_urls.length > 0) {
+      const mediaContainer = document.createElement('div');
+      const rightMargin = noteIsRead ? '60px' : '100px';
+      mediaContainer.style.cssText = `display: flex; flex-wrap: wrap; gap: 8px; max-width: 200px; justify-content: flex-end; margin-right: ${rightMargin};`;
+
+      note.media_urls.forEach(media => {
+        const thumb = document.createElement('div');
+        thumb.style.cssText = 'width: 60px; height: 60px; border-radius: 6px; overflow: hidden; cursor: pointer; background: #ddd; display: flex; align-items: center; justify-content: center; flex-shrink: 0;';
+
+        if (media.type === 'video') {
+          thumb.innerHTML = `
+            <div style="position: relative; width: 100%; height: 100%;">
+              <video src="${media.url}" style="width: 100%; height: 100%; object-fit: cover;"></video>
+              <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.6); border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;">
+                <span style="color: white; font-size: 12px; margin-left: 2px;">▶</span>
+              </div>
+            </div>
+          `;
+        } else {
+          const img = document.createElement('img');
+          img.src = media.url;
+          img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
+          img.alt = 'Note attachment';
+          thumb.appendChild(img);
         }
-        lastDisplayedJobIds = currentIds;
-      } catch (e) { console.warn('[StatusPolling] highlight error:', e); }
 
-      await renderJobs();
-      // Ensure highlights are applied after render
-      try { applyJobHighlightsToRows(); } catch (e) {}
+        thumb.onclick = (e) => {
+          e.stopPropagation();
+          openMediaPreview(media.url, media.type);
+        };
+
+        mediaContainer.appendChild(thumb);
+      });
+
+      contentWrapper.appendChild(mediaContainer);
     }
-  } catch (e) {
-    console.warn('[StatusPolling] Error polling statuses:', e);
+
+    panel.appendChild(contentWrapper);
+
+    return panel;
   }
-}
 
-function startStatusPolling() {
-  if (statusPollingInterval) clearInterval(statusPollingInterval);
-  pollForStatuses();
-  statusPollingInterval = setInterval(pollForStatuses, STATUS_POLL_INTERVAL);
-  console.log(`[StatusPolling] Started polling every ${STATUS_POLL_INTERVAL / 1000} seconds`);
-}
-
-function stopStatusPolling() {
-  if (statusPollingInterval) {
-    clearInterval(statusPollingInterval);
-    statusPollingInterval = null;
-    console.log('[StatusPolling] Stopped polling');
-  }
-}
-
-/**
- * Get current user's shop ID
- */
-function getCurrentShopId() {
-  try {
-    const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
-    return session.shopId || null;
-  } catch (e) {
-    return null;
-  }
-}
-
-/**
- * Get current user info
- */
-function getCurrentUser() {
-  try {
-    const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
-    const users = JSON.parse(localStorage.getItem('xm_users') || '[]');
-    return users.find(u => u.email === session.email) || {};
-  } catch (e) {
-    return {};
-  }
-}
-
-/**
- * Get current authenticated user's ID
- */
-async function getCurrentAuthId() {
+  async function getCurrentAuthId() {
   const supabase = getSupabaseClient();
   if (!supabase) return null;
   
@@ -1610,15 +1633,94 @@ async function loadAppointmentNotes(appointmentId) {
       console.warn('[Jobs] Could not fetch shop_staff table data:', e);
     }
     
-    // Attach user data to each note
-    return notes.map(note => ({
-      ...note,
-      user: userMap.get(note.created_by) || null
-    }));
+    // Normalize send_to and attach user data to each note
+    // Also enforce send-to visibility: only return notes the current user may see
+    const normalized = notes.map(note => {
+      let sendTo = note.send_to;
+      if (!Array.isArray(sendTo)) {
+        if (typeof sendTo === 'string') {
+          try { sendTo = JSON.parse(sendTo); } catch (e) { sendTo = [sendTo]; }
+        } else {
+          sendTo = [];
+        }
+      }
+      return { ...note, user: userMap.get(note.created_by) || null, send_to: sendTo };
+    });
+
+    // Determine current user's role and identity
+    let role = 'staff';
+    try { role = await fetchCurrentUserRole(); } catch (e) {}
+    const isAdminView = (role === 'admin' || role === 'owner');
+
+    // Get current user identity to allow creators to always see their notes
+    let currentUser = null;
+    let currentAuthId = null;
+    try {
+      currentUser = await getCurrentUserWithRole().catch(() => null);
+      const { data: authData } = await getSupabaseClient().auth.getUser();
+      currentAuthId = authData?.user?.id || null;
+    } catch (e) {}
+
+    if (isAdminView) return normalized;
+
+    return normalized.filter(n => {
+      try {
+        // Creator always sees their own notes
+        if (n.created_by && (n.created_by === (currentUser?.id) || n.created_by === (currentUser?.auth_id) || n.created_by === currentAuthId)) return true;
+        if (!n.send_to || n.send_to.length === 0) return true; // legacy visible to all
+        if (Array.isArray(n.send_to)) {
+          if (n.send_to.includes('all')) return true;
+          if (n.send_to.includes(role)) return true;
+        }
+      } catch (e) {}
+      return false;
+    });
   } catch (err) {
     console.error('[Jobs] Error loading appointment notes:', err);
     return [];
   }
+}
+
+// Fetch the current user's role (similar to appointments.js)
+let cachedUserRole = null;
+async function fetchCurrentUserRole() {
+  if (cachedUserRole) return cachedUserRole;
+  const supabase = getSupabaseClient();
+  const shopId = getCurrentShopId();
+  try {
+    if (supabase) {
+      const { data: authData } = await supabase.auth.getUser();
+      const authId = authData?.user?.id;
+      if (authId && shopId) {
+        try {
+          const { data: staffRow } = await supabase
+            .from('shop_staff')
+            .select('role')
+            .eq('auth_id', authId)
+            .eq('shop_id', shopId)
+            .limit(1)
+            .single();
+          if (staffRow && staffRow.role) { cachedUserRole = staffRow.role; return cachedUserRole; }
+        } catch (e) {}
+        try {
+          const { data: userRow } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', authId)
+            .limit(1)
+            .single();
+          if (userRow && userRow.role) { cachedUserRole = userRow.role; return cachedUserRole; }
+        } catch (e) {}
+      }
+    }
+  } catch (e) {}
+  try {
+    const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
+    const users = JSON.parse(localStorage.getItem('xm_users') || '[]');
+    const u = users.find(x => x.email === session.email) || {};
+    cachedUserRole = u.role || u.shop_staff_role || 'staff';
+    return cachedUserRole;
+  } catch (e) { return 'staff'; }
 }
 
 /**
@@ -1686,20 +1788,56 @@ function createJobViewNotePanel(note) {
   authorName.style.fontSize = '14px';
   authorName.style.color = '#333';
   let userName = 'Unknown User';
+  let senderRole = null;
   if (note.user) {
-    const fullName = `${note.user.first_name || ''} ${note.user.last_name || ''}`.trim();
+    const fullName = `${note.user.first_name || note.user.first || ''} ${note.user.last_name || note.user.last || ''}`.trim();
     userName = fullName || note.user.email || 'Unknown User';
+    senderRole = note.user.role || note.user.role_name || null;
   }
   authorName.textContent = userName;
   
   const dateInfo = document.createElement('span');
   dateInfo.style.cssText = 'font-size: 12px; color: #666;';
   const createdDate = new Date(note.created_at);
-  const wasEdited = new Date(note.updated_at).getTime() !== createdDate.getTime();
-  dateInfo.textContent = createdDate.toLocaleString() + (wasEdited ? ' (edited)' : '');
-  
-  header.appendChild(authorName);
+  dateInfo.textContent = createdDate.toLocaleString();
+
+  const authorRow = document.createElement('div');
+  authorRow.style.cssText = 'display:flex; align-items:center; gap:8px;';
+  authorRow.appendChild(authorName);
+  let roleKey = (senderRole || '').toString().toLowerCase();
+  let pillLabel = '';
+  let pillBg = '#fbbf24';
+  let pillColor = '#111827';
+  if (roleKey === 'staff') { pillLabel = 'Staff'; pillBg = '#10b981'; pillColor = '#fff'; }
+  else if (roleKey === 'foreman') { pillLabel = 'Foreman'; pillBg = '#3b82f6'; pillColor = '#fff'; }
+  else if (roleKey === 'admin' || roleKey === 'owner') { pillLabel = 'Admin/Owner'; pillBg = '#ef4444'; pillColor = '#fff'; }
+  else if (roleKey) { pillLabel = roleKey.charAt(0).toUpperCase() + roleKey.slice(1); pillBg = '#fbbf24'; pillColor = '#111827'; }
+  if (pillLabel) {
+    const rolePill = document.createElement('span');
+    rolePill.textContent = pillLabel;
+    rolePill.style.cssText = `display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; background:${pillBg}; color:${pillColor}; font-weight:600;`;
+    authorRow.appendChild(rolePill);
+  }
+  header.appendChild(authorRow);
   header.appendChild(dateInfo);
+  // Show subject if present
+  if (note.subject) {
+    const subj = document.createElement('div');
+    subj.style.cssText = 'font-size: 13px; color: #111827; font-weight: 600; margin-top:4px;';
+    subj.textContent = note.subject;
+    header.appendChild(subj);
+  }
+  // Show Sent To info
+  try {
+    const sentToText = (note.send_to && Array.isArray(note.send_to) && note.send_to.length) ? note.send_to.map(s => {
+      const mapping = NOTE_ROLES.find(r => r.key === s);
+      return mapping ? mapping.label : s;
+    }).join(', ') : 'All';
+    const sentTo = document.createElement('div');
+    sentTo.style.cssText = 'font-size:12px; color: #4b5563;';
+    sentTo.textContent = `Sent to: ${sentToText}`;
+    header.appendChild(sentTo);
+  } catch (e) {}
   
   // Note text content
   const content = document.createElement('p');
@@ -1714,7 +1852,7 @@ function createJobViewNotePanel(note) {
   if (note.media_urls && note.media_urls.length > 0) {
     const mediaContainer = document.createElement('div');
     // More margin when there's a checkmark button (unread) - 2 buttons need more space
-    const rightMargin = noteIsRead ? '45px' : '85px';
+    const rightMargin = noteIsRead ? '60px' : '100px';
     mediaContainer.style.cssText = `display: flex; flex-wrap: wrap; gap: 8px; max-width: 200px; justify-content: flex-end; margin-right: ${rightMargin};`;
     
     note.media_urls.forEach(media => {
@@ -1786,11 +1924,16 @@ function openJobAddNoteModal() {
   const modal = document.getElementById('jobNoteModal');
   const title = document.getElementById('jobNoteModalTitle');
   const textarea = document.getElementById('jobNoteText');
+  const subj = document.getElementById('noteSubject');
   
   if (!modal || !title || !textarea) return;
   
   title.textContent = 'Add Note';
   textarea.value = '';
+  if (subj) subj.value = '';
+  // reset send-to
+  window.pendingJobNoteSendTo = new Set();
+  renderNoteSendToPills();
   modal.classList.remove('hidden');
   textarea.focus();
 }
@@ -1817,6 +1960,51 @@ window.closeJobNoteModal = closeJobNoteModal;
 // Pending media files for note upload
 let pendingNoteMedia = [];
 let noteToDeleteId = null;
+// Pending send-to roles for note modal
+if (!window.pendingJobNoteSendTo) window.pendingJobNoteSendTo = new Set();
+
+const NOTE_ROLES = [
+  { key: 'admin', label: 'Admin/Owner' },
+  { key: 'service_writer', label: 'Service Writer' },
+  { key: 'receptionist', label: 'Receptionist' },
+  { key: 'foreman', label: 'Foreman' },
+  { key: 'staff', label: 'Staff' },
+  { key: 'all', label: 'All' }
+];
+
+function renderNoteSendToPills() {
+  try {
+    const container = document.getElementById('noteSendToPills');
+    if (!container) return;
+    container.innerHTML = '';
+    NOTE_ROLES.forEach(r => {
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'btn small';
+      pill.textContent = r.label;
+      pill.dataset.role = r.key;
+      pill.style.borderRadius = '999px';
+      pill.style.padding = '6px 10px';
+      pill.style.background = window.pendingJobNoteSendTo.has(r.key) ? '#10b981' : '#f3f4f6';
+      pill.style.color = window.pendingJobNoteSendTo.has(r.key) ? '#fff' : '#111827';
+      pill.onclick = (e) => {
+        e.preventDefault();
+        const key = pill.dataset.role;
+        if (!key) return;
+        if (key === 'all') {
+          window.pendingJobNoteSendTo.clear();
+          window.pendingJobNoteSendTo.add('all');
+        } else {
+          window.pendingJobNoteSendTo.delete('all');
+          if (window.pendingJobNoteSendTo.has(key)) window.pendingJobNoteSendTo.delete(key);
+          else window.pendingJobNoteSendTo.add(key);
+        }
+        renderNoteSendToPills();
+      };
+      container.appendChild(pill);
+    });
+  } catch (e) { console.warn('renderNoteSendToPills failed', e); }
+}
 
 /**
  * Handle media file selection for notes
@@ -2108,11 +2296,18 @@ async function saveJobNote(e) {
       mediaUrls = await uploadNoteMedia(pendingNoteMedia, currentJobNotesAppointmentId);
     }
     
-    // Create new note with media
+    // Create new note with media, subject and send_to
+    const subject = document.getElementById('noteSubject')?.value || null;
+    let sendToArr = Array.from(window.pendingJobNoteSendTo || []);
+    if (sendToArr.includes('all') && sendToArr.length > 1) sendToArr = sendToArr.filter(s => s !== 'all');
+    console.log('[SaveNote] creating note, send_to:', sendToArr);
+
     const noteData = {
       appointment_id: currentJobNotesAppointmentId,
       note: noteText || '(Media attached)',
-      created_by: authId
+      created_by: authId,
+      subject: subject,
+      send_to: sendToArr
     };
     
     // Add media_urls if we have any
