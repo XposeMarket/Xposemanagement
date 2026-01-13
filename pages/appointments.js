@@ -3812,19 +3812,20 @@ async function loadAppointmentNotes(appointmentId) {
     // Create a map of userId -> user for easy lookup
     const userMap = new Map();
     
-    // Fetch user data from users table (admins/shop owners) - columns: first, last, email
+    // Fetch user data from users table (admins/shop owners)
     try {
       const { data: users, error: userError } = await supabase
         .from('users')
-        .select('id, first, last, email')
+        .select('id, first, last, email, role')
         .in('id', userIds);
-      
-      if (!userError && users) {
+
+      if (!userError && Array.isArray(users)) {
         users.forEach(u => {
           userMap.set(u.id, {
             first_name: u.first,
             last_name: u.last,
-            email: u.email
+            email: u.email,
+            role: u.role || 'admin'
           });
         });
       }
@@ -3832,23 +3833,27 @@ async function loadAppointmentNotes(appointmentId) {
       console.warn('Could not fetch users table data:', e);
     }
     
-    // Fetch user data from shop_staff table (staff members) - columns: first_name, last_name, email
+    // Fetch user data from shop_staff table (staff members).
+    // Note: created_by may contain a shop_staff.auth_id (uuid) OR the numeric shop_staff.id
     try {
-      const { data: staff, error: staffError } = await supabase
+      const shopId = getCurrentShopId();
+      const { data: staffRows, error: staffErr } = await supabase
         .from('shop_staff')
-        .select('auth_id, first_name, last_name, email')
-        .in('auth_id', userIds);
-      
-      if (!staffError && staff) {
-        staff.forEach(s => {
-          // Only set if not already found in users table
-          if (!userMap.has(s.auth_id)) {
-            userMap.set(s.auth_id, {
-              first_name: s.first_name,
-              last_name: s.last_name,
-              email: s.email
-            });
-          }
+        .select('id, auth_id, first_name, last_name, email, role')
+        .eq('shop_id', shopId);
+
+      if (!staffErr && Array.isArray(staffRows)) {
+        staffRows.forEach(s => {
+          const entry = {
+            first_name: s.first_name,
+            last_name: s.last_name,
+            email: s.email,
+            role: s.role || 'staff'
+          };
+          // Map by auth_id (uuid) if present
+          if (s.auth_id) userMap.set(s.auth_id, entry);
+          // Also map by numeric id (string) to cover older notes that stored shop_staff.id
+          if (s.id !== undefined && s.id !== null) userMap.set(String(s.id), entry);
         });
       }
     } catch (e) {
@@ -3879,7 +3884,8 @@ async function loadAppointmentNotes(appointmentId) {
           sendTo = [];
         }
       }
-      return { ...note, user: userMap.get(note.created_by) || null, send_to: sendTo };
+      const key = (note.created_by !== undefined && note.created_by !== null) ? String(note.created_by) : note.created_by;
+      return { ...note, user: (userMap.get(key) || userMap.get(note.created_by) || null), send_to: sendTo };
     });
 
     if (isAdminView) return enriched;
