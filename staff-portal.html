@@ -24,7 +24,7 @@
         /* Staff Portal Specific Styles */
         .staff-portal-container {
             min-height: 100vh;
-            background: #4f46e5; /* Solid indigo color */
+            background: #f7f7f6; /* Off-white to subtly contrast panel */
             display: flex;
             align-items: center;
             justify-content: center;
@@ -478,8 +478,19 @@
             document.getElementById('staffName').textContent = authUser.email;
             
             // Customize shop logo color
+            const shopLogoEl = document.getElementById('shopLogo');
             if (shop.accent_color) {
-                document.getElementById('shopLogo').style.background = shop.accent_color;
+                shopLogoEl.style.background = shop.accent_color;
+            }
+
+            // If the shop has an uploaded logo, show it instead of the initial
+            if (shop.logo) {
+                try {
+                    shopLogoEl.style.background = 'transparent';
+                    shopLogoEl.innerHTML = `<img id="shopLogoImg" src="${shop.logo}" alt="${(shop.name||'Shop')} Logo" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+                } catch (e) {
+                    console.warn('Failed to render shop logo image, falling back to initial', e);
+                }
             }
             
             // Check for active clock-in
