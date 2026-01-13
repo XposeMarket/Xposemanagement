@@ -3108,30 +3108,61 @@ async function updateAppointmentStatus(apptId, newStatus) {
           const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           const validJobIds = jobIds.filter(id => uuidRe.test(String(id)));
           const skippedIds = jobIds.filter(id => !uuidRe.test(String(id)));
-          if (skippedIds.length) console.warn('[updateAppointmentStatus] Skipping non-UUID job ids when deleting parts/labor:', skippedIds);
+          if (skippedIds.length) console.warn('[updateAppointmentStatus] Found non-UUID job ids (will attempt join-based deletes):', skippedIds);
 
-          // Delete all parts for these jobs (only UUIDs)
+          // First, delete job_parts for valid UUID job IDs
           if (validJobIds.length) {
             const { error: partsError } = await supabase
               .from('job_parts')
               .delete()
               .in('job_id', validJobIds);
-            if (partsError) console.error('[updateAppointmentStatus] Error deleting job_parts:', partsError);
-            else console.log('✅ Deleted parts for jobs');
+            if (partsError) console.error('[updateAppointmentStatus] Error deleting job_parts by job_id:', partsError);
+            else console.log('✅ Deleted parts for UUID jobs');
           } else {
             console.log('No valid UUID job_ids to delete job_parts for.');
           }
 
-          // Delete all labor for these jobs (only UUIDs)
+          // For any non-UUID job ids (temporary ids), attempt to delete related job_parts
+          // by joining to the jobs table via appointment_id. This avoids passing
+          // non-UUID values to UUID columns and removes orphaned parts/labor.
+          if (skippedIds.length) {
+            try {
+              // Delete job_parts where the parent job has this appointment_id
+              const { error: partsJoinErr } = await supabase
+                .from('job_parts')
+                .delete()
+                .eq('jobs.appointment_id', appt.id);
+              if (partsJoinErr) console.error('[updateAppointmentStatus] Error deleting job_parts via jobs join:', partsJoinErr);
+              else console.log('✅ Deleted parts for jobs via jobs.appointment_id join');
+            } catch (e) {
+              console.error('[updateAppointmentStatus] Exception deleting job_parts via join:', e);
+            }
+          }
+
+          // Delete labor for valid UUID job IDs
           if (validJobIds.length) {
             const { error: laborError } = await supabase
               .from('job_labor')
               .delete()
               .in('job_id', validJobIds);
-            if (laborError) console.error('[updateAppointmentStatus] Error deleting job_labor:', laborError);
-            else console.log('✅ Deleted labor for jobs');
+            if (laborError) console.error('[updateAppointmentStatus] Error deleting job_labor by job_id:', laborError);
+            else console.log('✅ Deleted labor for UUID jobs');
           } else {
             console.log('No valid UUID job_ids to delete job_labor for.');
+          }
+
+          // For any non-UUID job ids, delete job_labor via jobs.appointment_id join
+          if (skippedIds.length) {
+            try {
+              const { error: laborJoinErr } = await supabase
+                .from('job_labor')
+                .delete()
+                .eq('jobs.appointment_id', appt.id);
+              if (laborJoinErr) console.error('[updateAppointmentStatus] Error deleting job_labor via jobs join:', laborJoinErr);
+              else console.log('✅ Deleted labor for jobs via jobs.appointment_id join');
+            } catch (e) {
+              console.error('[updateAppointmentStatus] Exception deleting job_labor via join:', e);
+            }
           }
 
           // Delete the jobs themselves (use original jobIds returned from jobs table)

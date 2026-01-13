@@ -191,12 +191,57 @@ async function pollForemanDataUpdates() {
     const shopId = getCurrentShopId();
     if (!supabase || !shopId) return;
 
-    const { data } = await supabase.from('data').select('jobs,appointments').eq('shop_id', shopId).single();
-    const jobs = data?.jobs || [];
-    const appointments = data?.appointments || [];
+    // Prefer canonical `jobs` table for foreman board and also pull appointments
+    // with statuses relevant to foremen (new/scheduled). If a job row doesn't
+    // exist for an appointment in those statuses, derive a job-like entry so the
+    // board reflects appointment state accurately.
+    let jobs = [];
+    let appointments = [];
+    try {
+      const { data: jobsTable, error: jobsErr } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('shop_id', shopId)
+        .in('status', FOREMAN_STATUSES);
+
+      const jobsFromTable = (!jobsErr && Array.isArray(jobsTable)) ? jobsTable : [];
+
+      const { data: apptsTable, error: apptErr } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('shop_id', shopId)
+        .in('status', FOREMAN_STATUSES);
+
+      const apptsFromTable = (!apptErr && Array.isArray(apptsTable)) ? apptsTable : [];
+
+      // Derive job-like entries from appointments that don't have a job row
+      const derivedFromAppts = (apptsFromTable || []).filter(a => !jobsFromTable.find(j => String(j.appointment_id) === String(a.id))).map(a => ({
+        id: a.id,
+        appointment_id: a.id,
+        customer: a.customer || '',
+        vehicle: a.vehicle || '',
+        service: a.service || a.service_requested || '',
+        status: a.status || 'new',
+        created_at: a.created_at,
+        updated_at: a.updated_at
+      }));
+
+      jobs = jobsFromTable.concat(derivedFromAppts);
+      appointments = apptsFromTable;
+    } catch (e) {
+      // Fallback to data JSONB if queries fail
+      try {
+        const { data } = await supabase.from('data').select('jobs,appointments').eq('shop_id', shopId).single();
+        jobs = data?.jobs || [];
+        appointments = data?.appointments || [];
+      } catch (e2) {
+        jobs = [];
+        appointments = [];
+      }
+    }
 
     // Filter to appointments that matter to the foreman board (new/scheduled)
-    const relevantAppts = (appointments || []).filter(a => (a.status || 'new') === 'new' || (a.status || '') === 'scheduled');
+    const relevantAppts = (appointments || []).filter(a => FOREMAN_STATUSES.includes(a.status || 'new'));
 
     const currentHash = generateForemanDataHash(jobs, relevantAppts);
     // Build current job id set (use appointment_id fallback)
@@ -618,6 +663,9 @@ async function assignJobToStaff(apptId, staffAuthId, staffName) {
         id: job.id,
         shop_id: shopId,
         appointment_id: appt.id,
+        customer: job.customer || appt.customer || '',
+        vehicle: job.vehicle || appt.vehicle || '',
+        service: job.service || appt.service || appt.service_requested || '',
         assigned_to: staffAuthId,
         status: 'in_progress',
         created_at: job.created_at,
@@ -633,6 +681,9 @@ async function assignJobToStaff(apptId, staffAuthId, staffName) {
       await supabase.from('jobs').update({
         assigned_to: staffAuthId,
         status: 'in_progress',
+        customer: job.customer || appt.customer || '',
+        vehicle: job.vehicle || appt.vehicle || '',
+        service: job.service || appt.service || appt.service_requested || '',
         updated_at: job.updated_at
       }).eq('id', job.id);
     }
@@ -720,6 +771,9 @@ async function sendToClaimBoard(apptId) {
         id: job.id,
         shop_id: shopId,
         appointment_id: appt.id,
+        customer: job.customer || appt.customer || '',
+        vehicle: job.vehicle || appt.vehicle || '',
+        service: job.service || appt.service || appt.service_requested || '',
         assigned_to: null,
         status: 'in_progress',
         created_at: job.created_at,
@@ -735,6 +789,9 @@ async function sendToClaimBoard(apptId) {
       await supabase.from('jobs').update({
         assigned_to: null,
         status: 'in_progress',
+        customer: job.customer || appt.customer || '',
+        vehicle: job.vehicle || appt.vehicle || '',
+        service: job.service || appt.service || appt.service_requested || '',
         updated_at: job.updated_at
       }).eq('id', job.id);
     }
@@ -926,16 +983,108 @@ async function initForemanBoard() {
   };
   
   try {
-    const appts = await loadAppointments();
-    const filtered = (appts || []).filter(a => FOREMAN_STATUSES.includes(a.status));
-    currentFilteredAppts = filtered;
-    console.log(`🔎 Found ${filtered.length} job board appointments`);
-    setDisplayedAppointments(filtered);
-    await renderAppointments(filtered);
+    const supabase = getSupabaseClient();
+    const shopId = getCurrentShopId();
+    let jobs = [];
+    let appointments = [];
+
+    if (supabase && shopId) {
+      try {
+        const { data: jobsTable, error: jobsErr } = await supabase
+          .from('jobs')
+          .select('*')
+          .eq('shop_id', shopId)
+          .in('status', FOREMAN_STATUSES)
+          .is('assigned_to', null);
+
+        const jobsFromTable = (!jobsErr && Array.isArray(jobsTable)) ? jobsTable : [];
+
+        const { data: apptsTable, error: apptErr } = await supabase
+          .from('appointments')
+          .select('*')
+          .eq('shop_id', shopId)
+          .in('status', FOREMAN_STATUSES);
+
+        const apptsFromTable = (!apptErr && Array.isArray(apptsTable)) ? apptsTable : [];
+
+        const derivedFromAppts = (apptsFromTable || []).filter(a => !jobsFromTable.find(j => String(j.appointment_id) === String(a.id))).map(a => ({
+          id: a.id,
+          appointment_id: a.id,
+          customer: a.customer || '',
+          vehicle: a.vehicle || '',
+          service: a.service || a.service_requested || '',
+          status: a.status || 'new',
+          created_at: a.created_at,
+          updated_at: a.updated_at
+        }));
+
+        jobs = jobsFromTable.concat(derivedFromAppts);
+        appointments = apptsFromTable;
+      } catch (e) {
+        console.warn('[foreman] Could not load jobs/appointments from Supabase, falling back to appointments:', e);
+        const appts = await loadAppointments();
+        appointments = appts || [];
+        jobs = [];
+      }
+    } else {
+      const appts = await loadAppointments();
+      appointments = appts || [];
+    }
+
+    // Build the rendered set from jobs + derived appointments
+    // Enrich missing customer/vehicle/service from appointments when available
+    let apptLookup = new Map();
+    try {
+      const appts = await loadAppointments();
+      apptLookup = new Map((appts || []).map(a => [String(a.id || a.appointment_id), a]));
+    } catch (e) {
+      console.warn('[foreman] Could not load appointments for enrichment:', e);
+    }
+
+    let rendered = (jobs || []).map(j => {
+      const apptKey = String(j.appointment_id || j.id || '');
+      const appt = apptLookup.get(apptKey) || {};
+      const customer = j.customer || appt.customer || ((appt.customer_first || appt.customer_last) ? `${appt.customer_first || ''} ${appt.customer_last || ''}`.trim() : 'N/A');
+      const vehicle = j.vehicle || appt.vehicle || (appt.vehicle_make ? `${appt.vehicle_make} ${appt.vehicle_model || ''}`.trim() : (appt.vehicle || ''));
+      const service = j.service || appt.service || appt.service_requested || '';
+      const preferred_date = appt.preferred_date || appt.date || '';
+      const preferred_time = appt.preferred_time || appt.time || '';
+      return {
+        id: j.appointment_id || j.id,
+        customer: customer || '',
+        vehicle: vehicle || '',
+        service: service || '',
+        preferred_date: preferred_date || null,
+        preferred_time: preferred_time || null,
+        status: j.status || 'new',
+        created_at: j.created_at || new Date().toISOString(),
+        updated_at: j.updated_at || new Date().toISOString()
+      };
+    });
+
+    // If no job rows were found but we have appointments data (e.g., supabase
+    // query failed or jobs table is empty), fall back to rendering appointments
+    // filtered by foreman statuses so the board still shows new/scheduled items.
+    if ((!rendered || rendered.length === 0) && Array.isArray(appointments) && appointments.length) {
+      rendered = (appointments || []).map(a => ({
+        id: a.id,
+        customer: a.customer || '',
+        vehicle: a.vehicle || '',
+        service: a.service || a.service_requested || '',
+        status: a.status || 'new',
+        created_at: a.created_at || new Date().toISOString(),
+        updated_at: a.updated_at || new Date().toISOString()
+      })).filter(a => FOREMAN_STATUSES.includes(a.status || 'new'));
+    }
+
+    currentFilteredAppts = rendered;
+    console.log(`🔎 Found ${rendered.length} job board appointments (jobs:${(jobs||[]).length} appts:${(appointments||[]).length})`);
+    setDisplayedAppointments(rendered);
+    await renderAppointments(rendered);
 
     // Wait for DOM to update, then customize buttons
     await new Promise(resolve => setTimeout(resolve, 50));
-    customizeForemanButtons(filtered, role);
+    customizeForemanButtons(currentFilteredAppts, role);
 
     try { initAppointmentNotes(); } catch (e) { console.warn('initAppointmentNotes failed:', e); }
     try { startNotesPolling(); } catch (e) { console.warn('startNotesPolling failed:', e); }

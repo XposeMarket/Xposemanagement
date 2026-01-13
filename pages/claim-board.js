@@ -181,12 +181,76 @@ async function pollForDataUpdates() {
     const shopId = getCurrentShopId();
     if (!supabase || !shopId) return;
     
-    const { data } = await supabase.from('data').select('jobs').eq('shop_id', shopId).single();
-    const jobs = data?.jobs || [];
-    
+    // Build unassigned jobs from the canonical `jobs` table and fall back to
+    // appointments when a job row doesn't exist for an appointment. This
+    // ensures that when a job row is removed (e.g., status -> scheduled)
+    // the Claim Board will respect the appointment status and remove the row.
+    let jobs = [];
+    try {
+      const { data: jobsTable, error: jobsErr } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('shop_id', shopId)
+        .is('assigned_to', null);
+
+      const jobsFromTable = (!jobsErr && Array.isArray(jobsTable)) ? jobsTable : [];
+
+      // Fetch appointments that represent active jobable statuses
+      const { data: apptsTable, error: apptErr } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('shop_id', shopId)
+        .in('status', ['in_progress', 'awaiting_parts']);
+
+      const apptsFromTable = (!apptErr && Array.isArray(apptsTable)) ? apptsTable : [];
+
+      // Convert appointments that don't already have a job row into job-like objects
+      const derivedFromAppts = (apptsFromTable || []).filter(a => !jobsFromTable.find(j => String(j.appointment_id) === String(a.id))).map(a => ({
+        id: a.id,
+        appointment_id: a.id,
+        customer: a.customer || '',
+        vehicle: a.vehicle || '',
+        service: a.service || a.service_requested || '',
+        status: a.status || 'in_progress',
+        created_at: a.created_at,
+        updated_at: a.updated_at
+      }));
+
+      jobs = jobsFromTable.concat(derivedFromAppts);
+    } catch (e) {
+      // Best-effort fallback to data.jobs JSONB if queries fail
+      try {
+        const { data } = await supabase.from('data').select('jobs').eq('shop_id', shopId).single();
+        jobs = data?.jobs || [];
+      } catch (e2) {
+        jobs = [];
+      }
+    }
+
     // Filter to unassigned jobs only
-    const unassigned = jobs.filter(j => !j.assigned_to);
-    
+    let unassigned = (jobs || []).filter(j => !j.assigned_to);
+
+    // Verify appointment statuses for these jobs and exclude rows whose
+    // appointments are no longer in an active jobable state.
+    try {
+      const appointmentIds = Array.from(new Set(unassigned.map(j => String(j.appointment_id)).filter(Boolean)));
+      if (appointmentIds.length) {
+        const { data: apptRows, error: apptErr } = await supabase
+          .from('appointments')
+          .select('id,status')
+          .in('id', appointmentIds);
+        const apptMap = (apptRows || []).reduce((m, r) => { if (r && r.id) m[String(r.id)] = r.status; return m; }, {});
+        unassigned = unassigned.filter(j => {
+          const aId = String(j.appointment_id || '');
+          if (!aId) return (j.status === 'in_progress' || j.status === 'awaiting_parts');
+          const st = apptMap[aId];
+          return (st === 'in_progress' || st === 'awaiting_parts');
+        });
+      }
+    } catch (e) {
+      console.warn('[claim-board] Could not verify appointment statuses during polling:', e);
+    }
+
     const currentHash = generateDataHash(unassigned);
     
     if (lastKnownDataHash === null) {
@@ -355,9 +419,79 @@ function createRemoveModalClaim() {
     try {
       await setSuppressAutoJob(apptId);
     } catch (e) { console.warn('Failed to set suppress flag for appointment', e); }
-    await performSendJobBackToScheduled(apptId);
+    // If current user is foreman, don't delete appointment — just send back to scheduled
+    try {
+      const role = await fetchCurrentUserRole();
+      if (role === 'foreman') {
+        await performSendJobBackToScheduled(apptId);
+      } else {
+        // Admin/owner: fully remove appointment and related job data
+        await performDeleteAppointment(apptId);
+      }
+    } catch (e) {
+      console.warn('[claim-board] removeJobAppt handler failed:', e);
+      await performSendJobBackToScheduled(apptId);
+    }
   };
   
+}
+
+/**
+ * Fully delete an appointment and its related jobs/invoices from Supabase/data
+ * Admin-only action. Falls back to localStorage when Supabase is unavailable.
+ */
+async function performDeleteAppointment(apptId) {
+  const supabase = getSupabaseClient();
+  const shopId = getCurrentShopId();
+
+  // Remove from data.jobs/data.appointments and standalone tables
+  if (supabase && shopId) {
+    try {
+      const { data: currentData, error: fetchError } = await supabase
+        .from('data')
+        .select('*')
+        .eq('shop_id', shopId)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') throw fetchError;
+
+      const updatedJobs = (currentData?.jobs || []).filter(j => String(j.appointment_id) !== String(apptId) && String(j.id) !== String(apptId));
+      const updatedAppts = (currentData?.appointments || []).filter(a => String(a.id) !== String(apptId));
+
+      const payload = {
+        shop_id: shopId,
+        jobs: updatedJobs,
+        appointments: updatedAppts,
+        settings: currentData?.settings || {},
+        threads: currentData?.threads || [],
+        invoices: currentData?.invoices || [],
+        updated_at: new Date().toISOString()
+      };
+
+      const { error: upsertErr } = await supabase.from('data').upsert(payload, { onConflict: 'shop_id' });
+      if (upsertErr) console.warn('[claim-board] Failed to upsert data row during delete:', upsertErr);
+
+      // Remove standalone jobs and appointment rows
+      await supabase.from('job_parts').delete().eq('appointment_id', apptId).catch(() => {});
+      await supabase.from('job_labor').delete().eq('appointment_id', apptId).catch(() => {});
+      await supabase.from('jobs').delete().eq('appointment_id', apptId).catch(() => {});
+      await supabase.from('appointments').delete().eq('id', apptId).catch(() => {});
+
+      console.log('[claim-board] Deleted appointment and related jobs from Supabase:', apptId);
+    } catch (e) {
+      console.error('[claim-board] performDeleteAppointment failed:', e);
+    }
+  } else {
+    try {
+      const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
+      localData.jobs = (localData.jobs || []).filter(j => String(j.appointment_id) !== String(apptId) && String(j.id) !== String(apptId));
+      localData.appointments = (localData.appointments || []).filter(a => String(a.id) !== String(apptId));
+      localStorage.setItem('xm_data', JSON.stringify(localData));
+    } catch (e) { console.warn('[claim-board] local delete failed:', e); }
+  }
+
+  // Refresh UI
+  try { await initClaimBoard(); } catch (e) { console.warn('[claim-board] refresh after delete failed', e); }
 }
 
 /**
@@ -674,7 +808,7 @@ async function claimJob(apptId) {
     const { data } = await supabase.from('data').select('jobs').eq('shop_id', shopId).single();
     const jobs = data?.jobs || [];
     let job = jobs.find(j => j.appointment_id === appt.id);
-    
+
     if (job) {
       job.assigned_to = authId;
       job.status = 'in_progress';
@@ -687,6 +821,31 @@ async function claimJob(apptId) {
         status: 'in_progress',
         updated_at: job.updated_at
       }).eq('id', job.id);
+    } else {
+      // No canonical job row exists yet — create one in data.jobs and upsert canonical jobs table
+      const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const newJob = {
+        id: jobId,
+        appointment_id: appt.id,
+        shop_id: shopId,
+        customer: appt.customer || '',
+        vehicle: appt.vehicle || '',
+        service: appt.service || appt.service_requested || '',
+        status: 'in_progress',
+        assigned_to: authId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      jobs.push(newJob);
+      await supabase.from('data').update({ jobs }).eq('shop_id', shopId);
+
+      // Attempt to upsert canonical jobs table via saveJobs (dynamic import to avoid circular deps)
+      try {
+        const { saveJobs } = await import('./jobs.js');
+        await saveJobs([newJob]);
+      } catch (e) {
+        console.warn('[claim-board] Could not upsert new job to canonical jobs table:', e);
+      }
     }
   } else {
     const local = JSON.parse(localStorage.getItem('xm_data') || '{}');
@@ -754,8 +913,48 @@ async function initClaimBoard(isPollingRefresh = false) {
 
     if (supabase && shopId) {
       try {
-        const { data } = await supabase.from('data').select('jobs').eq('shop_id', shopId).single();
-        jobs = data?.jobs || [];
+        // Prefer the canonical `jobs` table as the source of truth for Claim Board.
+        // Query only unassigned jobs to mirror Jobs page behavior and avoid re-creating
+        // jobs that were removed from the jobs table but remain in data.jobs JSONB.
+        try {
+          const { data: jobsTable, error: jobsErr } = await supabase
+            .from('jobs')
+            .select('*')
+            .eq('shop_id', shopId)
+            .is('assigned_to', null);
+
+          const jobsFromTable = (!jobsErr && Array.isArray(jobsTable)) ? jobsTable : [];
+
+          // Also check appointments for in-progress / awaiting_parts statuses
+          const { data: apptsTable, error: apptErr } = await supabase
+            .from('appointments')
+            .select('*')
+            .eq('shop_id', shopId)
+            .in('status', ['in_progress', 'awaiting_parts']);
+
+          const apptsFromTable = (!apptErr && Array.isArray(apptsTable)) ? apptsTable : [];
+
+          const derivedFromAppts = (apptsFromTable || []).filter(a => !jobsFromTable.find(j => String(j.appointment_id) === String(a.id))).map(a => ({
+            id: a.id,
+            appointment_id: a.id,
+            customer: a.customer || '',
+            vehicle: a.vehicle || '',
+            service: a.service || a.service_requested || '',
+            status: a.status || 'in_progress',
+            created_at: a.created_at,
+            updated_at: a.updated_at
+          }));
+
+          jobs = jobsFromTable.concat(derivedFromAppts);
+        } catch (e) {
+          // Fallback to JSONB data.jobs if anything goes wrong
+          try {
+            const { data } = await supabase.from('data').select('jobs').eq('shop_id', shopId).single();
+            jobs = data?.jobs || [];
+          } catch (e2) {
+            console.warn('Could not load jobs from Supabase (data.jobs fallback):', e2);
+          }
+        }
       } catch (e) {
         console.warn('Could not load jobs from Supabase:', e);
       }
@@ -766,17 +965,56 @@ async function initClaimBoard(isPollingRefresh = false) {
       jobs = localData.jobs || [];
     }
 
-    const unassigned = (jobs || []).filter(j => !j.assigned_to);
+    // Filter to unassigned jobs only
+    let unassigned = (jobs || []).filter(j => !j.assigned_to);
 
-    const renderedAppts = unassigned.map(j => ({
-      id: j.appointment_id || j.id,
-      customer: j.customer || '',
-      vehicle: j.vehicle || '',
-      service: j.service || '',
-      status: j.status || 'in_progress',
-      created_at: j.created_at || new Date().toISOString(),
-      updated_at: j.updated_at || new Date().toISOString()
-    }));
+    // Ensure we only show jobs whose appointment is actually in an active jobable status
+    // (in_progress or awaiting_parts). This prevents stale job rows from appearing
+    // on the Claim Board when the appointment has moved back to scheduled/new/completed.
+    try {
+      const appointmentIds = Array.from(new Set(unassigned.map(j => String(j.appointment_id)).filter(Boolean)));
+      if (appointmentIds.length) {
+        const { data: apptRows, error: apptErr } = await supabase
+          .from('appointments')
+          .select('id,status')
+          .in('id', appointmentIds);
+        const apptMap = (apptRows || []).reduce((m, r) => { if (r && r.id) m[String(r.id)] = r.status; return m; }, {});
+        unassigned = unassigned.filter(j => {
+          const aId = String(j.appointment_id || '');
+          if (!aId) return (j.status === 'in_progress' || j.status === 'awaiting_parts');
+          const st = apptMap[aId];
+          return (st === 'in_progress' || st === 'awaiting_parts');
+        });
+      }
+    } catch (e) {
+      console.warn('[claim-board] Could not verify appointment statuses for filtering:', e);
+    }
+
+    // Enrich job rows from appointments when customer/vehicle/service are missing
+    let apptLookup = new Map();
+    try {
+      const appts = await loadAppointments();
+      apptLookup = new Map((appts || []).map(a => [String(a.id || a.appointment_id), a]));
+    } catch (e) {
+      console.warn('[claim-board] Could not load appointments for enrichment:', e);
+    }
+
+    const renderedAppts = unassigned.map(j => {
+      const apptKey = String(j.appointment_id || j.id || '');
+      const appt = apptLookup.get(apptKey) || {};
+      const customer = j.customer || appt.customer || ((appt.customer_first || appt.customer_last) ? `${appt.customer_first || ''} ${appt.customer_last || ''}`.trim() : 'N/A');
+      const vehicle = j.vehicle || appt.vehicle || (appt.vehicle_make ? `${appt.vehicle_make} ${appt.vehicle_model || ''}`.trim() : (appt.vehicle || 'N/A'));
+      const service = j.service || appt.service || appt.service_requested || 'N/A';
+      return {
+        id: j.appointment_id || j.id,
+        customer: customer || 'N/A',
+        vehicle: vehicle || 'N/A',
+        service: service || 'N/A',
+        status: j.status || 'in_progress',
+        created_at: j.created_at || new Date().toISOString(),
+        updated_at: j.updated_at || new Date().toISOString()
+      };
+    });
 
     // On initial load, mark all as seen
     if (!isPollingRefresh && seenJobIds.size === 0) {
@@ -1016,10 +1254,36 @@ async function performSendJobBackToScheduled(apptId) {
     try {
       const { data } = await supabase.from('data').select('jobs').eq('shop_id', shopId).single();
       const jobs = data?.jobs || [];
-      const newJobs = (jobs || []).filter(j => String(j.appointment_id) !== String(apptId) && String(j.id) !== String(apptId));
+      // Determine which jobs are being removed from data.jobs
+      const removedJobs = (jobs || []).filter(j => String(j.appointment_id) === String(apptId) || String(j.id) === String(apptId));
+      const newJobs = (jobs || []).filter(j => !(String(j.appointment_id) === String(apptId) || String(j.id) === String(apptId)));
       await supabase.from('data').update({ jobs: newJobs }).eq('shop_id', shopId);
       // Also remove from jobs table where appointment_id matches
-      await supabase.from('jobs').delete().eq('appointment_id', apptId);
+      try {
+        const { error: delByApptErr } = await supabase.from('jobs').delete().eq('appointment_id', apptId);
+        if (delByApptErr) console.warn('[claim-board] Could not delete job(s) by appointment_id:', delByApptErr);
+      } catch (e) { console.warn('[claim-board] delete by appointment_id failed:', e); }
+
+      // Additionally attempt to delete by specific job IDs that were removed from data.jobs
+      const removedIds = removedJobs.map(r => r.id).filter(Boolean);
+      if (removedIds.length) {
+        try {
+          const { data: delData, error: delErr } = await supabase
+            .from('jobs')
+            .delete()
+            .in('id', removedIds)
+            .select('id');
+          if (delErr) {
+            console.warn('[claim-board] Could not delete job(s) by id:', delErr);
+          } else if (delData && delData.length) {
+            console.log('[claim-board] Deleted job rows by id:', delData.map(d => d.id));
+          } else {
+            console.log('[claim-board] No job rows deleted by id for ids:', removedIds);
+          }
+        } catch (e) {
+          console.warn('[claim-board] delete by id attempt failed:', e);
+        }
+      }
     } catch (e) {
       console.error('Failed to remove job from data:', e);
     }
@@ -1258,7 +1522,26 @@ async function initPage() {
     const hasAccess = await enforcePageAccess();
     if (!hasAccess) return;
     
-    try { await initializeShopConfig(); } catch (e) {}
+    try {
+      // Attempt to load shop row and initialize industry config with real shop data
+      try {
+        const supabase = getSupabaseClient();
+        const shopId = getCurrentShopId();
+        if (supabase && shopId) {
+          const { data: shopRow } = await supabase.from('shops').select('*').eq('id', shopId).single();
+          if (shopRow) {
+            await initializeShopConfig(shopRow);
+          } else {
+            await initializeShopConfig();
+          }
+        } else {
+          await initializeShopConfig();
+        }
+      } catch (e) {
+        // Fall back to default behavior if supabase/shop lookup fails
+        try { await initializeShopConfig(); } catch (ee) {}
+      }
+    } catch (e) {}
     
     try {
       await initShopSwitcher();

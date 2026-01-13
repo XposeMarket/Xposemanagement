@@ -655,10 +655,15 @@ async function saveJobs(jobs, options = {}) {
             appointment_id: job.appointment_id || null,
             customer_first: customer_first,
             customer_last: customer_last,
+            // keep a combined customer field if present
+            customer: job.customer || `${customer_first} ${customer_last}`.trim(),
+            // vehicle/service fields for better UI hydration
+            vehicle: job.vehicle || job.vehicle_make || job.vehicle_name || '',
+            service: job.service || job.service_requested || '',
             assigned_to: job.assigned_to || null,
             status: job.status,
-            created_at: job.created_at,
-            updated_at: job.updated_at,
+            created_at: job.created_at || new Date().toISOString(),
+            updated_at: job.updated_at || new Date().toISOString(),
             completed_at: job.completed_at || null
           };
           const { error: jobError } = await supabase
@@ -933,12 +938,18 @@ function openJobActionsModal(job) {
   } else {
     // Admin/Owner: Show all action buttons
     
-    // Parts button
-    const partsBtn = document.createElement('button');
-    partsBtn.className = 'btn';
-    partsBtn.textContent = 'Parts';
-    partsBtn.onclick = () => { modal.classList.add('hidden'); openPartsModal(job, appt); };
-    btns.appendChild(partsBtn);
+    // Parts button - restrict to non-foreman users (check role explicitly)
+    (async () => {
+      try {
+        const user = await getCurrentUserWithRole();
+        if (user && user.role === 'foreman') return;
+      } catch (e) {}
+      const partsBtn = document.createElement('button');
+      partsBtn.className = 'btn';
+      partsBtn.textContent = 'Parts';
+      partsBtn.onclick = () => { modal.classList.add('hidden'); openPartsModal(job, appt); };
+      btns.appendChild(partsBtn);
+    })();
 
     // Assign button
     const assignBtn = document.createElement('button');
@@ -1179,13 +1190,19 @@ function openJobActionsModal(job) {
       }
     }
     
-    // Parts button (bottom-left) - Admin/Owner only
+    // Parts button (bottom-left) - Admin/Owner only; double-check role to exclude foreman
     if (!isStaffUser) {
-      const partsBtn = document.createElement('button');
-      partsBtn.className = 'btn small info';
-      partsBtn.textContent = 'Parts';
-      partsBtn.onclick = () => openPartsModal(job, appt);
-      actionsDiv.appendChild(partsBtn);
+      (async () => {
+        try {
+          const user = await getCurrentUserWithRole();
+          if (user && user.role === 'foreman') return;
+        } catch (e) {}
+        const partsBtn = document.createElement('button');
+        partsBtn.className = 'btn small info';
+        partsBtn.textContent = 'Parts';
+        partsBtn.onclick = () => openPartsModal(job, appt);
+        actionsDiv.appendChild(partsBtn);
+      })();
     }
     
     // Note or Remove button based on role
@@ -2674,15 +2691,129 @@ async function sendJobBackToScheduled(job) {
       console.log('✅ [Jobs] Data table updated - job removed, appointment set to scheduled');
       
       // 4. Delete job from standalone jobs table
-      const { error: deleteJobError } = await supabase
-        .from('jobs')
-        .delete()
-        .eq('id', job.id);
-      
-      if (deleteJobError) {
-        console.warn('[Jobs] Could not delete job from jobs table:', deleteJobError);
-      } else {
-        console.log('✅ [Jobs] Job deleted from jobs table:', job.id);
+      // Add diagnostics: try to select matching rows first, then attempt deletions by id and/or appointment_id.
+      try {
+        let foundRows = [];
+        try {
+          // Try to find rows matching either id or appointment_id
+          // Use OR filter; if this fails due to type mismatch we'll catch and log it
+          const orFilter = [];
+          if (job.id) orFilter.push(`id.eq.${job.id}`);
+          if (appointmentId) orFilter.push(`appointment_id.eq.${appointmentId}`);
+          if (orFilter.length) {
+            const { data: selData, error: selErr } = await supabase
+              .from('jobs')
+              .select('id,appointment_id,shop_id,created_at')
+              .or(orFilter.join(','));
+            if (selErr) {
+              console.warn('[Jobs] Could not select job rows for diagnostics:', selErr);
+            } else if (selData && selData.length) {
+              foundRows = selData;
+              console.log('[Jobs] Diagnostic select found job rows:', foundRows.map(r => ({ id: r.id, appointment_id: r.appointment_id })));
+            } else {
+              console.log('[Jobs] Diagnostic select returned no job rows for id/appointment_id');
+            }
+          }
+        } catch (selEx) {
+          console.warn('[Jobs] Diagnostic select threw error (possibly type mismatch):', selEx);
+        }
+
+        // Attempt delete by id first (even temp ids) and catch errors
+        let deleted = null;
+        if (job.id) {
+          try {
+            const { data: delData, error: delErr } = await supabase
+              .from('jobs')
+              .delete()
+              .eq('id', job.id)
+              .select('id');
+            if (delErr) {
+              console.warn('[Jobs] Delete by id returned error:', delErr);
+            } else if (delData && delData.length) {
+              deleted = delData;
+              console.log('✅ [Jobs] Job deleted from jobs table by id:', job.id);
+            } else {
+              console.log('[Jobs] Delete by id affected no rows for id:', job.id);
+            }
+          } catch (exDelById) {
+            console.warn('[Jobs] Exception deleting by id (may be type mismatch):', exDelById);
+          }
+        }
+
+        // If not deleted by id, try delete by appointment_id
+        if (!deleted && appointmentId) {
+          try {
+            const { data: delByAppt, error: delByApptErr } = await supabase
+              .from('jobs')
+              .delete()
+              .eq('appointment_id', appointmentId)
+              .select('id');
+            if (delByApptErr) {
+              console.warn('[Jobs] Delete by appointment_id returned error:', delByApptErr);
+            } else if (delByAppt && delByAppt.length) {
+              deleted = delByAppt;
+              console.log('✅ [Jobs] Job(s) deleted from jobs table by appointment_id:', delByAppt.map(d => d.id));
+            } else {
+              console.log('[Jobs] Delete by appointment_id affected no rows for appointment_id:', appointmentId);
+            }
+          } catch (exDelAppt) {
+            console.warn('[Jobs] Exception deleting by appointment_id:', exDelAppt);
+          }
+        }
+
+        // If still not deleted but diagnostic select found rows (type mismatch prevented direct eq), attempt delete by those exact ids
+        if (!deleted && foundRows && foundRows.length) {
+          const ids = foundRows.map(r => r.id).filter(Boolean);
+          if (ids.length) {
+            try {
+              const { data: delData2, error: delErr2 } = await supabase
+                .from('jobs')
+                .delete()
+                .in('id', ids)
+                .select('id');
+              if (delErr2) {
+                console.warn('[Jobs] Final delete by discovered ids returned error:', delErr2);
+              } else if (delData2 && delData2.length) {
+                deleted = delData2;
+                console.log('[Jobs] Deleted job rows by discovered ids:', delData2.map(d => d.id));
+              } else {
+                console.log('[Jobs] Final delete by discovered ids affected no rows');
+              }
+            } catch (exFinal) {
+              console.warn('[Jobs] Exception during final delete attempt:', exFinal);
+            }
+          }
+        }
+
+        // If no deletion succeeded, attempt to 'soft remove' by updating the discovered rows
+        if (!deleted && foundRows && foundRows.length) {
+          const ids = foundRows.map(r => r.id).filter(Boolean);
+          if (ids.length) {
+            try {
+              const { data: updData, error: updErr } = await supabase
+                .from('jobs')
+                .update({ status: 'deleted', updated_at: new Date().toISOString() })
+                .in('id', ids)
+                .select('id');
+              if (updErr) {
+                console.warn('[Jobs] Could not soft-delete job rows by id:', updErr);
+              } else if (updData && updData.length) {
+                console.log('[Jobs] Soft-deleted job rows by id:', updData.map(d => d.id));
+                deleted = updData;
+              } else {
+                console.log('[Jobs] Soft-delete affected no rows for ids:', ids);
+              }
+            } catch (exUpd) {
+              console.warn('[Jobs] Exception during soft-delete attempt:', exUpd);
+            }
+          }
+        }
+
+        if (!deleted) {
+          console.log('[Jobs] No job deletion performed (no matching id/appointment_id or type mismatch)');
+        }
+      } catch (delEx) {
+        console.warn('[Jobs] Exception while deleting job from jobs table:', delEx);
       }
       
       // 5. Update appointment in standalone appointments table
