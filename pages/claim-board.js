@@ -26,6 +26,9 @@ const DATA_POLL_INTERVAL = 15000; // 15 seconds
 let seenJobIds = new Set();
 let lastKnownDataHash = null;
 
+// Track the set of job ids currently displayed on the board (for highlight detection)
+let lastDisplayedJobIds = new Set();
+
 // Track new jobs for highlighting (job ID -> timestamp when first seen)
 let newJobHighlights = new Map();
 const HIGHLIGHT_DURATION = 8000; // 8 seconds
@@ -260,44 +263,32 @@ async function pollForDataUpdates() {
       console.warn('[claim-board] Could not verify appointment statuses during polling:', e);
     }
 
-    const currentHash = generateDataHash(unassigned);
-    
-    if (lastKnownDataHash === null) {
-      lastKnownDataHash = currentHash;
-      return;
-    }
-    
-    if (currentHash !== lastKnownDataHash) {
-      console.log('[claim-board] Data changed, detecting new jobs and refreshing...');
-      lastKnownDataHash = currentHash;
-      
-      // Detect newly added jobs
-      const currentJobIds = new Set(unassigned.map(j => j.id || j.appointment_id));
-      for (const jobId of currentJobIds) {
-        if (!seenJobIds.has(jobId)) {
-          console.log('[claim-board] New job detected:', jobId);
-          newJobHighlights.set(jobId, Date.now());
-          // Auto-remove highlight after duration with graceful fade
-          (function(id) {
+    const currentJobIds = new Set(unassigned.map(j => j.id || j.appointment_id));
+    // Highlight any job that is present now but was not present in the previously displayed set
+    for (const jobId of currentJobIds) {
+      if (!lastDisplayedJobIds.has(jobId)) {
+        newJobHighlights.set(jobId, Date.now());
+        (function(id) {
+          setTimeout(() => {
+            try { startFadeOutForRow(id); } catch (e) {}
             setTimeout(() => {
-              try { startFadeOutForRow(id); } catch (e) {}
-              setTimeout(() => {
-                newJobHighlights.delete(id);
-                try { applyHighlightsToRows(); } catch (e) {}
-                try {
-                  const row = document.querySelector(`#apptTable tbody tr[data-appt-id="${id}"]`);
-                  if (row) { row.style.transition = ''; row.style.backgroundColor = ''; }
-                } catch (e) {}
-              }, HIGHLIGHT_FADE_MS);
-            }, HIGHLIGHT_DURATION);
-          })(jobId);
-        }
+              newJobHighlights.delete(id);
+              try { applyHighlightsToRows(); } catch (e) {}
+              try {
+                const row = document.querySelector(`#apptTable tbody tr[data-appt-id="${id}"]`);
+                if (row) { row.style.transition = ''; row.style.backgroundColor = ''; }
+              } catch (e) {}
+            }, HIGHLIGHT_FADE_MS);
+          }, HIGHLIGHT_DURATION);
+        })(jobId);
       }
-      
-      // Update seen jobs
-      seenJobIds = currentJobIds;
-      
-      // Refresh the board
+    }
+    // Refresh the board if the displayed set changed
+    const prevHash = generateDataHash(Array.from(lastDisplayedJobIds || []));
+    const currHash = generateDataHash(Array.from(currentJobIds || []));
+    lastDisplayedJobIds = currentJobIds;
+    if (lastKnownDataHash === null || prevHash !== currHash) {
+      lastKnownDataHash = currHash;
       await initClaimBoard(true);
     }
   } catch (e) {
@@ -1029,11 +1020,29 @@ async function initClaimBoard(isPollingRefresh = false) {
       };
     });
 
-    // On initial load, mark all as seen
-    if (!isPollingRefresh && seenJobIds.size === 0) {
-      seenJobIds = new Set(renderedAppts.map(a => a.id));
-      lastKnownDataHash = generateDataHash(unassigned);
+    // Determine which rows are newly displayed compared to `lastDisplayedJobIds` and highlight them.
+    const nowDisplayed = new Set(renderedAppts.map(a => a.id));
+    for (const id of nowDisplayed) {
+      if (!lastDisplayedJobIds.has(id)) {
+        newJobHighlights.set(id, Date.now());
+        (function(rowId) {
+          setTimeout(() => {
+            try { startFadeOutForRow(rowId); } catch (e) {}
+            setTimeout(() => {
+              newJobHighlights.delete(rowId);
+              try { applyHighlightsToRows(); } catch (e) {}
+              try {
+                const row = document.querySelector(`#apptTable tbody tr[data-appt-id="${rowId}"]`);
+                if (row) { row.style.transition = ''; row.style.backgroundColor = ''; }
+              } catch (e) {}
+            }, HIGHLIGHT_FADE_MS);
+          }, HIGHLIGHT_DURATION);
+        })(id);
+      }
     }
+    // Update displayed set
+    lastDisplayedJobIds = nowDisplayed;
+    if (lastKnownDataHash === null) lastKnownDataHash = generateDataHash(unassigned);
 
     console.log(`🔎 Found ${renderedAppts.length} unassigned jobs on Claim Board`);
     currentFilteredAppts = renderedAppts;
