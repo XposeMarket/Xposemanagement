@@ -152,7 +152,65 @@ function stopNotesPolling() {
 // ========== Status Polling ==========
 let statusPollingInterval = null;
 let lastKnownStatusHash = null;
-const STATUS_POLL_INTERVAL = 30000; // 30 seconds - align with invitations polling
+const STATUS_POLL_INTERVAL = 15000; // 15 seconds - align with notifications and claim-board
+
+// Highlighting for newly displayed job rows
+let newJobHighlights = new Map();
+const HIGHLIGHT_DURATION = 8000; // 8 seconds
+const HIGHLIGHT_FADE_MS = 600; // fade out duration
+let lastDisplayedJobIds = new Set();
+
+function injectJobHighlightStyles() {
+  if (document.getElementById('jobs-highlight-styles')) return;
+  const style = document.createElement('style');
+  style.id = 'jobs-highlight-styles';
+  style.textContent = `
+    @keyframes jobsClaimFade {
+      0% { background-color: rgba(16, 185, 129, 0); }
+      10% { background-color: rgba(16, 185, 129, 0.25); }
+      50% { background-color: rgba(16, 185, 129, 0.15); }
+      90% { background-color: rgba(16, 185, 129, 0.25); }
+      100% { background-color: rgba(16, 185, 129, 0); }
+    }
+    tr.jobs-new-job-highlight { animation-name: jobsClaimFade; animation-duration: ${HIGHLIGHT_DURATION}ms; animation-timing-function: ease-in-out; animation-iteration-count: 1; animation-fill-mode: forwards; }
+    tr.jobs-new-job-highlight td:first-child::before { content: ''; display: inline-block; width: 8px; height: 8px; background: #10b981; border-radius: 50%; margin-right: 4px; animation: pulse 1s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+    tr.jobs-new-job-fadeout { animation-play-state: paused !important; transition: background-color ${HIGHLIGHT_FADE_MS}ms ease !important; background-color: rgba(16, 185, 129, 0) !important; }
+  `;
+  document.head.appendChild(style);
+}
+
+function startFadeOutForJobRow(id) {
+  try {
+    const row = document.querySelector(`#jobsTable tbody tr[data-job-id="${id}"]`) || document.querySelector(`#awaitTable tbody tr[data-job-id="${id}"]`);
+    if (!row) return;
+    const comp = getComputedStyle(row).backgroundColor;
+    row.style.backgroundColor = comp;
+    row.style.transition = `background-color ${HIGHLIGHT_FADE_MS}ms ease`;
+    row.classList.remove('jobs-new-job-highlight');
+    // Force reflow
+    // eslint-disable-next-line no-unused-expressions
+    row.offsetWidth;
+    row.style.backgroundColor = 'rgba(16, 185, 129, 0)';
+  } catch (e) {}
+}
+
+function applyJobHighlightsToRows() {
+  const rows = document.querySelectorAll('#jobsTable tbody tr, #awaitTable tbody tr');
+  rows.forEach(row => {
+    const jobId = row.dataset.jobId;
+    if (jobId && newJobHighlights.has(jobId)) {
+      if (!row.classList.contains('jobs-new-job-highlight')) {
+        row.classList.remove('jobs-new-job-highlight');
+        // eslint-disable-next-line no-unused-expressions
+        row.offsetWidth;
+        row.classList.add('jobs-new-job-highlight');
+      }
+    } else {
+      row.classList.remove('jobs-new-job-highlight');
+    }
+  });
+}
 
 function generateStatusHash(items) {
   if (!items || items.length === 0) return 'empty';
@@ -161,44 +219,48 @@ function generateStatusHash(items) {
 
 async function pollForStatuses() {
   try {
-    const supabase = getSupabaseClient();
-    if (!supabase || !allJobs.length) return;
-
-    const jobIds = allJobs.map(j => j.id).filter(Boolean);
-    if (!jobIds.length) return;
-
-    const { data: rows, error } = await supabase
-      .from('jobs')
-      .select('id,status,updated_at')
-      .in('id', jobIds);
-
-    if (error) { console.warn('[StatusPolling] Supabase error:', error); return; }
-
-    const currentHash = generateStatusHash(rows || []);
+    // Refresh the full jobs set from the source of truth so we can detect
+    // additions and removals as well as status changes. This ensures polling
+    // keeps the Jobs page in sync without requiring a full page refresh.
+    const jobs = await loadJobs();
+    const currentHash = generateStatusHash(jobs || []);
+    const currentIds = new Set((jobs || []).map(j => j.id).filter(Boolean));
     if (lastKnownStatusHash === null) {
+      // First poll: initialize hashes and displayed id set but do NOT highlight anything
       lastKnownStatusHash = currentHash;
+      allJobs = jobs || [];
+      lastDisplayedJobIds = currentIds;
       return;
     }
 
     if (currentHash !== lastKnownStatusHash) {
-      console.log('[StatusPolling] Job statuses changed, merging and refreshing jobs table...');
+      console.log('[StatusPolling] Jobs changed (add/remove/status), refreshing jobs table...');
       lastKnownStatusHash = currentHash;
-
-      // Merge the polled status rows into the in-memory `allJobs` array.
-      const rowsMap = (rows || []).reduce((m, r) => { if (r && r.id) m[r.id] = r; return m; }, {});
-      let didChange = false;
-      allJobs = allJobs.map(j => {
-        if (!j || !j.id) return j;
-        const polled = rowsMap[j.id];
-        if (!polled) return j;
-        if (j.status !== polled.status || (polled.updated_at && j.updated_at !== polled.updated_at)) {
-          didChange = true;
-          return Object.assign({}, j, { status: polled.status, updated_at: polled.updated_at });
+      allJobs = jobs || [];
+      // Determine newly displayed job ids for highlighting
+      try {
+        injectJobHighlightStyles();
+        // Only highlight IDs that are newly present compared to lastDisplayedJobIds
+        for (const id of currentIds) {
+          if (!lastDisplayedJobIds.has(id)) {
+            newJobHighlights.set(id, Date.now());
+            (function(rowId) {
+              setTimeout(() => {
+                try { startFadeOutForJobRow(rowId); } catch (e) {}
+                setTimeout(() => {
+                  newJobHighlights.delete(rowId);
+                  try { applyJobHighlightsToRows(); } catch (e) {}
+                }, HIGHLIGHT_FADE_MS);
+              }, HIGHLIGHT_DURATION);
+            })(id);
+          }
         }
-        return j;
-      });
+        lastDisplayedJobIds = currentIds;
+      } catch (e) { console.warn('[StatusPolling] highlight error:', e); }
 
-      if (didChange) await renderJobs();
+      await renderJobs();
+      // Ensure highlights are applied after render
+      try { applyJobHighlightsToRows(); } catch (e) {}
     }
   } catch (e) {
     console.warn('[StatusPolling] Error polling statuses:', e);
@@ -768,6 +830,9 @@ async function renderJobs() {
   // Awaiting parts
   const awaitingJobs = allJobs.filter(j => j.status === 'awaiting_parts');
   renderJobsTable('awaitTable', 'awaitEmpty', awaitingJobs, 'No jobs awaiting parts.', unreadNotesMap);
+
+  // Ensure highlight styles loaded and apply highlights to any newly added rows
+  try { injectJobHighlightStyles(); applyJobHighlightsToRows(); } catch (e) {}
 }
 
 /**
@@ -821,6 +886,8 @@ function renderJobsTable(tableId, emptyId, jobs, emptyText, notesMap = {}) {
   sorted.forEach(job => {
     const tr = document.createElement('tr');
     tr.dataset.jobId = job.id;
+    // If this job was recently marked for highlight, add the class so animation runs
+    try { if (job.id && newJobHighlights.has(job.id)) tr.classList.add('jobs-new-job-highlight'); } catch (e) {}
     
     // Add green highlight for staff's assigned jobs
     if (isStaffUser && currentStaffAuthId) {
