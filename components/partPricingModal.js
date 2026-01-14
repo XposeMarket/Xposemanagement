@@ -439,6 +439,31 @@ class PartPricingModal {
       return;
     }
 
+    // Round prices to 2 decimals to avoid numeric precision issues
+    const roundedCost = Math.round(costPrice * 100) / 100;
+    const roundedSell = Math.round(sellPrice * 100) / 100;
+
+    // Enforce database column limits (numeric(5,2) -> max 999.99)
+    const MAX_PRICE = 999.99;
+    if (roundedCost > MAX_PRICE || roundedSell > MAX_PRICE) {
+      try { showNotification('Price exceeds allowed maximum of $999.99', 'error'); } catch (e) { PartPricingModal._fallbackNotification('Price exceeds allowed maximum of $999.99', 'error'); }
+      return;
+    }
+
+    // Use numeric markup (as a Number) to avoid inserting string values
+    let markupPercent = (roundedSell && roundedCost) ? parseFloat((((roundedSell - roundedCost) / roundedCost) * 100).toFixed(2)) : 0;
+
+    // Cap markup percent to database limits (numeric(5,2) -> max 999.99)
+    const MAX_MARKUP = 999.99;
+    if (markupPercent > MAX_MARKUP) {
+      // silently cap markup to avoid DB numeric overflow
+      markupPercent = MAX_MARKUP;
+    }
+
+    // Replace original cost/sell variables for subsequent logic
+    const costPriceFinal = roundedCost;
+    const sellPriceFinal = roundedSell;
+
     if (sellPrice < costPrice) {
       const confirm = await this.showConfirmation('Sell price is lower than cost. Continue anyway?');
       if (!confirm) return;
@@ -483,9 +508,9 @@ class PartPricingModal {
               {
                 part_name: this.currentPart.name || this.currentPart.part_name || '',
                 part_number: this.currentPart.part_number || '',
-                cost_price: costPrice,
-                sell_price: sellPrice,
-                markup_percent: sellPrice && costPrice ? ((sellPrice - costPrice) / costPrice * 100).toFixed(2) : 0
+                cost_price: costPriceFinal,
+                sell_price: sellPriceFinal,
+                markup_percent: markupPercent
               }
             );
             console.log('✅ Inventory auto-deducted successfully!');
@@ -505,12 +530,12 @@ class PartPricingModal {
                 quantity,
                 shopId,
                 {
-                  part_name: this.currentPart.name || this.currentPart.part_name || '',
-                  part_number: this.currentPart.part_number || '',
-                  cost_price: costPrice,
-                  sell_price: sellPrice,
-                  markup_percent: sellPrice && costPrice ? ((sellPrice - costPrice) / costPrice * 100).toFixed(2) : 0
-                }
+                    part_name: this.currentPart.name || this.currentPart.part_name || '',
+                    part_number: this.currentPart.part_number || '',
+                    cost_price: costPriceFinal,
+                    sell_price: sellPriceFinal,
+                    markup_percent: markupPercent
+                  }
               );
               console.log('✅ Folder inventory auto-deducted successfully!');
             }
@@ -529,32 +554,60 @@ class PartPricingModal {
           throw invError;
         }
       } else {
-        // Not an inventory item - create job_part manually (catalog or manual part)
+        // Not an inventory item - handle two flows:
+        // 1) Invoice-only (no job_id) -> call window.addPartToInvoice if available
+        // 2) Job-based -> insert into job_parts as before
         console.log('📝 Creating job_part for catalog/manual part');
-        const { supabase } = await import('../helpers/supabase.js');
-        
-        // Ensure we only insert valid UUIDs into `part_id` column
-        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(partId));
-        const dbPartId = isUUID ? partId : null;
-        const { data, error } = await supabase
-          .from('job_parts')
-          .insert({
-            shop_id: shopId,
-            job_id: this.currentJobId,
-            part_id: dbPartId,
-            part_name: this.currentPart.name || this.currentPart.part_name || '',
-            part_number: this.currentPart.part_number || '',
-            quantity: quantity || 1,
-            cost_price: costPrice || 0,
-            sell_price: sellPrice || 0,
-            markup_percent: sellPrice && costPrice ? ((sellPrice - costPrice) / costPrice * 100).toFixed(2) : 0,
-            notes: notes || ''
-          })
-          .select()
-          .single();
 
-        if (error) throw error;
-        console.log('✅ Job_part created:', data);
+        // If there's no job context, prefer adding directly to the open invoice via a modal-scoped handler
+        if (!this.currentJobId) {
+          if (typeof window.addPartToInvoice === 'function') {
+            console.log('📨 No job_id present — adding part to open invoice via window.addPartToInvoice');
+            const partName = this.currentPart.name || this.currentPart.part_name || '';
+            try {
+              const addedId = await window.addPartToInvoice(null, partName, quantity, sellPriceFinal, costPriceFinal, groupName);
+              if (addedId) {
+                console.log('✅ Part added to invoice with id:', addedId);
+                // record invoice item id for later labor linking
+                this.lastAddedPartData = this.lastAddedPartData || {};
+                this.lastAddedPartData.invoiceItemId = addedId;
+              } else {
+                console.warn('⚠️ window.addPartToInvoice returned no id');
+              }
+            } catch (e) {
+              console.error('❌ window.addPartToInvoice failed:', e);
+              throw e;
+            }
+          } else {
+            // No invoice handler available — cannot insert into job_parts without job_id
+            throw new Error('No job context and invoice handler not available');
+          }
+        } else {
+          const { supabase } = await import('../helpers/supabase.js');
+
+          // Ensure we only insert valid UUIDs into `part_id` column
+          const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(partId));
+          const dbPartId = isUUID ? partId : null;
+          const { data, error } = await supabase
+            .from('job_parts')
+            .insert({
+              shop_id: shopId,
+              job_id: this.currentJobId,
+              part_id: dbPartId,
+              part_name: this.currentPart.name || this.currentPart.part_name || '',
+              part_number: this.currentPart.part_number || '',
+              quantity: quantity || 1,
+              cost_price: costPriceFinal || 0,
+              sell_price: sellPriceFinal || 0,
+              markup_percent: markupPercent,
+              notes: notes || ''
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+          console.log('✅ Job_part created:', data);
+        }
       }
 
       // Close modal

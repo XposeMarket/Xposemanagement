@@ -250,7 +250,7 @@ function setupInvoices() {
         <td>${inv.number || inv.id}</td>
         <td>${customer}</td>
         <td>$${calcTotal(inv).toFixed(2)}</td>
-  <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1">${(inv.status || 'open').replace(/_/g, ' ')}</span></td>
+  <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1" style="flex:0 0 auto;display:inline-flex">${(inv.status || 'open').replace(/_/g, ' ')}</span></td>
         <td>${inv.due || ''}</td>
         <td style="text-align:right">
           <div class="appt-actions-grid" style="display:inline-grid;">
@@ -308,7 +308,7 @@ function setupInvoices() {
         <td>${inv.number || inv.id}</td>
         <td>${customer}</td>
         <td>$${calcTotal(inv).toFixed(2)}</td>
-        <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1">${(inv.status || 'paid').replace(/_/g, ' ')}</span></td>
+        <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1" style="flex:0 0 auto;display:inline-flex">${(inv.status || 'paid').replace(/_/g, ' ')}</span></td>
         <td>${inv.due || ''}</td>
         <td style="text-align:right">
           <div class="appt-actions-grid" style="display:inline-grid;">
@@ -465,6 +465,33 @@ function setupInvoices() {
     document.getElementById('invDue').value = inv.due || '';
     // Render existing items
     renderItems(inv.items || []);
+    // Expose a modal-scoped addPartToInvoice handler so partPricingModal can add parts
+    // when no job_id is present (invoice-only flow).
+    window.addPartToInvoice = async function(jobIdOrInvoiceId, partName, quantity, sellPrice, costPrice, groupName) {
+      try {
+        // If a real jobId was provided, we don't handle it here - return null to let caller proceed
+        if (jobIdOrInvoiceId) return null;
+        // Ensure items array
+        inv.items = inv.items || [];
+        const item = {
+          id: `inv_item_${Date.now()}`,
+          name: partName || '',
+          qty: quantity || 1,
+          price: sellPrice || 0,
+          cost_price: costPrice || 0,
+          group: groupName || '',
+          type: 'part'
+        };
+        inv.items.push(item);
+        // Re-render items in the modal
+        try { renderItems(inv.items); } catch (e) { console.warn('Failed to render items after addPartToInvoice', e); }
+        // Return a synthetic invoice item id to mimic job invoice flow
+        return item.id;
+      } catch (e) {
+        console.error('addPartToInvoice (invoice modal) failed', e);
+        return null;
+      }
+    };
     // Wire the floating + button to show the item type modal
     const floatingAdd = document.getElementById('floatingAdd');
     const itemTypeModal = document.getElementById('itemTypeModal');
@@ -529,7 +556,9 @@ function setupInvoices() {
     };
       // Close button
       document.getElementById('closeInv').onclick = () => {
-        document.getElementById('invModal').classList.add('hidden');
+          document.getElementById('invModal').classList.add('hidden');
+          // Cleanup modal-scoped globals
+          try { window.addPartToInvoice = null; } catch (e) {}
       };
       
       // Send Estimate button

@@ -2211,14 +2211,27 @@ async function renderAppointments(appointments = allAppointments) {
       invoiceBtn.textContent = 'Invoice';
       invoiceBtn.title = 'Open related invoice';
       invoiceBtn.addEventListener('click', () => {
-        // Find invoice for this appointment
-        const invoices = JSON.parse(localStorage.getItem('xm_data') || '{}').invoices || [];
-        const inv = invoices.find(i => i.appointment_id === appt.id);
-        if (inv) {
-          // Store invoice id in session for modal open
-          localStorage.setItem('openInvoiceId', inv.id);
-          window.location.href = 'invoices.html';
-        } else {
+        try {
+          // Prefer a direct invoice id on the appointment, then fall back to matching by appointment_id
+          const store = JSON.parse(localStorage.getItem('xm_data') || '{}');
+          const invoices = store.invoices || [];
+          let inv = null;
+
+          if (appt.invoice_id) {
+            inv = invoices.find(i => i.id === appt.invoice_id);
+          }
+
+          if (!inv) {
+            inv = invoices.find(i => i.appointment_id === appt.id);
+          }
+
+          if (inv) {
+            // Store invoice id in session for modal open
+            localStorage.setItem('openInvoiceId', inv.id);
+            window.location.href = 'invoices.html';
+            return;
+          }
+
           // No invoice found — create one automatically and open it
           createInvoiceForAppointment(appt).then(newInv => {
             if (newInv && newInv.id) {
@@ -2231,6 +2244,9 @@ async function renderAppointments(appointments = allAppointments) {
             console.error('Error creating invoice for appointment:', err);
             alert('Failed to create invoice for this appointment.');
           });
+        } catch (e) {
+          console.error('[Appointments] Error handling Invoice button click:', e);
+          alert('Failed to open or create invoice for this appointment.');
         }
       });
       actionsDiv.appendChild(invoiceBtn);
@@ -2542,6 +2558,24 @@ async function openViewModal(appt) {
   const editBtn = document.getElementById('editFromViewBtn');
   
   if (!modal || !content) return;
+
+  // Determine invoice status (prefer appt.invoice_id, then appointment_id)
+  let invStatusHTML = `<div style="display:flex;align-items:center;gap:8px;"><strong>Invoice Status:</strong> <span class=\"tag open\" style=\"flex:0 0 auto;display:inline-flex;\">No Invoice</span></div>`;
+  try {
+    const store = JSON.parse(localStorage.getItem('xm_data') || '{}');
+    const invoices = store.invoices || window.invoices || [];
+    let inv = null;
+    if (appt.invoice_id) inv = invoices.find(i => i.id === appt.invoice_id);
+    if (!inv) inv = invoices.find(i => i.appointment_id === appt.id);
+    if (inv) {
+      const s = (inv.status || 'open').toString().trim().toLowerCase();
+      const cls = (s === 'paid') ? 'completed' : 'open';
+      const label = (inv.status || 'open').toString().replace(/_/g, ' ');
+      invStatusHTML = `<div style="display:flex;align-items:center;gap:8px;"><strong>Invoice Status:</strong> <span class=\"tag ${cls}\" style=\"flex:0 0 auto;display:inline-flex;\">${label}</span></div>`;
+    }
+  } catch (e) {
+    console.warn('[Appointments] Could not determine invoice status for view modal', e);
+  }
   
   content.innerHTML = `
     <div style="display: grid; gap: 12px;">
@@ -2554,6 +2588,7 @@ async function openViewModal(appt) {
       <div><strong>Date:</strong> ${appt.preferred_date ? new Date(appt.preferred_date).toLocaleDateString() : 'Not set'}</div>
       <div><strong>Time:</strong> ${appt.preferred_time ? formatTime12(appt.preferred_time) : 'Not set'}</div>
       <div><strong>Status:</strong> <span class="tag ${getStatusClass(appt.status)}">${appt.status || 'new'}</span></div>
+      ${invStatusHTML}
       <div><strong>Assigned to:</strong> <span id="viewModalAssignedTo">${appt.assigned_to ? 'Loading...' : 'Unassigned'}</span></div>
       ${appt.notes ? `<div><strong>Notes:</strong><br>${appt.notes}</div>` : ''}
     </div>

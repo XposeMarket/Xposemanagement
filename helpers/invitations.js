@@ -300,6 +300,7 @@ function createInvitationsModal() {
         <h2 style="margin: 0;">Notifications</h2>
         <div style="display:flex; gap:8px; align-items:center;">
           <button id="markAllInvitationsRead" class="btn" style="font-size:13px;">Mark all read</button>
+          <button id="clearAllInvitationsRead" class="btn" style="font-size:13px;">Clear all read</button>
           <button id="closeInvitationsModal" class="btn" aria-label="Close">✕</button>
         </div>
       </div>
@@ -335,6 +336,141 @@ function createInvitationsModal() {
       alert('Failed to mark all notifications as read. Please try again.');
     }
   });
+
+  // Clear all read handler - show themed confirmation modal then remove read notifications
+  modal.querySelector('#clearAllInvitationsRead').addEventListener('click', (e) => {
+    e.preventDefault();
+    showClearReadConfirmModal();
+  });
+
+  function showClearReadConfirmModal() {
+    // If modal already exists, show it
+    let confirmModal = document.getElementById('clearReadConfirmModal');
+    if (!confirmModal) {
+      confirmModal = document.createElement('div');
+      confirmModal.id = 'clearReadConfirmModal';
+      confirmModal.className = 'modal-overlay hidden';
+      confirmModal.innerHTML = `
+        <div class="modal-content card" style="max-width:420px;margin:18vh auto;">
+          <div class="modal-head" style="display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid var(--line);">
+            <h3 style="margin:0">Clear Read Notifications</h3>
+            <button id="closeClearReadModal" class="btn">✕</button>
+          </div>
+          <div class="modal-body" style="padding:16px;">
+            <p style="margin:0 0 12px 0;">Clear ALL read notifications? This will permanently remove them.</p>
+          </div>
+          <div class="modal-foot" style="display:flex;justify-content:flex-end;gap:8px;padding:12px;border-top:1px solid var(--line);">
+            <button id="cancelClearRead" class="btn">Cancel</button>
+            <button id="confirmClearRead" class="btn danger">Clear All Read</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(confirmModal);
+
+      // Close handlers
+      confirmModal.querySelector('#closeClearReadModal').addEventListener('click', () => { confirmModal.classList.add('hidden'); });
+      confirmModal.addEventListener('click', (ev) => { if (ev.target === confirmModal) confirmModal.classList.add('hidden'); });
+      confirmModal.querySelector('#cancelClearRead').addEventListener('click', () => { confirmModal.classList.add('hidden'); });
+
+      // Confirm action
+      confirmModal.querySelector('#confirmClearRead').addEventListener('click', async () => {
+        // Disable button to prevent duplicate clicks
+        const btn = confirmModal.querySelector('#confirmClearRead');
+        if (btn) { btn.disabled = true; btn.textContent = 'Clearing...'; }
+
+        try {
+          const supabase = getSupabaseClient();
+          if (!supabase) {
+            throw new Error('Supabase client not available');
+          }
+
+          // Ensure we have the auth id; try to refresh from supabase if missing
+          if (!currentUserAuthId) {
+            try {
+              const { data: authData } = await supabase.auth.getUser();
+              if (authData?.user?.id) currentUserAuthId = authData.user.id;
+            } catch (e) {
+              console.warn('[Invitations] Could not refresh auth user before clearing notifications:', e);
+            }
+          }
+
+          // Collect IDs of read notifications
+          const readIds = (pendingInvitations || [])
+            .filter(i => i.itemType === 'notification' && i.is_read && i.id)
+            .map(i => i.id);
+
+          if (!readIds || readIds.length === 0) {
+            // Nothing to delete in DB; just clean local cache
+            pendingInvitations = (pendingInvitations || []).filter(i => !(i.itemType === 'notification' && i.is_read));
+            updateNotificationBadge();
+            renderInvitationsList();
+            confirmModal.classList.add('hidden');
+            if (btn) { btn.disabled = false; btn.textContent = 'Clear All Read'; }
+            return;
+          }
+
+          console.log('[Invitations] Clearing read notifications for user:', currentUserAuthId, 'ids:', readIds);
+
+          // Attempt to delete by IDs AND user_id to ensure correct scope
+          let deleted = null;
+          let error = null;
+          try {
+            const res = await supabase
+              .from('notifications')
+              .delete()
+              .in('id', readIds)
+              .eq('user_id', currentUserAuthId);
+            deleted = res.data;
+            error = res.error;
+          } catch (e) {
+            console.error('[Invitations] Exception while deleting notifications by ids:', e);
+            error = e;
+          }
+
+          if (error) {
+            console.warn('[Invitations] Delete-by-IDs failed, attempting fallback delete by user_id/is_read');
+            // Try fallback: delete by user_id & is_read true (covers cases where IDs didn't match due to types/RLS)
+            try {
+              const res2 = await supabase
+                .from('notifications')
+                .delete()
+                .eq('user_id', currentUserAuthId)
+                .eq('is_read', true);
+              deleted = res2.data;
+              error = res2.error;
+              if (error) {
+                console.error('[Invitations] Fallback delete-by-user failed:', error);
+                alert('Failed to delete read notifications from database: ' + (error.message || JSON.stringify(error)));
+                if (btn) { btn.disabled = false; btn.textContent = 'Clear All Read'; }
+                return;
+              }
+            } catch (e2) {
+              console.error('[Invitations] Exception during fallback delete-by-user:', e2);
+              alert('Failed to delete read notifications from database: ' + (e2.message || JSON.stringify(e2)));
+              if (btn) { btn.disabled = false; btn.textContent = 'Clear All Read'; }
+              return;
+            }
+          }
+
+          // DB deletion succeeded - remove read notifications from local cache
+          pendingInvitations = (pendingInvitations || []).filter(i => !(i.itemType === 'notification' && i.is_read));
+          updateNotificationBadge();
+          renderInvitationsList();
+
+          // Close modal
+          confirmModal.classList.add('hidden');
+        } catch (err) {
+          console.error('[Invitations] Error during clear all read:', err);
+          alert('Failed to clear read notifications. Please try again.');
+        } finally {
+          if (btn) { btn.disabled = false; btn.textContent = 'Clear All Read'; }
+        }
+      });
+    }
+
+    // Show the modal
+    confirmModal.classList.remove('hidden');
+  }
 
   return modal;
 }
