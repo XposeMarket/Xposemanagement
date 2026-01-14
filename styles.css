@@ -371,6 +371,26 @@
     background: #f3f4f6;
   }
 }
+/* Completed Jobs: on small screens, show only Customer, Vehicle, Service columns */
+@media (max-width: 640px) {
+  /* Hide header columns we don't want on mobile (Job #, Completed By, Completed At, Actions) */
+  #completedJobsTable thead th:nth-child(1),
+  #completedJobsTable thead th:nth-child(5),
+  #completedJobsTable thead th:nth-child(6),
+  #completedJobsTable thead th:nth-child(7) {
+    display: none !important;
+  }
+  /* Hide the corresponding td cells for rows that keep the original full-column layout.
+     Mobile rows use the .mobile-row class and should keep their 1st/2nd/3rd tds visible. */
+  #completedJobsTable tr:not(.mobile-row) td:nth-child(1),
+  #completedJobsTable tr:not(.mobile-row) td:nth-child(5),
+  #completedJobsTable tr:not(.mobile-row) td:nth-child(6),
+  #completedJobsTable tr:not(.mobile-row) td:nth-child(7) {
+    display: none !important;
+  }
+  /* Make mobile rows visibly clickable */
+  #completedJobsTable tr.mobile-row { cursor: pointer; }
+}
 :root{
   --bg:#f3f4f6; --text:#111111; --muted:#6b7280; --card:#ffffff; --line:#e5e7eb; --accent:#e11d48;
   --folder-bg: linear-gradient(180deg,#fffef5,#ffffff);

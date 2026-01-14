@@ -48,6 +48,17 @@ async function init() {
       }
       showLogoutConfirmModal();
     };
+    // Wire mobile burger menu if app.js wasn't loaded on this page
+    try {
+      const menuToggleBtn = document.getElementById('menuToggle');
+      const mainNavEl = document.getElementById('mainNav');
+      if (menuToggleBtn && mainNavEl) {
+        menuToggleBtn.addEventListener('click', () => {
+          mainNavEl.classList.toggle('active');
+          menuToggleBtn.classList.toggle('active');
+        });
+      }
+    } catch (e) {}
     try { setThemeFromUser(); } catch (e) {}
   } catch (e) { /* ignore */ }
 
@@ -77,6 +88,7 @@ async function renderCompletedJobs() {
   const empty = document.getElementById('completedEmpty');
   if (!tbody) return;
   tbody.innerHTML = '';
+  const isMobile = window.matchMedia && window.matchMedia('(max-width:640px)').matches;
   // Determine current auth id and shop_staff id for the logged-in user
   let authId = null;
   let shopStaffId = null;
@@ -134,27 +146,100 @@ async function renderCompletedJobs() {
     const tr = document.createElement('tr');
     const appt = allAppointments.find(a => a.id === job.appointment_id) || {};
     const jobNum = job.id ? job.id.slice(-6).toUpperCase() : '';
-    tr.innerHTML = `
-      <td>${jobNum}</td>
-      <td>${appt.customer || job.customer || ''}</td>
-      <td>${appt.vehicle || job.vehicle || ''}</td>
-      <td>${appt.service || job.service || ''}</td>
-      <td>${job.completed_by ? (job.completed_by.name || job.completed_by.auth_id || job.completed_by.id) : ''}</td>
-      <td>${job.completed_at ? new Date(job.completed_at).toLocaleString() : ''}</td>
-      <td><button class="btn small" data-job-id="${job.id}">View</button></td>
-    `;
+    if (isMobile) {
+      // Mobile: only show Customer, Vehicle, Service and make row clickable
+      tr.className = 'mobile-row';
+      tr.setAttribute('data-job-id', job.id || '');
+      tr.innerHTML = `
+        <td>${appt.customer || job.customer || ''}</td>
+        <td>${appt.vehicle || job.vehicle || ''}</td>
+        <td>${appt.service || job.service || ''}</td>
+      `;
+      tr.addEventListener('click', () => openMobileRowModal(job, appt));
+    } else {
+      tr.innerHTML = `
+        <td>${jobNum}</td>
+        <td>${appt.customer || job.customer || ''}</td>
+        <td>${appt.vehicle || job.vehicle || ''}</td>
+        <td>${appt.service || job.service || ''}</td>
+        <td>${job.completed_by ? (job.completed_by.name || job.completed_by.auth_id || job.completed_by.id) : ''}</td>
+        <td>${job.completed_at ? new Date(job.completed_at).toLocaleString() : ''}</td>
+        <td><button class="btn small" data-job-id="${job.id}">View</button></td>
+      `;
+    }
     tbody.appendChild(tr);
   });
 
-  // Attach view handlers
-  tbody.querySelectorAll('button').forEach(b => {
-    b.addEventListener('click', async () => {
-      const id = b.getAttribute('data-job-id');
-      const job = allJobs.find(j => j.id === id);
-      const appt = allAppointments.find(a => a.id === job.appointment_id) || {};
-      openJobViewModal(job, appt);
+  // Attach desktop view handlers
+  if (!isMobile) {
+    tbody.querySelectorAll('button').forEach(b => {
+      b.addEventListener('click', async () => {
+        const id = b.getAttribute('data-job-id');
+        const job = allJobs.find(j => j.id === id);
+        const appt = allAppointments.find(a => a.id === job.appointment_id) || {};
+        openJobViewModal(job, appt);
+      });
     });
-  });
+  }
+}
+
+// Mobile row modal: offers two buttons -> View (full modal) and View more details (compact mobile-only modal)
+function openMobileRowModal(job, appt) {
+  // create or reuse modal container
+  let modal = document.getElementById('mobileRowModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'mobileRowModal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width:420px;padding:18px;" onclick="event.stopPropagation()">
+        <div class="modal-head"><h3>Choose action</h3><button class="btn-close" onclick="document.getElementById('mobileRowModal')?.classList.add('hidden')">&times;</button></div>
+        <div class="modal-body" id="mobileRowModalBody" style="padding:12px 0"></div>
+        <div class="modal-foot" style="display:flex;gap:8px;">
+          <button id="mobileRowViewBtn" class="btn" style="flex:1;">View</button>
+          <button id="mobileRowMoreBtn" class="btn" style="flex:1;">View more details</button>
+        </div>
+      </div>`;
+    modal.classList.add('hidden');
+    document.body.appendChild(modal);
+    modal.addEventListener('click', () => modal.classList.add('hidden'));
+  }
+  const body = modal.querySelector('#mobileRowModalBody');
+  if (body) body.innerHTML = `<p><strong>Customer:</strong> ${appt.customer || job.customer || ''}</p><p><strong>Vehicle:</strong> ${appt.vehicle || job.vehicle || ''}</p><p><strong>Service:</strong> ${appt.service || job.service || ''}</p>`;
+
+  const viewBtn = modal.querySelector('#mobileRowViewBtn');
+  const moreBtn = modal.querySelector('#mobileRowMoreBtn');
+  if (viewBtn) {
+    viewBtn.onclick = (e) => { e.preventDefault(); modal.classList.add('hidden'); openJobViewModal(job, appt); };
+  }
+  if (moreBtn) {
+    moreBtn.onclick = (e) => { e.preventDefault(); modal.classList.add('hidden'); openMobileDetailsModal(job, appt); };
+  }
+  modal.classList.remove('hidden');
+}
+
+function openMobileDetailsModal(job, appt) {
+  let modal = document.getElementById('mobileDetailsModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'mobileDetailsModal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-content" style="max-width:420px;padding:18px;" onclick="event.stopPropagation()">
+        <div class="modal-head"><h3>Details</h3><button class="btn-close" onclick="document.getElementById('mobileDetailsModal')?.classList.add('hidden')">&times;</button></div>
+        <div class="modal-body" id="mobileDetailsModalBody" style="padding:12px 0"></div>
+        <div class="modal-foot"><button class="btn" onclick="document.getElementById('mobileDetailsModal')?.classList.add('hidden')">Close</button></div>
+      </div>`;
+    modal.classList.add('hidden');
+    document.body.appendChild(modal);
+    modal.addEventListener('click', () => modal.classList.add('hidden'));
+  }
+  const body = modal.querySelector('#mobileDetailsModalBody');
+  const jobNum = job.id ? job.id.slice(-6).toUpperCase() : '';
+  const completedBy = job.completed_by ? (job.completed_by.name || job.completed_by.auth_id || job.completed_by.id) : '';
+  const completedAt = job.completed_at ? new Date(job.completed_at).toLocaleString() : '';
+  if (body) body.innerHTML = `<p><strong>Job #:</strong> ${jobNum}</p><p><strong>Completed By:</strong> ${completedBy}</p><p><strong>Completed At:</strong> ${completedAt}</p>`;
+  modal.classList.remove('hidden');
 }
 
 /**
