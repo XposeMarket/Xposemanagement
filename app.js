@@ -18,6 +18,44 @@ import {
   getCurrentIndustryType 
 } from './helpers/shop-config-loader.js';
 import { getSupabaseClient } from './helpers/supabase.js';
+// Ensure global non-blocking notification banner is available early
+import './helpers/notify.js';
+
+// Override native alert to use the app's notification UI (non-blocking)
+if (typeof window !== 'undefined') {
+  try {
+    window.alert = function(message){
+      try {
+        // Prefer the lightweight banner helper which is always available and styled
+        if (typeof window.showNotificationBanner === 'function') {
+          window.showNotificationBanner(message, 'error', 6000);
+          return;
+        }
+
+        // Next prefer page-level showNotification
+        if (typeof window.showNotification === 'function') {
+          window.showNotification(message, 'error');
+          return;
+        }
+
+        // If there's a global notification element used by many pages, set it directly
+        const el = document.getElementById('notification');
+        if (el) {
+          try {
+            el.textContent = message;
+            el.className = 'notification';
+            el.style.background = '#ef4444';
+            el.classList.remove('hidden');
+            setTimeout(() => el.classList.add('hidden'), 5000);
+            return;
+          } catch(e) { /* fallback */ }
+        }
+      } catch(e) {
+        console.error('Banner alert failed:', e);
+      }
+    };
+  } catch (e) { console.warn('Could not override window.alert', e); }
+}
 
 import { setupLogin } from './pages/index.js';
 import { setupDashboard } from './pages/dashboard.js';

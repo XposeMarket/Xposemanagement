@@ -30,10 +30,10 @@ function showBanner(message, type='success', duration=3000){
     el.style.padding = '12px 18px';
     el.style.borderRadius = '8px';
     el.style.boxShadow = '0 8px 30px rgba(2,6,23,0.15)';
-    el.style.color = '#064e3b';
+    el.style.color = type === 'error' ? 'white' : '#064e3b';
     el.style.fontWeight = '600';
     el.style.fontSize = '14px';
-    el.style.background = type === 'success' ? '#bbf7d0' : (type === 'error' ? '#fecaca' : '#e2e8f0');
+    el.style.background = type === 'success' ? '#bbf7d0' : (type === 'error' ? '#ef4444' : '#e2e8f0');
     el.textContent = message;
     container.appendChild(el);
     // animate in

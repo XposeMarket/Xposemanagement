@@ -2345,6 +2345,9 @@ try {
   // Get messages for a thread
   app.get('/api/messaging/messages/:threadId', messagingAPI.getMessages);
 
+  // Permanently delete a thread (service-role)
+  app.delete('/api/messaging/threads/:threadId', messagingAPI.deleteThread);
+
   // Release/delete a Twilio number
   app.delete('/api/messaging/numbers/:numberId', messagingAPI.releaseNumber);
   

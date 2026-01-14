@@ -211,9 +211,10 @@ async function provisionNumber(req, res) {
 async function sendMessage(req, res) {
   try {
     const { shop_id: shopId, customer_id: customerId, to, body, media } = req.body;
-    
-    if (!shopId || !to || !body) {
-      return res.status(400).json({ error: 'shop_id, to, and body are required' });
+
+    // Allow sending if there's either a body or media attachments
+    if (!shopId || !to || (!body && (!media || (Array.isArray(media) && media.length === 0)))) {
+      return res.status(400).json({ error: 'shop_id, to, and either body or media are required' });
     }
     
     const supabase = getSupabase();
@@ -236,17 +237,20 @@ async function sendMessage(req, res) {
     // Find or create thread
     const thread = await findOrCreateThread(shopId, customerId, normalizedTo, shopNumber.id);
     
-    // Send via Twilio
+    // Send via Twilio. Only include `body` if provided; media-only messages are supported.
     const messageParams = {
       from: shopNumber.phone_number,
-      to: normalizedTo,
-      body: body
+      to: normalizedTo
     };
-    
-    if (media && media.length > 0) {
+
+    if (body && body.length) {
+      messageParams.body = body;
+    }
+
+    if (media && ((Array.isArray(media) && media.length > 0) || (!Array.isArray(media) && media))) {
       messageParams.mediaUrl = Array.isArray(media) ? media : [media];
     }
-    
+
     const twilioMessage = await getTwilioClient().messages.create(messageParams);
     
     // Save to database
@@ -273,11 +277,15 @@ async function sendMessage(req, res) {
       console.error('Error saving message to DB:', saveError);
     }
     
-    // Update thread's last_message
+    // Update thread's last_message. For media-only sends, use a concise placeholder.
+    const lastMessagePreview = (body && body.length)
+      ? body.substring(0, 100)
+      : (media && ((Array.isArray(media) && media.length > 0) || (!Array.isArray(media) && media)) ? '[Attachment]' : '');
+
     await supabase
       .from('threads')
       .update({
-        last_message: body.substring(0, 100),
+        last_message: lastMessagePreview,
         last_message_at: new Date().toISOString()
       })
       .eq('id', thread.id);
