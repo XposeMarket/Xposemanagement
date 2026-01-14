@@ -71,15 +71,19 @@ function getStatusClass(status) {
   return s;
 }
 
-// Utility: get start/end of week for a given date
+// Utility: get start/end of week for a given date (Sunday-Saturday)
 function getWeekRange(date = new Date()) {
   const d = new Date(date);
-  const day = d.getDay();
-  const diffToMonday = d.getDate() - day + (day === 0 ? -6 : 1);
-  const monday = new Date(d.setDate(diffToMonday));
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  return { start: monday, end: sunday };
+  const day = d.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  // Calculate days to subtract to get to Sunday
+  const diffToSunday = day; // If it's Sunday (0), diff is 0; if Monday (1), diff is 1, etc.
+  const sunday = new Date(d);
+  sunday.setDate(d.getDate() - diffToSunday);
+  sunday.setHours(0, 0, 0, 0);
+  const saturday = new Date(sunday);
+  saturday.setDate(sunday.getDate() + 6);
+  saturday.setHours(23, 59, 59, 999);
+  return { start: sunday, end: saturday };
 }
 
 // Render week selector
@@ -191,7 +195,7 @@ function renderWeeklyDaysOverview(currentWeek, invoices, appointments, jobs) {
   const container = document.getElementById('weekly-days-grid');
   if (!container) return;
   
-  // Build the 7-day array (Mon-Sun)
+  // Build the 7-day array (Sun-Sat)
   const weekStart = new Date(currentWeek.start);
   weekStart.setHours(0, 0, 0, 0);
   const days = [];
@@ -282,7 +286,7 @@ function showHourlyStaffModal(staffObj, clockEntries, currentWeek) {
   const existing = document.getElementById('hourly-staff-modal');
   if (existing) existing.remove();
   
-  // Build the 7-day week array (Mon-Sun)
+  // Build the 7-day week array (Sun-Sat)
   const weekStart = new Date(currentWeek.start);
   weekStart.setHours(0, 0, 0, 0);
   const days = [];
@@ -298,15 +302,42 @@ function showHourlyStaffModal(staffObj, clockEntries, currentWeek) {
   // Group clock entries by day
   clockEntries.forEach(entry => {
     if (!entry.clock_in) return;
-    const clockInDate = parseDatePreferLocal(entry.clock_in);
+    
+    // Parse the clock_in timestamp
+    let clockInDate;
+    const rawClockIn = entry.clock_in;
+    
+    // If the timestamp has a 'Z' or timezone offset, it's stored in UTC
+    // We need to convert to local time for proper date grouping
+    if (typeof rawClockIn === 'string' && /[zZ]|[\+\-]\d{2}:?\d{2}$/.test(rawClockIn)) {
+      // It's a UTC timestamp - parse as Date and it will convert to local
+      clockInDate = new Date(rawClockIn);
+    } else {
+      // No timezone info - parse as local
+      clockInDate = parseDatePreferLocal(rawClockIn);
+    }
+    
     // Debug: show raw vs parsed for troubleshooting timezone issues
-    try { console.debug('[revenue][clock-entry] raw:', entry.clock_in, 'parsedLocal:', clockInDate && clockInDate.toString(), 'localTime:', clockInDate && clockInDate.toLocaleTimeString()); } catch(e) {}
+    try { 
+      console.debug('[revenue][clock-entry] raw:', rawClockIn, 
+                    'parsed:', clockInDate && clockInDate.toString(), 
+                    'localTime:', clockInDate && clockInDate.toLocaleTimeString(),
+                    'localDate:', clockInDate && clockInDate.toLocaleDateString()); 
+    } catch(e) {}
+    
     const iso = localIsoDate(clockInDate);
     const day = days.find(d => d.iso === iso);
     if (day) {
       day.entries.push(entry);
       if (entry.clock_out) {
-        const clockOut = parseDatePreferLocal(entry.clock_out);
+        // Parse clock out - handle UTC timestamps properly
+        let clockOut;
+        if (typeof entry.clock_out === 'string' && /[zZ]|[\+\-]\d{2}:?\d{2}$/.test(entry.clock_out)) {
+          clockOut = new Date(entry.clock_out); // UTC timestamp - will convert to local
+        } else {
+          clockOut = parseDatePreferLocal(entry.clock_out);
+        }
+        
         const diffMs = clockOut - clockInDate;
         day.totalMinutes += diffMs / 1000 / 60;
       }
@@ -335,12 +366,27 @@ function showHourlyStaffModal(staffObj, clockEntries, currentWeek) {
     let entriesHtml = '';
     if (hasEntries) {
       entriesHtml = day.entries.map(entry => {
-            const clockIn = parseDatePreferLocal(entry.clock_in);
+        // Parse clock in - handle UTC timestamps properly
+        let clockIn;
+        if (typeof entry.clock_in === 'string' && /[zZ]|[\+\-]\d{2}:?\d{2}$/.test(entry.clock_in)) {
+          clockIn = new Date(entry.clock_in); // UTC timestamp - will convert to local
+        } else {
+          clockIn = parseDatePreferLocal(entry.clock_in);
+        }
+        
         const clockInTime = clockIn.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         let clockOutTime = 'Still clocked in';
         let duration = '—';
+        
         if (entry.clock_out) {
-          const clockOut = parseDatePreferLocal(entry.clock_out);
+          // Parse clock out - handle UTC timestamps properly
+          let clockOut;
+          if (typeof entry.clock_out === 'string' && /[zZ]|[\+\-]\d{2}:?\d{2}$/.test(entry.clock_out)) {
+            clockOut = new Date(entry.clock_out); // UTC timestamp - will convert to local
+          } else {
+            clockOut = parseDatePreferLocal(entry.clock_out);
+          }
+          
           clockOutTime = clockOut.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const diffMs = clockOut - clockIn;
           const diffMins = Math.round(diffMs / 1000 / 60);
@@ -503,6 +549,8 @@ async function setupRevenuePage() {
 
       // Group daily summary rows by staff_id
       const staffClockData = {};
+      // Aggregated minutes (from raw time_clock rows) keyed by staff.id (or fallback to auth_id/email)
+      const clockMinutesByStaffId = {};
       console.debug('[revenue] time_clock_daily_summary rows fetched:', (timeClockData || []).length, timeClockData && timeClockData.slice && timeClockData.slice(0,5));
       timeClockData.forEach(entry => {
         const staffId = entry.staff_id;
@@ -522,17 +570,74 @@ async function setupRevenuePage() {
           .eq('shop_id', shopId)
           .gte('clock_in', startIso)
           .lte('clock_in', endIso);
+        
+        if (rawErr) {
+          console.warn('[revenue][raw-time_clock] Query error:', rawErr);
+        }
+        
         const rawRows = (rawErr || !rawClock) ? [] : (rawClock || []);
         if (rawRows && rawRows.length) {
           try { console.debug('[revenue][raw-time_clock] rows fetched:', rawRows.length, rawRows.slice(0,5)); } catch(e) {}
-          // Populate staffClockData entries keyed by staff id / auth id / email so later code can prefer raw rows
+          
+          // Populate staffClockData entries keyed by staff_id (which is auth_id in time_clock table)
           rawRows.forEach(r => {
-            const sid = r.staff_id || r.staff_auth_id || r.staff_email || null;
-            if (!sid) return;
-            if (!staffClockData[sid]) staffClockData[sid] = [];
-            // push raw row directly — downstream code will detect presence of clock_in/clock_out
-            staffClockData[sid].push(r);
+            // staff_id in time_clock table is actually the auth_id
+            const authId = r.staff_id;
+            const email = r.staff_email;
+            
+            if (!authId && !email) {
+              console.warn('[revenue][raw-time_clock] Row missing both staff_id and staff_email:', r.id);
+              return;
+            }
+            
+            // Try to match with staff by auth_id first
+            const staff = staffList.find(s => s.auth_id === authId || s.email === email);
+            if (staff) {
+              // Use staff auth_id as the key for consistency
+              const key = staff.auth_id || staff.email;
+              if (!staffClockData[key]) staffClockData[key] = [];
+              staffClockData[key].push(r);
+            } else {
+              // No match found - still add using raw identifiers
+              const key = authId || email;
+              if (!staffClockData[key]) staffClockData[key] = [];
+              staffClockData[key].push(r);
+              console.debug('[revenue][raw-time_clock] No staff match for', key);
+            }
+
+            // Also aggregate minutes per staff.id (prefer numeric DB id when we were able to match)
+            try {
+              if (r.clock_in && r.clock_out) {
+                let inT = (typeof r.clock_in === 'string' && /[zZ]|[\+\-]\d{2}:?\d{2}$/.test(r.clock_in)) ? new Date(r.clock_in) : parseDatePreferLocal(r.clock_in);
+                let outT = (typeof r.clock_out === 'string' && /[zZ]|[\+\-]\d{2}:?\d{2}$/.test(r.clock_out)) ? new Date(r.clock_out) : parseDatePreferLocal(r.clock_out);
+                if (inT && outT && !isNaN(inT.getTime()) && !isNaN(outT.getTime())) {
+                  // Ensure entry falls within the current week bounds
+                  const wkStart = new Date(currentWeek.start); wkStart.setHours(0,0,0,0);
+                  const wkEnd = new Date(currentWeek.end); wkEnd.setHours(23,59,59,999);
+                  if (inT >= wkStart && inT <= wkEnd) {
+                    const mins = Math.max(0, Math.round((outT - inT) / 60000));
+                    const keyId = staff ? staff.id : (authId || email);
+                    if (keyId) clockMinutesByStaffId[keyId] = (clockMinutesByStaffId[keyId] || 0) + mins;
+                  }
+                }
+              }
+            } catch (e) {
+              /* ignore aggregation errors */
+            }
           });
+
+          // If any staff has raw rows, prefer raw rows only and drop daily-summary rows
+          try {
+            Object.keys(staffClockData).forEach(key => {
+              const arr = staffClockData[key] || [];
+              const hasRaw = arr.some(entry => entry && entry.clock_in);
+              if (hasRaw) {
+                staffClockData[key] = arr.filter(entry => entry && entry.clock_in);
+              }
+            });
+          } catch (e) {
+            /* ignore cleanup errors */
+          }
         } else {
           try { console.debug('[revenue][raw-time_clock] no raw rows returned for week'); } catch(e) {}
         }
@@ -540,33 +645,82 @@ async function setupRevenuePage() {
         console.warn('[revenue] raw time_clock fetch failed:', e);
       }
 
-      // Calculate weekly hours for each hourly staff member from daily summaries
-      function calcWeeklyHoursFromClock(entries) {
+      // Calculate weekly hours for each hourly staff member from clock entries
+      // IMPORTANT: Filter entries to only include those within the current week (after timezone conversion)
+      function calcWeeklyHoursFromClock(entries, weekStart, weekEnd) {
         let totalMinutes = 0;
+        let includedCount = 0;
+        let excludedCount = 0;
+        
         entries.forEach(entry => {
           if (!entry) return;
+          
           // If this entry is a raw time_clock row, compute minutes from clock_in/clock_out
           if (entry.clock_in) {
             try {
-              const inT = parseDatePreferLocal(entry.clock_in);
-              const outT = entry.clock_out ? parseDatePreferLocal(entry.clock_out) : null;
+              // Handle UTC timestamps properly
+              let inT;
+              if (typeof entry.clock_in === 'string' && /[zZ]|[\+\-]\d{2}:?\d{2}$/.test(entry.clock_in)) {
+                inT = new Date(entry.clock_in); // UTC timestamp - will convert to local
+              } else {
+                inT = parseDatePreferLocal(entry.clock_in);
+              }
+              
+              // Filter: only include entries where clock_in is within the current week
+              if (!inT || inT < weekStart || inT > weekEnd) {
+                excludedCount++;
+                console.debug('[revenue][calc] Excluded entry - clock_in outside week:', 
+                  entry.clock_in, 'parsed:', inT?.toLocaleString(), 
+                  'week:', weekStart.toLocaleDateString(), '-', weekEnd.toLocaleDateString());
+                return; // Skip this entry - it's outside the current week
+              }
+              
+              includedCount++;
+              
+              let outT = null;
+              if (entry.clock_out) {
+                if (typeof entry.clock_out === 'string' && /[zZ]|[\+\-]\d{2}:?\d{2}$/.test(entry.clock_out)) {
+                  outT = new Date(entry.clock_out); // UTC timestamp - will convert to local
+                } else {
+                  outT = parseDatePreferLocal(entry.clock_out);
+                }
+              }
+              
               if (inT && outT && !isNaN(inT.getTime()) && !isNaN(outT.getTime())) {
-                totalMinutes += Math.round((outT - inT) / 60000);
+                const mins = Math.round((outT - inT) / 60000);
+                totalMinutes += mins;
+                console.debug('[revenue][calc] Included entry:', mins, 'mins from', 
+                  inT.toLocaleString(), 'to', outT.toLocaleString());
                 return;
               }
             } catch (e) { /* fallthrough to summary handling */ }
           }
+          
           // daily summary may provide total_minutes or total_hours
+          // For summary entries, check if work_date is within the week
+          if (entry.work_date) {
+            const workDate = new Date(entry.work_date + 'T00:00:00');
+            if (workDate < weekStart || workDate > weekEnd) {
+              excludedCount++;
+              return; // Skip - outside current week
+            }
+            includedCount++;
+          }
+          
           const mins = Number(entry.total_minutes || Math.round(Number(entry.total_hours || 0) * 60) || 0);
           totalMinutes += mins;
         });
+        
+        console.debug('[revenue][calc] Summary - included:', includedCount, 'excluded:', excludedCount, 
+          'totalMinutes:', totalMinutes, 'totalHours:', (totalMinutes/60).toFixed(2));
+        
         return totalMinutes / 60; // Return hours
       }
 
       const staffHtml = staffList.map((s, idx) => {
         const isHourly = s.hourly_rate && Number(s.hourly_rate) > 0;
         const clockEntries = staffClockData[s.auth_id] || staffClockData[s.id] || staffClockData[s.email] || [];
-        const weeklyHours = isHourly ? calcWeeklyHoursFromClock(clockEntries) : 0;
+        const weeklyHours = isHourly ? calcWeeklyHoursFromClock(clockEntries, currentWeek.start, currentWeek.end) : 0;
         const weeklyEarned = isHourly ? weeklyHours * Number(s.hourly_rate) : 0;
         console.debug('[revenue] staff weekly calc', { staffId: s.id, auth_id: s.auth_id, email: s.email, isHourly, clockEntriesLength: (clockEntries||[]).length, weeklyHours, weeklyEarned });
         
@@ -620,29 +774,41 @@ async function setupRevenuePage() {
               const startIso = currentWeek.start.toISOString();
               const endIso = currentWeek.end.toISOString();
               let rawRows = [];
-              // Try by numeric staff id first
-              if (staffObj.id) {
-                try {
-                  const { data: byId, error: byIdErr } = await supabase.from('time_clock')
-                    .select('*')
-                    .eq('shop_id', shopId)
-                    .eq('staff_id', staffObj.id)
-                    .gte('clock_in', startIso)
-                    .lte('clock_in', endIso);
-                  if (!byIdErr && byId && byId.length) rawRows = byId;
-                } catch (e) { /* ignore */ }
-              }
-              // If none, try by staff auth id
-              if ((!rawRows || rawRows.length === 0) && staffObj.auth_id) {
+              
+              // Try by staff_id (auth_id) - this is the main identifier in time_clock table
+              if (staffObj.auth_id) {
                 try {
                   const { data: byAuth, error: byAuthErr } = await supabase.from('time_clock')
                     .select('*')
                     .eq('shop_id', shopId)
-                    .eq('staff_auth_id', staffObj.auth_id)
+                    .eq('staff_id', staffObj.auth_id)
                     .gte('clock_in', startIso)
                     .lte('clock_in', endIso);
-                  if (!byAuthErr && byAuth && byAuth.length) rawRows = byAuth;
-                } catch (e) { /* ignore */ }
+                  if (!byAuthErr && byAuth && byAuth.length) {
+                    rawRows = byAuth;
+                    console.debug('[revenue][staff-modal] Found', byAuth.length, 'raw time_clock rows by auth_id');
+                  }
+                } catch (e) { 
+                  console.warn('[revenue][staff-modal] Error fetching by auth_id:', e);
+                }
+              }
+              
+              // Fallback: try by email if auth_id didn't work
+              if ((!rawRows || rawRows.length === 0) && staffObj.email) {
+                try {
+                  const { data: byEmail, error: byEmailErr } = await supabase.from('time_clock')
+                    .select('*')
+                    .eq('shop_id', shopId)
+                    .eq('staff_email', staffObj.email)
+                    .gte('clock_in', startIso)
+                    .lte('clock_in', endIso);
+                  if (!byEmailErr && byEmail && byEmail.length) {
+                    rawRows = byEmail;
+                    console.debug('[revenue][staff-modal] Found', byEmail.length, 'raw time_clock rows by email');
+                  }
+                } catch (e) { 
+                  console.warn('[revenue][staff-modal] Error fetching by email:', e);
+                }
               }
 
               if (rawRows && rawRows.length) {
@@ -1341,36 +1507,47 @@ async function setupRevenuePage() {
     // Additionally include time_clock-based staff hours (for hourly-paid staff)
     let timeClockStaffCost = 0;
       try {
-        // Use daily summary to aggregate minutes per staff for the week
-        const startDate = localIsoDate(currentWeek.start);
-        const endDate = localIsoDate(currentWeek.end);
-        const { data: tcData, error: tcErr } = await supabase
-          .from('time_clock_daily_summary')
-          .select('*')
-          .eq('shop_id', shopId)
-          .gte('work_date', startDate)
-          .lte('work_date', endDate);
-        const tcRows = (tcErr || !tcData) ? [] : (tcData || []);
+        // Prefer aggregated minutes from raw time_clock rows (collected earlier)
+        if (clockMinutesByStaffId && Object.keys(clockMinutesByStaffId).length) {
+          staffList.forEach(s => {
+            const minutes = clockMinutesByStaffId[s.id] || clockMinutesByStaffId[s.auth_id] || 0;
+            if (minutes <= 0) return;
+            const hours = minutes / 60;
+            const rate = Number(s.hourly_rate || s.rate || 0);
+            timeClockStaffCost += hours * rate;
+          });
+        } else {
+          // Fallback to daily summary to aggregate minutes per staff for the week
+          const startDate = localIsoDate(currentWeek.start);
+          const endDate = localIsoDate(currentWeek.end);
+          const { data: tcData, error: tcErr } = await supabase
+            .from('time_clock_daily_summary')
+            .select('*')
+            .eq('shop_id', shopId)
+            .gte('work_date', startDate)
+            .lte('work_date', endDate);
+          const tcRows = (tcErr || !tcData) ? [] : (tcData || []);
 
-        // Map staff_id (auth uid) to minutes summed across days
-        const clockMinutesByStaff = {};
-        tcRows.forEach(r => {
-          const staffKey = r.staff_id || null;
-          if (!staffKey) return;
-          const mins = Number(r.total_minutes || Math.round(Number(r.total_hours || 0) * 60) || 0);
-          clockMinutesByStaff[staffKey] = (clockMinutesByStaff[staffKey] || 0) + Math.max(0, mins);
-        });
+          // Map staff_id (auth uid) to minutes summed across days
+          const clockMinutesByStaff = {};
+          tcRows.forEach(r => {
+            const staffKey = r.staff_id || null;
+            if (!staffKey) return;
+            const mins = Number(r.total_minutes || Math.round(Number(r.total_hours || 0) * 60) || 0);
+            clockMinutesByStaff[staffKey] = (clockMinutesByStaff[staffKey] || 0) + Math.max(0, mins);
+          });
 
-        // For each staff in staffList, compute earned amount from clock minutes using their hourly_rate
-        staffList.forEach(s => {
-          const staffKey = s.auth_id || s.id;
-          const minutes = clockMinutesByStaff[staffKey] || 0;
-          if (minutes <= 0) return;
-          const hours = minutes / 60;
-          const rate = Number(s.hourly_rate || s.rate || 0);
-          const earned = hours * rate;
-          timeClockStaffCost += earned;
-        });
+          // For each staff in staffList, compute earned amount from clock minutes using their hourly_rate
+          staffList.forEach(s => {
+            const staffKey = s.auth_id || s.id;
+            const minutes = clockMinutesByStaff[staffKey] || 0;
+            if (minutes <= 0) return;
+            const hours = minutes / 60;
+            const rate = Number(s.hourly_rate || s.rate || 0);
+            const earned = hours * rate;
+            timeClockStaffCost += earned;
+          });
+        }
       } catch (e) {
         console.warn('Could not fetch/aggregate time_clock_daily_summary for staff costs:', e);
       }
@@ -1446,40 +1623,55 @@ async function setupRevenuePage() {
         staffTotals[staffKey].earned += Number(jt.staffCost || 0);
       });
 
-      // Incorporate time_clock totals (fetch again to ensure fresh aggregation)
+      // Incorporate time_clock totals (prefer previously-aggregated minutes from raw rows)
       try {
-        const { data: tcData2, error: tcErr2 } = await supabase
-          .from('time_clock')
-          .select('*')
-          .eq('shop_id', shopId)
-          .gte('clock_in', currentWeek.start.toISOString())
-          .lte('clock_in', currentWeek.end.toISOString());
-        const tcRows2 = (tcErr2 || !tcData2) ? [] : (tcData2 || []);
-        const clockMinutesByStaff2 = {};
-        tcRows2.forEach(r => {
-          if (!r.clock_in) return;
-          if (!r.clock_out) return;
-          const staffKey = r.staff_id || r.staff_auth_id || null;
-          if (!staffKey) return;
-          const inT = parseDatePreferLocal(r.clock_in);
-          const outT = parseDatePreferLocal(r.clock_out);
-          if (isNaN(inT.getTime()) || isNaN(outT.getTime())) return;
-          const mins = Math.round((outT - inT) / 60000);
-          clockMinutesByStaff2[staffKey] = (clockMinutesByStaff2[staffKey] || 0) + Math.max(0, mins);
-        });
+        if (clockMinutesByStaffId && Object.keys(clockMinutesByStaffId).length) {
+          // Use aggregated minutes mapped to staff.id/auth_id
+          staffList.forEach(s => {
+            const minutes = clockMinutesByStaffId[s.id] || clockMinutesByStaffId[s.auth_id] || 0;
+            if (minutes <= 0) return;
+            const hours = minutes / 60;
+            const rate = Number(s.hourly_rate || s.rate || 0);
+            const earned = hours * rate;
+            const staffKey = s.id;
+            if (!staffTotals[staffKey]) staffTotals[staffKey] = { hours: 0, earned: 0 };
+            staffTotals[staffKey].hours += hours;
+            staffTotals[staffKey].earned += earned;
+          });
+        } else {
+          const { data: tcData2, error: tcErr2 } = await supabase
+            .from('time_clock')
+            .select('*')
+            .eq('shop_id', shopId)
+            .gte('clock_in', currentWeek.start.toISOString())
+            .lte('clock_in', currentWeek.end.toISOString());
+          const tcRows2 = (tcErr2 || !tcData2) ? [] : (tcData2 || []);
+          const clockMinutesByStaff2 = {};
+          tcRows2.forEach(r => {
+            if (!r.clock_in) return;
+            if (!r.clock_out) return;
+            const staffKey = r.staff_id || r.staff_auth_id || null;
+            if (!staffKey) return;
+            const inT = parseDatePreferLocal(r.clock_in);
+            const outT = parseDatePreferLocal(r.clock_out);
+            if (isNaN(inT.getTime()) || isNaN(outT.getTime())) return;
+            const mins = Math.round((outT - inT) / 60000);
+            clockMinutesByStaff2[staffKey] = (clockMinutesByStaff2[staffKey] || 0) + Math.max(0, mins);
+          });
 
-        // Add clock-derived hours/earnings into staffTotals
-        staffList.forEach(s => {
-          const staffKey = s.auth_id || s.id;
-          const minutes = clockMinutesByStaff2[staffKey] || 0;
-          if (minutes <= 0) return;
-          const hours = minutes / 60;
-          const rate = Number(s.hourly_rate || s.rate || 0);
-          const earned = hours * rate;
-          if (!staffTotals[staffKey]) staffTotals[staffKey] = { hours: 0, earned: 0 };
-          staffTotals[staffKey].hours += hours;
-          staffTotals[staffKey].earned += earned;
-        });
+          // Add clock-derived hours/earnings into staffTotals
+          staffList.forEach(s => {
+            const staffKey = s.auth_id || s.id;
+            const minutes = clockMinutesByStaff2[staffKey] || 0;
+            if (minutes <= 0) return;
+            const hours = minutes / 60;
+            const rate = Number(s.hourly_rate || s.rate || 0);
+            const earned = hours * rate;
+            if (!staffTotals[staffKey]) staffTotals[staffKey] = { hours: 0, earned: 0 };
+            staffTotals[staffKey].hours += hours;
+            staffTotals[staffKey].earned += earned;
+          });
+        }
       } catch (e) {
         console.warn('Failed to incorporate time_clock into staff totals:', e);
       }
