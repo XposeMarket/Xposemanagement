@@ -44,6 +44,20 @@
       border-bottom: 1px solid var(--line);
     }
     
+    @media (max-width: 768px) {
+      .parts-list-item {
+        grid-template-columns: auto 1fr;
+        gap: 8px;
+        padding: 12px 8px;
+      }
+      
+      .parts-list-item > div:nth-child(3),
+      .parts-list-item > div:nth-child(4),
+      .parts-list-item > div:nth-child(5) {
+        grid-column: 2;
+      }
+    }
+    
     .parts-list-item:hover {
       background: var(--hover);
     }
@@ -152,6 +166,58 @@
       .weekly-day-amount {
         font-size: 1rem;
       }
+    }
+    
+    /* Mobile-friendly job details panel */
+    @media (max-width: 768px) {
+      .job-panel {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 12px;
+        padding: 16px 12px !important;
+      }
+      
+      .job-panel > div:first-child {
+        width: 100%;
+      }
+      
+      .job-panel > div:last-child {
+        width: 100%;
+      }
+      
+      .job-panel > div:last-child > div:first-child {
+        flex-wrap: wrap;
+        gap: 8px !important;
+      }
+      
+      .job-panel > div:last-child > div:last-child {
+        grid-template-columns: 1fr;
+        gap: 8px !important;
+      }
+      
+      .job-panel > div:last-child > div:last-child > div {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+    }
+    
+    /* Staff role section headers */
+    .staff-role-header {
+      /* Darker header to ensure white title text has strong contrast */
+      background: linear-gradient(135deg, var(--primary-dark, #0f3b8c) 0%, rgba(12,34,76,0.95) 100%);
+      color: white;
+      padding: 14px 16px;
+      font-weight: 700;
+      font-size: 1.1em;
+      border-bottom: 3px solid rgba(8,26,64,0.95);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+    }
+    
+    .staff-role-header:not(:first-child) {
+      margin-top: 2px;
     }
   </style>
 </head>

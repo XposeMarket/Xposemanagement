@@ -2646,35 +2646,107 @@ function openAssignModal(job) {
     const container = modal.querySelector('#staffListContainer');
     modal.dataset.jobId = job.id;
     container.innerHTML = '<div class="notice">Loading staff...</div>';
-    try {
+      try {
       const sup = getSupabaseClient();
       const shop = getCurrentShopId();
       let staffRows = [];
+      let userRows = [];
       if (sup && shop) {
         const { data: sdata, error: sErr } = await sup.from('shop_staff').select('*').eq('shop_id', shop);
-        if (!sErr && Array.isArray(sdata) && sdata.length) {
-          staffRows = sdata.map(s => s);
-        }
+        if (!sErr && Array.isArray(sdata) && sdata.length) staffRows = sdata.map(s => s);
+        try {
+          const { data: udata, error: uErr } = await sup.from('users').select('*').eq('shop_id', shop);
+          if (!uErr && Array.isArray(udata) && udata.length) userRows = udata.map(u => u);
+        } catch (ue) { /* ignore users fetch errors */ }
       }
-      if (!staffRows.length) {
+
+      // Merge users and shop_staff (prefer shop_staff for role/display)
+      const emailMap = new Map();
+      (userRows || []).forEach(u => {
+        const key = (u.email || '').toLowerCase();
+        if (!key) return;
+        emailMap.set(key, Object.assign({}, u, { source: 'users' }));
+      });
+      (staffRows || []).forEach(s => {
+        const key = (s.email || '').toLowerCase();
+        if (!key) return;
+        const existing = emailMap.get(key);
+        const staffObj = Object.assign({}, s, { source: 'shop_staff', shop_staff_id: s.id });
+        if (!existing) {
+          emailMap.set(key, staffObj);
+        } else {
+          // prefer shop_staff fields
+          existing.source = 'shop_staff';
+          existing.shop_staff_id = staffObj.shop_staff_id || existing.shop_staff_id;
+          existing.role = staffObj.role || existing.role;
+          existing.first = existing.first || staffObj.first_name || staffObj.first;
+          existing.last = existing.last || staffObj.last_name || staffObj.last;
+          existing.hourly_rate = (typeof staffObj.hourly_rate !== 'undefined') ? staffObj.hourly_rate : existing.hourly_rate;
+          existing.pay_type = (typeof staffObj.pay_type !== 'undefined') ? staffObj.pay_type : existing.pay_type;
+        }
+      });
+
+      const allStaff = Array.from(emailMap.values());
+      if (!allStaff.length) {
         container.innerHTML = '<p class="notice">No staff available. Add staff in Settings.</p>';
       } else {
-        container.innerHTML = staffRows.map(staff => {
-          const displayRole = (staff.role === 'foreman') ? 'Foreman' : 'Staff';
-          const first = staff.first_name || staff.first || '';
-          const last = staff.last_name || staff.last || '';
-          const authId = staff.auth_id || staff.id || '';
-          const safeFirst = (first || '').replace(/'/g, "\\'");
-          const safeLast = (last || '').replace(/'/g, "\\'");
-          return `
-            <button class="btn" style="text-align:left; justify-content:flex-start; padding:12px;" onclick="selectStaffForAssign('${authId}', '${safeFirst} ${safeLast}')">
-              <div style="display:flex;flex-direction:column;align-items:flex-start;">
-                <strong>${first} ${last}</strong>
-                <span style="font-size:12px;color:var(--muted);">${staff.email || ''} • ${displayRole}</span>
-              </div>
-            </button>
-          `;
+        // Normalize role helper
+        function normalizeRole(r) {
+          if (!r) return 'staff';
+          let s = String(r).toLowerCase().trim();
+          s = s.replace(/[_\-\/]+/g, ' ').replace(/\s+/g, ' ').trim();
+          if (s.includes('admin') || s.includes('owner')) return 'admin';
+          if (s === 'servicewriter' || s === 'service writer') return 'service writer';
+          if (s === 'manager' || s === 'lead') return 'staff';
+          return s;
+        }
+
+        const groups = { top: [], foreman: [], staff: [], service_writer: [], receptionist: [], others: [] };
+        // Fetch shop owner id from shops table (if available)
+        let shopOwnerId = null;
+        try {
+          if (sup && shop) {
+            const { data: shopInfo, error: shopErr } = await sup.from('shops').select('owner_id').eq('id', shop).limit(1).single();
+            if (!shopErr && shopInfo && shopInfo.owner_id) shopOwnerId = String(shopInfo.owner_id);
+          }
+        } catch (se) { /* ignore */ }
+        allStaff.forEach(u => {
+          const role = normalizeRole(u.role || u.role || 'staff');
+          const isOwner = shopOwnerId && String(u.id) === shopOwnerId;
+          if (isOwner || (u.role && (u.role === 'admin' || u.role === 'owner'))) groups.top.push(u);
+          else if (role === 'foreman') groups.foreman.push(u);
+          else if (role === 'service writer') groups.service_writer.push(u);
+          else if (role === 'receptionist') groups.receptionist.push(u);
+          else if (!role || role === 'staff') groups.staff.push(u);
+          else groups.others.push(u);
+        });
+
+        const sections = [
+          { title: 'Admin / Owner', items: groups.top },
+          { title: 'Foreman', items: groups.foreman },
+          { title: 'Staff', items: groups.staff },
+          { title: 'Service Writer', items: groups.service_writer },
+          { title: 'Receptionist', items: groups.receptionist },
+          { title: 'Other', items: groups.others }
+        ];
+
+        const html = sections.map(sec => {
+          if (!sec.items || sec.items.length === 0) return `'<div style="padding:8px 0;color:var(--muted);">No ${sec.title}</div>'`;
+          const rows = sec.items.map(s => {
+            const first = s.first || s.first_name || '';
+            const last = s.last || s.last_name || '';
+            const authId = s.auth_id || s.id || '';
+            const safeName = ((first || '') + ' ' + (last || '')).replace(/'/g, "\\'");
+            const displayRole = (s.role || 'staff');
+            return `<button class="btn" style="display:flex;width:100%;text-align:left;justify-content:flex-start;padding:12px;border-radius:8px;margin-bottom:6px;box-sizing:border-box;" onclick="selectStaffForAssign('${authId}', '${safeName}')"><div style="display:flex;flex-direction:column;align-items:flex-start;width:100%;"><strong>${first} ${last}</strong><span style="font-size:12px;color:var(--muted);">${s.email || ''} • ${displayRole}</span></div></button>`;
+          }).join('');
+          return `<div style="margin-bottom:8px;">` +
+                 `<div class="staff-role-header" style="background:linear-gradient(135deg,#111827,#374151);color:#fff;padding:8px 12px;font-weight:700;border-radius:6px;margin-bottom:8px;">${sec.title}</div>` +
+                 `<div style="display:flex;flex-direction:column;gap:6px;">${rows}</div>` +
+                 `</div>`;
         }).join('');
+
+        container.innerHTML = html;
       }
       modal.classList.remove('hidden');
     } catch (e) {

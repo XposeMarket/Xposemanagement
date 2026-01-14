@@ -500,7 +500,7 @@ document.addEventListener('DOMContentLoaded', function(){
         let usersLocal = [];
         try{ const { data: udata } = await sup.from('users').select('*').eq('shop_id', shop.id); if(udata) usersLocal = udata; }catch(e){ console.warn('Error querying users table', e); }
         let staffData = [];
-        try{ const { data: sdata } = await sup.from('shop_staff').select('*').eq('shop_id', shop.id); if(sdata) staffData = sdata.map(s => ({ shop_staff_id: s.id, auth_id: s.auth_id || null, first: s.first_name, last: s.last_name, email: s.email, role: s.role, shop_id: s.shop_id, hourly_rate: s.hourly_rate, is_staff:true })); }catch(e){ console.warn('Error querying shop_staff', e); }
+        try{ const { data: sdata } = await sup.from('shop_staff').select('*').eq('shop_id', shop.id); if(sdata) staffData = sdata.map(s => ({ shop_staff_id: s.id, auth_id: s.auth_id || null, first: s.first_name, last: s.last_name, email: s.email, role: s.role, shop_id: s.shop_id, hourly_rate: s.hourly_rate, pay_type: s.pay_type, is_staff:true })); }catch(e){ console.warn('Error querying shop_staff', e); }
 
         // Combine and dedupe by email, but prefer shop_staff entries for role/display
         const combined = [...(usersLocal || []), ...(staffData || [])];
@@ -519,11 +519,17 @@ document.addEventListener('DOMContentLoaded', function(){
               // prefer staff name if users row lacks it
               existing.first = existing.first || u.first;
               existing.last = existing.last || u.last;
+              // prefer shop_staff pay fields
+              existing.hourly_rate = (typeof u.hourly_rate !== 'undefined') ? u.hourly_rate : existing.hourly_rate;
+              existing.pay_type = (typeof u.pay_type !== 'undefined') ? u.pay_type : existing.pay_type;
             } else {
               // If existing is staff and current is users, don't overwrite role
               existing.first = existing.first || u.first || u.first_name;
               existing.last = existing.last || u.last || u.last_name;
               existing.email = existing.email || u.email;
+              // merge pay fields if missing from staff
+              existing.hourly_rate = (typeof existing.hourly_rate !== 'undefined' && existing.hourly_rate !== null) ? existing.hourly_rate : (u.hourly_rate || existing.hourly_rate);
+              existing.pay_type = (typeof existing.pay_type !== 'undefined' && existing.pay_type !== null) ? existing.pay_type : (u.pay_type || existing.pay_type);
             }
           }
         });
@@ -603,7 +609,10 @@ document.addEventListener('DOMContentLoaded', function(){
             // Pay Type cell
             const tdPayType = document.createElement('td');
             tdPayType.setAttribute('data-label', 'Pay Type');
-            const isHourly = u.hourly_rate && Number(u.hourly_rate) > 0;
+            // Determine hourly status: show 'Hourly' only when `pay_type` is explicitly set to 'hourly'.
+            // This prevents entering an `hourly_rate` for flat users from flipping their Pay Type UI.
+            const hasPayTypeProp = (typeof u.pay_type !== 'undefined');
+            const isHourly = hasPayTypeProp ? ((u.pay_type || '').toString().toLowerCase() === 'hourly') : false;
             const payTypeBadge = document.createElement('span');
             payTypeBadge.className = 'pay-type-badge';
             payTypeBadge.textContent = isHourly ? 'Hourly' : 'Flat Rate';
@@ -620,7 +629,6 @@ document.addEventListener('DOMContentLoaded', function(){
               payTypeBadge.style.color = 'white';
             }
             tdPayType.appendChild(payTypeBadge);
-            if(isOwner){ tdPayType.textContent = '—'; }
             tr.appendChild(tdPayType);
 
             // Hourly Rate cell
@@ -651,11 +659,15 @@ document.addEventListener('DOMContentLoaded', function(){
               try {
                 let res = null;
                 if (u.shop_staff_id) {
-                  res = await sup.from('shop_staff').update({ hourly_rate: num }).eq('id', u.shop_staff_id).select();
+                  // If user's pay_type is explicitly 'hourly', keep it. Otherwise, preserve flat by setting pay_type to 'flat'.
+                  const payTypeToSet = (u.pay_type && (u.pay_type||'').toString().toLowerCase() === 'hourly') ? 'hourly' : 'flat';
+                  res = await sup.from('shop_staff').update({ hourly_rate: num, pay_type: payTypeToSet }).eq('id', u.shop_staff_id).select();
                 } else if (u.id) {
-                  res = await sup.from('users').update({ hourly_rate: num }).eq('id', u.id).select();
+                  const payTypeToSet = (u.pay_type && (u.pay_type||'').toString().toLowerCase() === 'hourly') ? 'hourly' : 'flat';
+                  res = await sup.from('users').update({ hourly_rate: num, pay_type: payTypeToSet }).eq('id', u.id).select();
                 } else if (u.auth_id) {
-                  res = await sup.from('users').update({ hourly_rate: num }).eq('auth_id', u.auth_id).select();
+                  const payTypeToSet = (u.pay_type && (u.pay_type||'').toString().toLowerCase() === 'hourly') ? 'hourly' : 'flat';
+                  res = await sup.from('users').update({ hourly_rate: num, pay_type: payTypeToSet }).eq('auth_id', u.auth_id).select();
                 }
                 if (res && res.error) throw res.error;
                 showNotification('Hourly rate saved.', 'success');
@@ -681,17 +693,14 @@ document.addEventListener('DOMContentLoaded', function(){
 
             const tdAct = document.createElement('td');
             tdAct.setAttribute('data-label', 'Actions');
-            if(isOwner){ tdAct.textContent = ''; }
-            else {
-              const manageBtn = document.createElement('button');
-              manageBtn.className = 'btn';
-              manageBtn.textContent = 'Manage';
-              manageBtn.style.background = 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)';
-              manageBtn.style.color = 'white';
-              manageBtn.style.border = 'none';
-              manageBtn.addEventListener('click', () => { openStaffManageModal(u, tr); });
-              tdAct.appendChild(manageBtn);
-            }
+            const manageBtn = document.createElement('button');
+            manageBtn.className = 'btn';
+            manageBtn.textContent = 'Manage';
+            manageBtn.style.background = 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)';
+            manageBtn.style.color = 'white';
+            manageBtn.style.border = 'none';
+            manageBtn.addEventListener('click', () => { openStaffManageModal(u, tr); });
+            tdAct.appendChild(manageBtn);
             tr.appendChild(tdAct);
             tbody.appendChild(tr);
             return !isOwner; // return true if counts toward used slots
@@ -1043,6 +1052,19 @@ document.addEventListener('DOMContentLoaded', function(){
         staffManageContext = { user, row };
         const fullName = `${user.first || user.first_name || ''} ${user.last || user.last_name || ''}`.trim() || user.email;
         staffManageName.textContent = fullName;
+        // Hide remove button for shop owner or when there's no shop_staff record
+        try {
+          const isOwner = shopOwnerId && String(user.id).trim() === shopOwnerId;
+          if (isOwner || !user.shop_staff_id) {
+            staffManageRemoveBtn.style.display = 'none';
+          } else {
+            staffManageRemoveBtn.style.display = '';
+          }
+        } catch (e) {
+          // fallback: show remove only when shop_staff_id present
+          if (!user.shop_staff_id) staffManageRemoveBtn.style.display = 'none';
+          else staffManageRemoveBtn.style.display = '';
+        }
         staffManageModal.classList.remove('hidden');
       }
       
@@ -1128,9 +1150,9 @@ document.addEventListener('DOMContentLoaded', function(){
         try {
           // Prefer updating shop_staff, fall back to users table
           if (user.shop_staff_id) {
-            const res = await sup.from('shop_staff').update({ hourly_rate: 0 }).eq('id', user.shop_staff_id).select();
+            const res = await sup.from('shop_staff').update({ hourly_rate: 0, pay_type: 'flat' }).eq('id', user.shop_staff_id).select();
             if (res?.error) throw res.error;
-            console.log('[PayType] Updated shop_staff hourly_rate -> 0', res);
+            console.log('[PayType] Updated shop_staff hourly_rate -> 0 and pay_type -> flat', res);
           } else if (user.auth_id || user.id || user.email) {
             // Try updating users table by auth_id, then id, then email
             let updRes = null;
@@ -1142,7 +1164,13 @@ document.addEventListener('DOMContentLoaded', function(){
               if (user.email) updRes = await sup.from('users').update({ hourly_rate: 0 }).eq('email', user.email).select();
             }
             if (updRes?.error) throw updRes.error;
-            console.log('[PayType] Updated users.hourly_rate -> 0', updRes);
+            // Also set pay_type to 'flat' on the users row when possible
+            try {
+              if (user.auth_id) await sup.from('users').update({ pay_type: 'flat' }).eq('auth_id', user.auth_id).select();
+              else if (user.id) await sup.from('users').update({ pay_type: 'flat' }).eq('id', user.id).select();
+              else if (user.email) await sup.from('users').update({ pay_type: 'flat' }).eq('email', user.email).select();
+            } catch (epp) { /* ignore */ }
+            console.log('[PayType] Updated users.hourly_rate -> 0 and pay_type -> flat', updRes);
           } else {
             throw new Error('No identifier to persist pay type change');
           }
@@ -1167,9 +1195,9 @@ document.addEventListener('DOMContentLoaded', function(){
 
         try {
           if (user.shop_staff_id) {
-            const res = await sup.from('shop_staff').update({ hourly_rate: newRate }).eq('id', user.shop_staff_id).select();
+            const res = await sup.from('shop_staff').update({ hourly_rate: newRate, pay_type: 'hourly' }).eq('id', user.shop_staff_id).select();
             if (res?.error) throw res.error;
-            console.log('[PayType] Updated shop_staff hourly_rate ->', newRate, res);
+            console.log('[PayType] Updated shop_staff hourly_rate ->', newRate, 'and pay_type -> hourly', res);
           } else if (user.auth_id || user.id || user.email) {
             // Fallback to users table
             let updRes = null;
@@ -1181,7 +1209,13 @@ document.addEventListener('DOMContentLoaded', function(){
               if (user.email) updRes = await sup.from('users').update({ hourly_rate: newRate }).eq('email', user.email).select();
             }
             if (updRes?.error) throw updRes.error;
-            console.log('[PayType] Updated users.hourly_rate ->', newRate, updRes);
+            // Also set pay_type to 'hourly' on the users row when possible
+            try {
+              if (user.auth_id) await sup.from('users').update({ pay_type: 'hourly' }).eq('auth_id', user.auth_id).select();
+              else if (user.id) await sup.from('users').update({ pay_type: 'hourly' }).eq('id', user.id).select();
+              else if (user.email) await sup.from('users').update({ pay_type: 'hourly' }).eq('email', user.email).select();
+            } catch (epp) { /* ignore */ }
+            console.log('[PayType] Updated users.hourly_rate ->', newRate, 'and pay_type -> hourly', updRes);
           } else {
             throw new Error('No identifier to persist pay type change');
           }

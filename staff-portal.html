@@ -437,24 +437,61 @@
                         }
 
                         // Enforce: only allow access to staff portal if this staff is HOURLY for the selected shop
+                        // Accept either a `shop_staff` hourly row OR an hourly owner/admin recorded in `users` (hourly_rate or pay_type === 'hourly')
                         try {
                             const { data: { user: authUser } } = await supabase.auth.getUser();
                             if (!authUser) { window.location.href = 'login.html'; return; }
-                            const { data: ssRow, error: ssErr } = await supabase
-                                .from('shop_staff')
-                                .select('hourly_rate')
-                                .eq('shop_id', shopId)
-                                .eq('auth_id', authUser.id)
-                                .limit(1)
-                                .single();
-                            // If no shop_staff row or hourly_rate is not > 0, redirect to profile
-                            if (ssErr || !ssRow || Number(ssRow.hourly_rate || 0) <= 0) {
+
+                            // First, try shop_staff as before (now honoring `pay_type` too)
+                            let isHourly = false;
+                            try {
+                                const { data: ssRow, error: ssErr } = await supabase
+                                    .from('shop_staff')
+                                    .select('hourly_rate,pay_type')
+                                    .eq('shop_id', shopId)
+                                    .eq('auth_id', authUser.id)
+                                    .limit(1)
+                                    .single();
+                                if (!ssErr && ssRow) {
+                                    const ssHourly = Number(ssRow.hourly_rate || 0) > 0;
+                                    const ssPayTypeHourly = (ssRow.pay_type || '').toString().toLowerCase() === 'hourly';
+                                    if (ssHourly || ssPayTypeHourly) isHourly = true;
+                                }
+                            } catch (ee) {
+                                // ignore shop_staff read error and fall back to users
+                            }
+
+                            // If not found in shop_staff, check the users table for owner/admin hourly settings
+                            if (!isHourly) {
+                                try {
+                                    const { data: uRow, error: uErr } = await supabase
+                                        .from('users')
+                                        .select('hourly_rate,pay_type,shop_id,role')
+                                        .eq('id', authUser.id)
+                                        .limit(1)
+                                        .single();
+                                    if (!uErr && uRow) {
+                                        const userHourly = Number(uRow.hourly_rate || 0) > 0;
+                                        const payTypeHourly = (uRow.pay_type || '').toString().toLowerCase() === 'hourly';
+                                        // Allow if user is hourly OR explicitly marked hourly, and either the users.shop_id matches this shop or the user is owner/admin
+                                        const shopMatches = !uRow.shop_id || String(uRow.shop_id) === String(shopId);
+                                        const isOwnerOrAdmin = (uRow.role || '').toString().toLowerCase() === 'owner' || (uRow.role || '').toString().toLowerCase() === 'admin';
+                                        if ((userHourly || payTypeHourly) && (shopMatches || isOwnerOrAdmin)) {
+                                            isHourly = true;
+                                        }
+                                    }
+                                } catch (ue) {
+                                    /* ignore users read error */
+                                }
+                            }
+
+                            if (!isHourly) {
                                 console.log('Staff portal access blocked: staff is flat-rate or not found for this shop, redirecting to profile');
                                 window.location.href = 'profile.html';
                                 return;
                             }
                         } catch (e) {
-                            console.warn('Error verifying shop_staff for staff-portal access:', e);
+                            console.warn('Error verifying staff portal access (shop_staff/users):', e);
                             window.location.href = 'profile.html';
                             return;
                         }

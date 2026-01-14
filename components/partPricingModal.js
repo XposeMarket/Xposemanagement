@@ -531,6 +531,7 @@ class PartPricingModal {
               {
                 part_name: this.currentPart.name || this.currentPart.part_name || '',
                 part_number: this.currentPart.part_number || '',
+                supplier: this.currentPart.supplier || null,
                 cost_price: costPriceFinal,
                 sell_price: sellPriceFinal,
                 markup_percent: markupPercent
@@ -555,6 +556,7 @@ class PartPricingModal {
                 {
                     part_name: this.currentPart.name || this.currentPart.part_name || '',
                     part_number: this.currentPart.part_number || '',
+                    supplier: this.currentPart.supplier || null,
                     cost_price: costPriceFinal,
                     sell_price: sellPriceFinal,
                     markup_percent: markupPercent
@@ -616,6 +618,7 @@ class PartPricingModal {
             .insert({
               shop_id: shopId,
               job_id: this.currentJobId,
+              supplier: this.currentPart.supplier || null,
               part_id: dbPartId,
               part_name: this.currentPart.name || this.currentPart.part_name || '',
               part_number: this.currentPart.part_number || '',

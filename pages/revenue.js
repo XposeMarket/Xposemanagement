@@ -237,37 +237,59 @@ function renderWeeklyDaysOverview(currentWeek, invoices, appointments, jobs) {
     });
   });
   
-  // Filter out days with no revenue for color coding
-  const daysWithRevenue = days.filter(d => d.revenue > 0);
-  
-  // Find min and max revenue for color coding (only for days with revenue)
-  const revenues = daysWithRevenue.map(d => d.revenue);
-  const maxRevenue = revenues.length > 0 ? Math.max(...revenues) : 0;
-  const minRevenue = revenues.length > 0 ? Math.min(...revenues) : 0;
-  const range = maxRevenue - minRevenue;
-  
-  // Assign color class based on revenue
-  days.forEach(day => {
-    // Days with no revenue get no color class (will use default theme colors)
-    if (day.revenue === 0) {
-      day.colorClass = '';
-    } else if (daysWithRevenue.length === 1 || range === 0) {
-      // Only one day has revenue or all revenue days have same amount
-      day.colorClass = 'good';
-    } else if (day.revenue === maxRevenue) {
-      day.colorClass = 'best';
-    } else if (day.revenue === minRevenue) {
-      day.colorClass = 'worst';
-    } else {
-      // Calculate position in range (0 to 1)
-      const position = (day.revenue - minRevenue) / range;
-      if (position > 0.6) {
-        day.colorClass = 'good'; // Yellow (closer to green)
-      } else {
-        day.colorClass = 'moderate'; // Orange (closer to red)
-      }
+  // Rank days for the week and assign color classes based on weekly ranking
+  // We want the top day -> 'best' (green), 2nd -> 'good' (yellow), 3rd -> 'moderate' (orange), 4th -> 'worst' (red)
+  // Zero-revenue days get no color.
+  const positiveDays = days.filter(d => d.revenue > 0).slice();
+  positiveDays.sort((a, b) => b.revenue - a.revenue); // descending
+
+  // Reset all to default
+  days.forEach(d => d.colorClass = '');
+
+  // Assign classes by rank within the week, ensuring the lowest revenue day is 'worst'
+  const n = positiveDays.length;
+  if (n === 1) {
+    const target = days.find(d => d.iso === positiveDays[0].iso);
+    if (target) target.colorClass = 'best';
+  } else if (n === 2) {
+    // Best and worst
+    const t0 = days.find(d => d.iso === positiveDays[0].iso);
+    const t1 = days.find(d => d.iso === positiveDays[1].iso);
+    if (t0) t0.colorClass = 'best';
+    if (t1) t1.colorClass = 'worst';
+  } else if (n === 3) {
+    const t0 = days.find(d => d.iso === positiveDays[0].iso);
+    const t1 = days.find(d => d.iso === positiveDays[1].iso);
+    const t2 = days.find(d => d.iso === positiveDays[2].iso);
+    if (t0) t0.colorClass = 'best';
+    if (t1) t1.colorClass = 'moderate';
+    if (t2) t2.colorClass = 'worst';
+  } else if (n === 4) {
+    // Top 4 get the four classes
+    for (let i = 0; i < 4; i++) {
+      const pd = positiveDays[i];
+      const target = days.find(d => d.iso === pd.iso);
+      if (!target) continue;
+      if (i === 0) target.colorClass = 'best';
+      else if (i === 1) target.colorClass = 'good';
+      else if (i === 2) target.colorClass = 'moderate';
+      else if (i === 3) target.colorClass = 'worst';
     }
-  });
+  } else if (n > 4) {
+    // For larger weeks: ensure top (best), second (good), bottom (worst), and middle(s) as moderate
+    const top = days.find(d => d.iso === positiveDays[0].iso);
+    const second = days.find(d => d.iso === positiveDays[1].iso);
+    const bottom = days.find(d => d.iso === positiveDays[n - 1].iso);
+    if (top) top.colorClass = 'best';
+    if (second) second.colorClass = 'good';
+    if (bottom) bottom.colorClass = 'worst';
+    // Remaining positive days (excluding top, second, bottom) are 'moderate'
+    for (let i = 2; i < n - 1; i++) {
+      const pd = positiveDays[i];
+      const target = days.find(d => d.iso === pd.iso);
+      if (target && target.colorClass === '') target.colorClass = 'moderate';
+    }
+  }
   
   // Render the boxes
   container.innerHTML = days.map(day => `
@@ -510,22 +532,97 @@ async function setupRevenuePage() {
 
     // ...existing code...
 
-    // Fetch all staff for the current shop
-    let staffList = [];
+    // Fetch all staff (shop_staff) and users for the current shop and merge them
+    let staffRows = [];
     try {
-      const { data: staff, error } = await supabase
+      const { data: sdata, error: sErr } = await supabase
         .from('shop_staff')
         .select('*')
         .eq('shop_id', shopId);
-      if (error) {
-        document.getElementById('staff-list').innerHTML = `<div>Error loading staff: ${error.message}</div>`;
+      if (sErr) {
+        document.getElementById('staff-list').innerHTML = `<div>Error loading staff: ${sErr.message}</div>`;
         return;
       }
-      staffList = staff || [];
+      staffRows = sdata || [];
     } catch (ex) {
       document.getElementById('staff-list').innerHTML = `<div>Error loading staff: ${ex.message}</div>`;
       return;
     }
+
+    // Also fetch users table entries for this shop (may include owner/admin rows)
+    let userRows = [];
+    try {
+      const { data: udata, error: uErr } = await supabase
+        .from('users')
+        .select('*')
+        .eq('shop_id', shopId);
+      if (!uErr && udata) userRows = udata;
+    } catch (e) {
+      userRows = [];
+    }
+
+    // Merge users and shop_staff similar to Settings page: prefer shop_staff for role/display when available
+    const combined = [];
+    // Map shop_staff entries first (prefer these)
+    (staffRows || []).forEach(s => combined.push({
+      source: 'shop_staff',
+      id: s.id,
+      auth_id: s.auth_id || null,
+      first_name: s.first_name || s.first || '',
+      last_name: s.last_name || s.last || '',
+      email: s.email || '',
+      role: s.role || null,
+      hourly_rate: s.hourly_rate,
+      pay_type: s.pay_type,
+      raw: s
+    }));
+    // Add users entries if not present (by email)
+    (userRows || []).forEach(u => {
+      const email = (u.email || '').toLowerCase();
+      const exists = combined.find(c => (c.email || '').toLowerCase() === email || (c.auth_id && u.auth_id && c.auth_id === u.auth_id));
+      if (!exists) {
+        combined.push({
+          source: 'users',
+          id: u.id,
+          auth_id: u.auth_id || null,
+          first_name: u.first_name || u.first || '',
+          last_name: u.last_name || u.last || '',
+          email: u.email || '',
+          role: u.role || null,
+          hourly_rate: u.hourly_rate,
+          pay_type: u.pay_type,
+          raw: u
+        });
+      }
+    });
+
+    // Final staffList to use for rendering (consistent structure)
+    const staffList = combined.map(c => ({
+      id: c.id,
+      auth_id: c.auth_id,
+      first_name: c.first_name,
+      last_name: c.last_name,
+      email: c.email,
+      role: c.role,
+      hourly_rate: c.hourly_rate,
+      pay_type: c.pay_type
+    }));
+
+    // Fetch active dealerships for this shop so we can detect dealership suppliers
+    let dealershipsArr = [];
+    try {
+      const { data: dealerships, error: dealerErr } = await supabase
+        .from('dealerships')
+        .select('*')
+        .eq('shop_id', shopId)
+        .eq('is_active', true);
+      if (!dealerErr && dealerships) dealershipsArr = dealerships;
+    } catch (e) {
+      console.warn('Could not load dealerships for revenue page:', e);
+      dealershipsArr = [];
+    }
+    // Expose for use in other functions on this page
+    window._revenueDealerships = dealershipsArr || [];
 
     // Render staff list
     if (staffList.length === 0) {
@@ -717,14 +814,63 @@ async function setupRevenuePage() {
         return totalMinutes / 60; // Return hours
       }
 
-      const staffHtml = staffList.map((s, idx) => {
-        const isHourly = s.hourly_rate && Number(s.hourly_rate) > 0;
+      // Group staff by role with priority order
+      const roleOrder = ['admin', 'foreman', 'staff', 'service writer', 'receptionist'];
+      const roleLabels = {
+        'admin': 'Admin/Owner',
+        'foreman': 'Foreman',
+        'staff': 'Staff',
+        'service writer': 'Service Writer',
+        'receptionist': 'Receptionist'
+      };
+
+      // Helper: normalize role strings to canonical keys
+      function normalizeRole(r) {
+        if (!r) return 'staff';
+        let s = String(r).toLowerCase().trim();
+        // Replace underscores, dashes, or slashes with spaces and collapse multiple spaces
+        s = s.replace(/[_\-\/]+/g, ' ').replace(/\s+/g, ' ').trim();
+        // Common aliases
+        // If role contains admin or owner, treat as admin
+        if (s.includes('admin') || s.includes('owner')) return 'admin';
+        if (s === 'servicewriter' || s === 'service writer' || s === 'service writer role') return 'service writer';
+        if (s === 'manager' || s === 'lead') return 'staff';
+        return s;
+      }
+
+      // Group staff by normalized role
+      const staffByRole = {};
+      staffList.forEach(s => {
+        const raw = s.role || 'staff';
+        const role = normalizeRole(raw);
+        const groupRole = (role === 'admin' || role === 'owner') ? 'admin' : role;
+        if (!staffByRole[groupRole]) staffByRole[groupRole] = [];
+        staffByRole[groupRole].push(s);
+      });
+      
+      // Build HTML by role sections
+      let staffHtml = '';
+      roleOrder.forEach(role => {
+        const staffInRole = staffByRole[role] || [];
+
+        const sectionLabel = roleLabels[role] || role;
+        // Always render the Admin/Owner header even if no users exist, show placeholder
+        staffHtml += `<div class="staff-role-header">${sectionLabel}</div>`;
+        if (staffInRole.length === 0) {
+          staffHtml += `<div class="staff-panel" style="padding:12px 16px; border-bottom:1px solid var(--line); color:var(--muted);">No ${sectionLabel} assigned</div>`;
+          return;
+        }
+        
+        staffInRole.forEach((s, idx) => {
+        // Decide hourly status: show hourly only when `pay_type` is explicitly provided and equals 'hourly'.
+        const hasPayTypeProp = (typeof s.pay_type !== 'undefined');
+        const isHourly = hasPayTypeProp ? ((s.pay_type||'').toString().toLowerCase() === 'hourly') : false;
         const clockEntries = staffClockData[s.auth_id] || staffClockData[s.id] || staffClockData[s.email] || [];
         const weeklyHours = isHourly ? calcWeeklyHoursFromClock(clockEntries, currentWeek.start, currentWeek.end) : 0;
-        const weeklyEarned = isHourly ? weeklyHours * Number(s.hourly_rate) : 0;
+        const weeklyEarned = isHourly ? weeklyHours * Number(s.hourly_rate || 0) : 0;
         console.debug('[revenue] staff weekly calc', { staffId: s.id, auth_id: s.auth_id, email: s.email, isHourly, clockEntriesLength: (clockEntries||[]).length, weeklyHours, weeklyEarned });
         
-        return `
+        staffHtml += `
         <div class="staff-panel ${isHourly ? 'hourly-staff' : 'flat-rate-staff'}" 
              style="padding:12px 16px; border-bottom:1px solid var(--line);${isHourly ? 'cursor:pointer;' : ''}"
              data-staff-id="${s.id}"
@@ -754,7 +900,9 @@ async function setupRevenuePage() {
             </div>
           </div>
         </div>
-      `}).join('');
+      `;
+        });
+      });
       document.getElementById('staff-list').innerHTML = `<div style="border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--card);">${staffHtml}</div>`;
       
       // Attach click handlers for HOURLY staff to show time clock modal
@@ -1326,8 +1474,21 @@ async function setupRevenuePage() {
             </div>
             <div style="flex:2;">
               <div style="margin-bottom:8px; display:flex; align-items:center; gap:16px;">
-                <span>Staff: <strong>${staffName}</strong></span>
-                <span style="display:inline-flex; align-items:center; gap:6px;">Status: <span class="tag ${getStatusClass(j.status || 'open')}" style="flex-shrink:0;">${j.status || 'Open'}</span></span>
+                      <span>Staff: <strong>${staffName}</strong></span>
+                      <span style="display:inline-flex; align-items:center; gap:6px;">Status: <span class="tag ${getStatusClass(j.status || 'open')}" style="flex-shrink:0;">${j.status || 'Open'}</span></span>
+                      ${(() => {
+                        // Invoice status pill (show under job status)
+                        try {
+                          if (inv) {
+                            const s = (inv.status || 'open').toString().trim().toLowerCase();
+                            const cls = (s === 'paid') ? 'completed' : 'open';
+                            const label = (inv.status || 'open').toString().replace(/_/g, ' ');
+                            return `<span style="display:inline-flex;align-items:center;gap:6px;">Invoice: <span class=\"tag ${cls}\" style=\"flex-shrink:0;\">${label}</span></span>`;
+                          } else {
+                            return `<span style="display:inline-flex;align-items:center;gap:6px;">Invoice: <span class=\"tag open\" style=\"flex-shrink:0;\">No Invoice</span></span>`;
+                          }
+                        } catch (e) { return '' }
+                      })()}
               </div>
               <div style="display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,auto);gap:4px 12px;align-items:center;">
                 <div style="font-size:0.95em;">Total Revenue:</div>
@@ -1416,7 +1577,9 @@ async function setupRevenuePage() {
 
         // If the assigned staff is hourly-paid, do NOT treat job labor as staff revenue here.
         // Hourly staff payroll is derived from time_clock; leaving labor revenue inside the job's net.
-        const assignedIsHourly = staff && Number(staff.hourly_rate || 0) > 0;
+        // Decide assigned pay type: show hourly only when `pay_type` is explicitly provided and equals 'hourly'.
+        const hasPayTypeProp = staff && (typeof staff.pay_type !== 'undefined');
+        const assignedIsHourly = hasPayTypeProp ? ((staff.pay_type||'').toString().toLowerCase() === 'hourly') : false;
         const staffRevenue = assignedIsHourly ? 0 : (staffRate * totalHours);
         const net = (totalRevenue || 0) - (partsCost || 0) - staffRevenue;
 
@@ -1495,7 +1658,10 @@ async function setupRevenuePage() {
         if (fallbackHours > 0) totalHours = fallbackHours;
       }
 
-      const assignedIsHourly = staff && Number(staff.hourly_rate || 0) > 0;
+      // Determine assigned pay type: prefer explicit pay_type when present, otherwise fallback to hourly_rate > 0
+      // Decide assigned pay type: show hourly only when `pay_type` is explicitly provided and equals 'hourly'.
+      const hasPayTypeProp = staff && (typeof staff.pay_type !== 'undefined');
+      const assignedIsHourly = hasPayTypeProp ? ((staff.pay_type||'').toString().toLowerCase() === 'hourly') : false;
       const staffCost = assignedIsHourly ? 0 : (staffRate * totalHours);
       return { jobId: j.id, assigned, totalHours, staffCost, totalRevenue, partsCost };
     });
@@ -1510,6 +1676,9 @@ async function setupRevenuePage() {
         // Prefer aggregated minutes from raw time_clock rows (collected earlier)
         if (clockMinutesByStaffId && Object.keys(clockMinutesByStaffId).length) {
           staffList.forEach(s => {
+            // Only include hourly-paid staff (respect pay_type when present)
+            const isHourly = (typeof s.pay_type !== 'undefined') ? ((s.pay_type||'').toString().toLowerCase() === 'hourly') : (Number(s.hourly_rate || 0) > 0);
+            if (!isHourly) return;
             const minutes = clockMinutesByStaffId[s.id] || clockMinutesByStaffId[s.auth_id] || 0;
             if (minutes <= 0) return;
             const hours = minutes / 60;
@@ -1539,6 +1708,9 @@ async function setupRevenuePage() {
 
           // For each staff in staffList, compute earned amount from clock minutes using their hourly_rate
           staffList.forEach(s => {
+            // Only include hourly-paid staff (respect pay_type when present)
+            const isHourly = (typeof s.pay_type !== 'undefined') ? ((s.pay_type||'').toString().toLowerCase() === 'hourly') : (Number(s.hourly_rate || 0) > 0);
+            if (!isHourly) return;
             const staffKey = s.auth_id || s.id;
             const minutes = clockMinutesByStaff[staffKey] || 0;
             if (minutes <= 0) return;
@@ -1698,6 +1870,7 @@ async function setupRevenuePage() {
   function getSupplierLogo(supplier) {
     const supplierMap = {
       'partstech': 'assets/Parts Suppliers/partstech-logo.png',
+      'parts tech': 'assets/Parts Suppliers/partstech-logo.png',
       'carquest': 'assets/Parts Suppliers/CarwquestLogo.webp',
       'carquest/advance auto': 'assets/Parts Suppliers/CarwquestLogo.webp',
       'advance auto': 'assets/Parts Suppliers/CarwquestLogo.webp',
@@ -1709,6 +1882,23 @@ async function setupRevenuePage() {
       'summit racing': 'assets/Parts Suppliers/Summit-Racing-Equipment-Logo-1024x580.webp',
       'parts authority': 'assets/Parts Suppliers/partsauthoritylogo.jpg',
       'rockauto': 'assets/Parts Suppliers/rock-auto.jpg',
+      'fcp euro': 'assets/Parts Suppliers/FCP-Logo.jpg',
+      'fcpeuro': 'assets/Parts Suppliers/FCP-Logo.jpg',
+      'fcp-euro': 'assets/Parts Suppliers/FCP-Logo.jpg',
+      'lkq': 'assets/Parts Suppliers/lkq-corp-logo.jpg',
+      'lkq corp': 'assets/Parts Suppliers/lkq-corp-logo.jpg',
+      'dorman': 'assets/Parts Suppliers/brand-dorman.jpg',
+      'ecs tuning': 'assets/Parts Suppliers/ecs-tuning.webp',
+      'ecs': 'assets/Parts Suppliers/ecs-tuning.webp',
+      'enjuku racing': 'assets/Parts Suppliers/enjukuracinglogo.png',
+      'enjuku': 'assets/Parts Suppliers/enjukuracinglogo.png',
+      'gm genuine parts': 'assets/Parts Suppliers/gmgennuineparts.png',
+      'gmgenuineparts': 'assets/Parts Suppliers/gmgennuineparts.png',
+      'jegs': 'assets/Parts Suppliers/jegslogo.png',
+      'moog': 'assets/Parts Suppliers/moog-vector-logo.png',
+      'tire rack': 'assets/Parts Suppliers/TireRack_Logo.jpg',
+      'turner motorsport': 'assets/Parts Suppliers/turnermotorsportslogowebp.webp',
+      'turner': 'assets/Parts Suppliers/turnermotorsportslogowebp.webp',
       'manual entry': null // No logo for manual entry
     };
     
@@ -1783,11 +1973,21 @@ async function setupRevenuePage() {
         const price = Number(part.cost_price || 0);
         const qty = Number(part.quantity || 1);
         const totalCost = price * qty;
-        const supplier = part.supplier || 'Manual Entry';
+        const supplier = (part.supplier || '').trim() || 'Manual Entry';
         const dateOrdered = part.created_at ? new Date(part.created_at).toLocaleDateString() : 'N/A';
         
         // Get supplier logo
-        const logoPath = getSupplierLogo(supplier);
+        // If this supplier matches a known dealership (loaded earlier), show the dealership storefront icon
+        let logoPath = getSupplierLogo(supplier);
+        const isDealer = (window._revenueDealerships || []).some(d => (d.name || '').toString().trim().toLowerCase() === supplier.toLowerCase());
+        if (isDealer) {
+          logoPath = 'assets/storefront.svg'; // default dealership icon
+        }
+        // If no specific logo, fallback to a generic supplier image so an image appears (user can add real logos later)
+        if (!logoPath && supplier.toLowerCase() !== 'manual entry') {
+          logoPath = 'assets/Parts Suppliers/CustomSupplier.webp';
+        }
+
         const logoHtml = logoPath 
           ? `<img src="${logoPath}" alt="${supplier}" class="parts-supplier-logo" onerror="this.style.display='none'">`
           : `<div style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:var(--line);border-radius:4px;font-size:10px;font-weight:bold;color:var(--muted);">${supplier.charAt(0).toUpperCase()}</div>`;
