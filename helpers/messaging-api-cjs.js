@@ -5,6 +5,7 @@
 
 const twilio = require('twilio');
 const { createClient } = require('@supabase/supabase-js');
+const axios = require('axios');
 
 const APP_BASE_URL = process.env.APP_BASE_URL || process.env.FRONTEND_URL || 'https://www.xpose.management';
 
@@ -356,18 +357,64 @@ async function receiveWebhook(req, res) {
     const thread = await findOrCreateThread(shopNumber.shop_id, customerId, normalizedFrom, shopNumber.id);
     console.log('✅ Thread ready:', thread.id);
     
-    // Process media if present
+    // Process media if present — download Twilio media and upload into Supabase storage
     let mediaUrls = null;
     if (NumMedia && parseInt(NumMedia) > 0) {
       mediaUrls = [];
+      const bucket = process.env.SUPABASE_MEDIA_BUCKET || 'messages-media';
       for (let i = 0; i < parseInt(NumMedia); i++) {
         const mediaUrl = req.body[`MediaUrl${i}`];
         const contentType = req.body[`MediaContentType${i}`];
-        if (mediaUrl) {
+        if (!mediaUrl) continue;
+
+        try {
+          // Fetch the media bytes from Twilio (server-side, using account auth)
+          const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+          const twilioAuth = process.env.TWILIO_AUTH_TOKEN;
+          const resp = await axios.get(mediaUrl, {
+            responseType: 'arraybuffer',
+            auth: twilioSid && twilioAuth ? { username: twilioSid, password: twilioAuth } : undefined,
+            validateStatus: (s) => s >= 200 && s < 400
+          });
+
+          const buffer = Buffer.from(resp.data);
+
+          // Determine extension from contentType
+          let ext = 'bin';
+          if (contentType) {
+            if (contentType.includes('jpeg') || contentType.includes('jpg')) ext = 'jpg';
+            else if (contentType.includes('png')) ext = 'png';
+            else if (contentType.includes('gif')) ext = 'gif';
+            else if (contentType.includes('webp')) ext = 'webp';
+            else if (contentType.includes('mp4')) ext = 'mp4';
+          }
+
+          const path = `${shopNumber.shop_id}/inbound/${Date.now()}_${i}.${ext}`;
+
+          // Upload to Supabase storage (service role via getSupabase)
+          const { data: up, error: upErr } = await supabase.storage
+            .from(bucket)
+            .upload(path, buffer, { contentType, upsert: false });
+
+          if (upErr) throw upErr;
+
+          // Create public URL (or signed URL if you prefer)
+          const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
+          const publicUrl = urlData?.publicUrl || null;
+
+          if (publicUrl) {
+            mediaUrls.push({ url: publicUrl, contentType });
+          } else {
+            // Fallback: store original Twilio URL if upload/public URL failed
+            mediaUrls.push({ url: mediaUrl, contentType });
+          }
+        } catch (e) {
+          console.error('❌ Error fetching/uploading Twilio media:', e && e.message ? e.message : e);
+          // Fallback to original URL so message isn't lost
           mediaUrls.push({ url: mediaUrl, contentType });
         }
       }
-      console.log('📎 Media attachments:', mediaUrls.length);
+      console.log('📎 Media attachments processed:', mediaUrls.length);
     }
     
     // Save message to database
@@ -461,6 +508,57 @@ async function receiveWebhook(req, res) {
     console.error('Stack:', error.stack);
     // Still return 200 to Twilio to prevent retries
     return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+  }
+}
+
+/**
+ * POST /api/messaging/upload
+ * Accepts JSON: { shop_id, fileName, contentType, base64 }
+ * Uploads to Supabase storage (service role) and returns signed URL
+ */
+async function uploadMedia(req, res) {
+  try {
+    if (req.method !== 'POST') {
+      // Express route handlers may call directly; allow regardless but check method if needed
+    }
+
+    const { shop_id: shopId, fileName, contentType, base64 } = req.body || {};
+    if (!shopId || !fileName || !base64) {
+      return res.status(400).json({ error: 'shop_id, fileName and base64 are required' });
+    }
+
+    const supabase = getSupabase();
+    const bucket = process.env.SUPABASE_MEDIA_BUCKET || 'messages-media';
+
+    // Build safe path
+    const safeName = fileName.replace(/[^a-zA-Z0-9.\-_%()\[\]]/g, '_');
+    const key = `${shopId}/${Date.now()}-${safeName}`;
+
+    const buffer = Buffer.from(base64, 'base64');
+
+    const { data: uploadData, error: uploadErr } = await supabase.storage
+      .from(bucket)
+      .upload(key, buffer, { contentType, upsert: false });
+
+    if (uploadErr) {
+      console.error('Supabase upload error:', uploadErr);
+      return res.status(500).json({ error: 'Failed to upload file', details: uploadErr.message || uploadErr });
+    }
+
+    const expiresIn = 60 * 60; // seconds
+    const { data: signed, error: signedErr } = await supabase.storage
+      .from(bucket)
+      .createSignedUrl(key, expiresIn);
+
+    if (signedErr) {
+      console.error('Supabase createSignedUrl error:', signedErr);
+      return res.status(500).json({ error: 'Failed to create signed URL', details: signedErr.message || signedErr });
+    }
+
+    return res.json({ success: true, path: key, url: signed.signedURL });
+  } catch (err) {
+    console.error('uploadMedia error:', err);
+    return res.status(500).json({ error: err.message || 'Internal server error' });
   }
 }
 
@@ -602,6 +700,7 @@ module.exports = {
   provisionNumber,
   sendMessage,
   receiveWebhook,
+  uploadMedia,
   receiveStatusCallback,
   getThreads,
   getMessages,

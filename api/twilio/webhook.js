@@ -1,230 +1,122 @@
 /**
- * Twilio Incoming SMS Webhook
- * Handles incoming messages from Twilio and saves them to Supabase
+ * Twilio Incoming SMS Webhook (serverless)
+ * Downloads any Twilio-hosted media, uploads to Supabase `messages-media` bucket,
+ * and saves message rows with Supabase URLs so clients can load attachments.
  */
 
-
+const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
-// Import notification helper (ESM import workaround for CJS)
 const { createShopNotification } = require('../../lib/shop-notifications.js');
 
 module.exports = async function handler(req, res) {
-  // Log everything for debugging
-  console.log('🔔 Webhook called!', {
-    method: req.method,
-    body: req.body,
-    headers: req.headers
-  });
-
-  // Only accept POST requests
-  if (req.method !== 'POST') {
-    console.log('❌ Wrong method:', req.method);
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  console.log('🔔 Twilio webhook (serverless) called', { method: req.method });
+  if (req.method !== 'POST') return res.status(405).send('Method not allowed');
 
   try {
-    // Initialize Supabase client
+    const { From, To, Body, MessageSid, NumMedia } = req.body || {};
+
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('Supabase not configured');
+    }
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('🔑 Supabase config:', {
-      hasUrl: !!supabaseUrl,
-      hasKey: !!supabaseKey,
-      url: supabaseUrl
-    });
+    // Find shop and thread
+    const normalizedTo = To ? To.toString().replace(/[^+\d]/g, '') : To;
+    const { data: shopNumbers } = await supabase
+      .from('shop_twilio_numbers')
+      .select('*')
+      .eq('phone_number', normalizedTo)
+      .limit(1);
 
+    if (!shopNumbers || shopNumbers.length === 0) {
+      console.error('No shop found for Twilio number:', normalizedTo);
+      res.setHeader('Content-Type', 'text/xml');
+      return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+    }
+
+    const shopNumber = shopNumbers[0];
+
+    // Find or create thread (simple lookup)
+    const normalizedFrom = From ? From.toString().replace(/[^+\d]/g, '') : From;
+    let thread = null;
+    const { data: threads } = await supabase
+      .from('threads')
+      .select('*')
+      .eq('shop_id', shopNumber.shop_id)
+      .eq('external_recipient', normalizedFrom)
+      .limit(1);
+    if (threads && threads.length) thread = threads[0];
+    else {
+      const { data: newThread } = await supabase
+        .from('threads')
+        .insert([{ shop_id: shopNumber.shop_id, external_recipient: normalizedFrom, last_message_at: new Date().toISOString() }])
+        .select()
+        .single();
+      thread = newThread;
+    }
+
+    // Process media: download Twilio media and upload to Supabase
+    let media = [];
+    const mediaCount = parseInt(NumMedia || '0', 10);
+    const bucket = process.env.SUPABASE_MEDIA_BUCKET || 'messages-media';
+    for (let i = 0; i < mediaCount; i++) {
+      const mediaUrl = req.body[`MediaUrl${i}`];
+      const contentType = req.body[`MediaContentType${i}`] || null;
+      if (!mediaUrl) continue;
       try {
-        // Normalize phone for lookups (keep + and digits)
-        const normalizedFrom = From ? (From + '').replace(/[^+\d]/g, '') : From;
-        const digitsOnly = normalizedFrom ? normalizedFrom.replace(/\D/g, '') : '';
-        const last10 = digitsOnly ? digitsOnly.slice(-10) : '';
-
-        // Resolve customer name from `customers` table (best effort)
-        let customerName = null;
-        try {
-          // 1) Try exact digits-only match against stored phone (handles E.164 or digits)
-          if (digitsOnly) {
-            const { data: custByDigits } = await supabase
-              .from('customers')
-              .select('first_name,last_name,phone')
-              .ilike('phone', `%${digitsOnly}%`)
-              .limit(1)
-              .maybeSingle();
-            if (custByDigits) {
-              customerName = `${custByDigits.first_name || ''} ${custByDigits.last_name || ''}`.trim() || custByDigits.phone;
-            }
-          }
-
-          // 2) If not found, try exact normalizedFrom match (keeps +)
-          if (!customerName && normalizedFrom) {
-            const { data: custExact } = await supabase
-              .from('customers')
-              .select('first_name,last_name,phone')
-              .eq('phone', normalizedFrom)
-              .limit(1)
-              .maybeSingle();
-            if (custExact) {
-              customerName = `${custExact.first_name || ''} ${custExact.last_name || ''}`.trim() || custExact.phone;
-            }
-          }
-
-          // 3) Last-resort: match last 10 digits (common reliable fallback)
-          if (!customerName && last10) {
-            const { data: custLast10 } = await supabase
-              .from('customers')
-              .select('first_name,last_name,phone')
-              .ilike('phone', `%${last10}`)
-              .limit(1)
-              .maybeSingle();
-            if (custLast10) {
-              customerName = `${custLast10.first_name || ''} ${custLast10.last_name || ''}`.trim() || custLast10.phone;
-            }
-          }
-        } catch (e) {
-          console.warn('[Webhook] Customer lookup failed:', e && e.message);
-        }
-
-        // Fallback to thread-stored customer name if available
-        if (!customerName) {
-          try {
-            const { data: threadDetails } = await supabase
-              .from('threads')
-              .select('customer_first,customer_last')
-              .eq('id', thread.id)
-              .maybeSingle();
-            if (threadDetails) {
-              const first = threadDetails.customer_first || '';
-              const last = threadDetails.customer_last || '';
-              customerName = `${first} ${last}`.trim() || null;
-            }
-          } catch (e) {
-            // ignore
-          }
-        }
-
-        // Format preview (10 chars, add ellipsis if longer)
-        let preview = '';
-        if (Body && Body.length > 10) {
-          preview = Body.substring(0, 10) + '...';
-        } else if (Body) {
-          preview = Body;
-        } else if (media.length > 0) {
-          preview = '[Media message]';
-        } else {
-          preview = '[No content]';
-        }
-
-        const who = customerName ? `${customerName}` : (From || 'Unknown');
-        const notifTitle = `New SMS: ${preview}`;
-        const notifMsg = `${who}${From ? ' (' + From + ')' : ''} sent: "${preview}"`;
-
-        // Fire notification (best-effort)
-        createShopNotification({
-          supabase,
-          shopId,
-          type: 'sms',
-          category: 'messages',
-          title: notifTitle,
-          message: notifMsg,
-          relatedId: message.id,
-          relatedType: 'message',
-          metadata: {
-            threadId: thread.id,
-            from: From,
-            normalized_from: normalizedFrom,
-            to: To,
-            preview,
-            customer_name: customerName || null
-          },
-          priority: 'normal',
-          createdBy: null
+        const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+        const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+        const resp = await axios.get(mediaUrl, {
+          responseType: 'arraybuffer',
+          auth: twilioSid && twilioToken ? { username: twilioSid, password: twilioToken } : undefined,
+          validateStatus: s => s >= 200 && s < 400
         });
-        console.log('🔔 Notification triggered for new SMS (with customer lookup)');
-      } catch (notifErr) {
-        console.error('❌ Error creating notification:', notifErr);
-      }
+        const buffer = Buffer.from(resp.data);
+
+        // Choose extension
+        let ext = 'bin';
+        if (contentType) {
+          if (contentType.includes('jpeg') || contentType.includes('jpg')) ext = 'jpg';
+          else if (contentType.includes('png')) ext = 'png';
+          else if (contentType.includes('gif')) ext = 'gif';
+          else if (contentType.includes('webp')) ext = 'webp';
+          else if (contentType.includes('mp4')) ext = 'mp4';
+        }
+
+        const path = `${shopNumber.shop_id}/inbound/${Date.now()}_${i}.${ext}`;
+        const { data: up, error: upErr } = await supabase.storage.from(bucket).upload(path, buffer, { contentType, upsert: false });
+        if (upErr) throw upErr;
+        const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
+        const publicUrl = urlData?.publicUrl || mediaUrl;
+        media.push({ url: publicUrl, contentType });
+      } catch (e) {
+        console.error('Error processing incoming media:', e && e.message ? e.message : e);
+        media.push({ url: mediaUrl, contentType });
       }
     }
 
-    // Save message to database
-    const { data: message, error: messageError } = await supabase
-      .from('messages')
-      .insert({
-        thread_id: thread.id,
-        twilio_message_id: MessageSid,
-        from_number: From,
-        to_number: To,
-        body: Body || '',
-        direction: 'inbound',
-        status: 'received',
-        media: media.length > 0 ? media : null
-      })
-      .select()
-      .single();
+    // Save message record
+    const { data: message, error: messageError } = await supabase.from('messages').insert([{ 
+      thread_id: thread.id,
+      twilio_message_id: MessageSid,
+      from_number: From,
+      to_number: To,
+      body: Body || '',
+      direction: 'inbound',
+      status: 'received',
+      media: media.length ? media : null,
+      num_media: mediaCount
+    }]).select().single();
 
-    console.log('💾 Message save result:', { message, messageError });
+    if (messageError) console.error('Error saving incoming message:', messageError);
 
-
-    if (messageError) {
-      console.error('❌ Error saving message:', messageError);
-    } else {
-      console.log('✅ Message saved successfully:', message.id);
-
-      // --- Improved Notification Logic ---
-      try {
-        // Format preview (10 chars, add ellipsis if longer)
-        let preview = '';
-        if (Body && Body.length > 10) {
-          preview = Body.substring(0, 10) + '...';
-        } else if (Body) {
-          preview = Body;
-        } else if (media.length > 0) {
-          preview = '[Media message]';
-        } else {
-          preview = '[No content]';
-        }
-
-        // Format sender info (phone, could be improved with contact lookup)
-        const sender = From ? `From: ${From}` : 'Unknown sender';
-
-        // Notification title and message
-        const notifTitle = `New SMS: ${preview}`;
-        // Include sender and the 10-char preview in the notification message
-        const notifMsg = `${sender} — ${preview}`;
-
-        // Fire notification (await not required, but can be added if needed)
-        createShopNotification({
-          supabase,
-          shopId,
-          type: 'sms',
-          category: 'messages',
-          title: notifTitle,
-          message: notifMsg,
-          relatedId: message.id,
-          relatedType: 'message',
-          metadata: {
-            threadId: thread.id,
-            from: From,
-            to: To,
-            preview
-          },
-          priority: 'normal',
-          createdBy: null
-        });
-        console.log('🔔 Notification triggered for new SMS');
-      } catch (notifErr) {
-        console.error('❌ Error creating notification:', notifErr);
-      }
-      // --- End Notification Logic ---
-    }
-
-    // Respond to Twilio with empty TwiML
+    // Respond to Twilio
     res.setHeader('Content-Type', 'text/xml');
     return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
-
-  } catch (error) {
-    console.error('❌ Webhook error:', error);
-    // Always return 200 to Twilio to prevent retries
+  } catch (err) {
+    console.error('Webhook handler error:', err);
     res.setHeader('Content-Type', 'text/xml');
     return res.status(200).send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
   }

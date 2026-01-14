@@ -2330,6 +2330,9 @@ try {
   // Send an outbound message
   app.post('/api/messaging/send', messagingAPI.sendMessage);
 
+  // Upload media for outbound messages
+  app.post('/api/messaging/upload', messagingAPI.uploadMedia);
+
   // Webhook for incoming messages
   app.post('/api/messaging/webhook', messagingAPI.receiveWebhook);
 

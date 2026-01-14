@@ -236,7 +236,7 @@ function setupMessages() {
   const threadCenteredTitle = document.getElementById('threadCenteredTitle');
   let msgInput = document.getElementById('msgInput');
   let sendForm = document.getElementById('sendForm');
-  const threadBackBtn = document.getElementById('threadBackBtn');
+    const threadBackBtn = document.getElementById('threadBackBtn');
   const chatPanel = document.querySelector('.chat-panel');
   const threadsPanel = document.querySelector('.threads-panel');
   const threadPanelHeader = document.getElementById('threadPanelHeader');
@@ -247,6 +247,7 @@ function setupMessages() {
   let activeThreadId = null;
   let activeThread = null;
   let messages = [];
+  let pendingMedia = []; // [{ path, url, contentType, name }]
   let shopTwilioNumber = null;
   let _lastLoadedShopId = null;
   const API_BASE_URL = 'https://xpose-stripe-server.vercel.app';
@@ -318,6 +319,53 @@ function setupMessages() {
       .replace(/&/g,'&amp;')
       .replace(/</g,'&lt;')
       .replace(/>/g,'&gt;'); 
+  }
+
+  // Helper: show image modal (reusable)
+  function showImageModal(url, contentType) {
+    // Remove existing if present
+    const existing = document.getElementById('xp-image-modal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'xp-image-modal';
+    overlay.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);z-index:9999;padding:20px;';
+
+    const container = document.createElement('div');
+    // Restrict size on desktop while allowing mobile to fill appropriately
+    container.style.cssText = 'max-width:1200px;max-height:80vh;width:100%;display:flex;align-items:center;justify-content:center;position:relative;border-radius:10px;overflow:auto;';
+
+    if (!contentType) contentType = '';
+    if (contentType.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(url)) {
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = 'Image preview';
+      img.style.cssText = 'max-width:100%;max-height:80vh;object-fit:contain;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.6);';
+      container.appendChild(img);
+    } else {
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.textContent = 'Open attachment';
+      link.style.cssText = 'color:white;font-size:18px;';
+      container.appendChild(link);
+    }
+
+    // Close button
+    const btn = document.createElement('button');
+    btn.textContent = '×';
+    btn.style.cssText = 'position:absolute;top:-10px;right:-10px;width:36px;height:36px;border-radius:50%;background:#111;color:white;border:none;font-size:20px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,0.4)';
+    btn.addEventListener('click', (e) => { e.stopPropagation(); overlay.remove(); });
+    container.appendChild(btn);
+
+    overlay.addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') overlay.remove(); });
+    overlay.tabIndex = -1;
+
+    overlay.appendChild(container);
+    document.body.appendChild(overlay);
+    // Focus so Escape works
+    setTimeout(() => overlay.focus(), 50);
   }
 
   // Helper: scroll to bottom
@@ -641,19 +689,30 @@ function setupMessages() {
       m.media.forEach(mediaItem => {
         const mediaEl = document.createElement('div');
         mediaEl.style.marginTop = '8px';
-        if (mediaItem.contentType && mediaItem.contentType.startsWith('image/')) {
+
+        // Support both previously-stored objects {url,contentType} and simple string URLs
+        const isString = typeof mediaItem === 'string';
+        const url = isString ? mediaItem : (mediaItem.url || '');
+        const contentType = isString ? '' : (mediaItem.contentType || '');
+
+        const isImage = (contentType && contentType.startsWith('image/')) || /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|avif)(\?.*)?$/i.test(url);
+
+        if (isImage) {
           const img = document.createElement('img');
-          img.src = mediaItem.url;
+          img.src = url;
           img.style.maxWidth = '200px';
           img.style.borderRadius = '8px';
+          img.style.cursor = 'pointer';
+          img.addEventListener('click', (e) => { e.preventDefault(); showImageModal(url, contentType || ''); });
           mediaEl.appendChild(img);
-        } else {
+        } else if (url) {
           const link = document.createElement('a');
-          link.href = mediaItem.url;
+          link.href = url;
           link.target = '_blank';
           link.textContent = 'View attachment';
           mediaEl.appendChild(link);
         }
+
         bubble.appendChild(mediaEl);
       });
     }
@@ -967,19 +1026,138 @@ function setupMessages() {
   function attachSendFormListener() {
     msgInput = document.getElementById('msgInput');
     sendForm = document.getElementById('sendForm');
-    
+
     if (!sendForm) return;
-    
+
+    // Add composer area inside the form: preview above the input row
+    let mediaInput = document.getElementById('mediaInput');
+    let composer = document.getElementById('messageComposer');
+    if (!composer) {
+      composer = document.createElement('div');
+      composer.id = 'messageComposer';
+      composer.style.display = 'flex';
+      composer.style.flexDirection = 'column';
+      composer.style.gap = '8px';
+      composer.style.width = '100%';
+      composer.style.boxSizing = 'border-box';
+
+      // Create hidden file input
+      mediaInput = document.createElement('input');
+      mediaInput.type = 'file';
+      mediaInput.accept = 'image/*';
+      mediaInput.id = 'mediaInput';
+      mediaInput.style.display = 'none';
+      composer.appendChild(mediaInput);
+
+      // Preview container (inside composer, above input row)
+      const mediaPreview = document.createElement('div');
+      mediaPreview.id = 'mediaPreview';
+      mediaPreview.style.display = 'flex';
+      mediaPreview.style.gap = '8px';
+      mediaPreview.style.alignItems = 'center';
+      mediaPreview.style.flexWrap = 'wrap';
+      mediaPreview.style.maxHeight = '160px';
+      mediaPreview.style.overflowY = 'auto';
+      composer.appendChild(mediaPreview);
+
+      // Input row
+      const inputRow = document.createElement('div');
+      inputRow.id = 'messageInputRow';
+      inputRow.style.display = 'flex';
+      inputRow.style.alignItems = 'center';
+      inputRow.style.gap = '8px';
+      inputRow.style.width = '100%';
+      composer.appendChild(inputRow);
+
+      // Attach button (circular +)
+      const attachBtn = document.createElement('button');
+      attachBtn.type = 'button';
+      attachBtn.className = 'btn';
+      attachBtn.textContent = '+';
+      attachBtn.setAttribute('aria-label', 'Attach media');
+      attachBtn.style.cssText = 'width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:20px;padding:0;margin:0;';
+      attachBtn.addEventListener('click', (e) => { e.preventDefault(); mediaInput.click(); });
+      inputRow.appendChild(attachBtn);
+
+      // Move msg input into inputRow
+      const msgEl = sendForm.querySelector('#msgInput') || msgInput;
+      if (msgEl) {
+        msgEl.style.flex = '1';
+        msgEl.style.minHeight = '44px';
+        msgEl.style.padding = '10px 12px';
+        msgEl.style.borderRadius = '10px';
+        inputRow.appendChild(msgEl);
+      }
+
+      // Move submit button into inputRow
+      const submitBtn = sendForm.querySelector('button[type=submit]');
+      if (submitBtn) {
+        submitBtn.style.margin = '0';
+        inputRow.appendChild(submitBtn);
+      }
+
+      // Insert composer at the top of the form
+      sendForm.insertBefore(composer, sendForm.firstChild);
+
+      // Handle selection and upload (client-side Supabase, same flow as job notes)
+      mediaInput.addEventListener('change', async (ev) => {
+        const file = ev.target.files && ev.target.files[0];
+        if (!file) return;
+        try {
+          const shopId = await getCurrentShopId();
+          if (!shopId) throw new Error('No shop ID');
+          const maxSize = 10 * 1024 * 1024;
+          if (file.size > maxSize) return alert('File too large (max 10MB)');
+          const safeName = file.name.replace(/[^a-zA-Z0-9.\-_%()\[\]]/g, '_');
+          const key = `${shopId}/${Date.now()}-${safeName}`;
+          const { data: upData, error: upErr } = await supabase.storage
+            .from('messages-media')
+            .upload(key, file, { cacheControl: '3600', upsert: false, contentType: file.type });
+          if (upErr) throw upErr;
+          const { data: urlData } = supabase.storage.from('messages-media').getPublicUrl(key);
+          const publicUrl = urlData?.publicUrl;
+          if (!publicUrl) throw new Error('Failed to get public URL');
+          pendingMedia.push({ path: key, url: publicUrl, contentType: file.type, name: file.name });
+
+          // Add thumbnail into the mediaPreview inside composer
+          const previewEl = document.getElementById('mediaPreview');
+          const img = document.createElement('img');
+          img.src = URL.createObjectURL(file);
+          img.alt = file.name;
+          img.style.width = '72px';
+          img.style.height = '72px';
+          img.style.objectFit = 'cover';
+          img.style.borderRadius = '8px';
+          img.style.cursor = 'pointer';
+          img.addEventListener('click', (e) => { e.preventDefault(); showImageModal(publicUrl, file.type || ''); });
+          const wrap = document.createElement('div');
+          wrap.style.position = 'relative';
+          wrap.appendChild(img);
+          const rem = document.createElement('button');
+          rem.className = 'btn small';
+          rem.textContent = 'x';
+          rem.style.position = 'absolute';
+          rem.style.top = '-6px';
+          rem.style.right = '-6px';
+          rem.addEventListener('click', (e) => { e.preventDefault(); const idx = pendingMedia.findIndex(m => m.url === publicUrl); if (idx !== -1) pendingMedia.splice(idx, 1); wrap.remove(); });
+          wrap.appendChild(rem);
+          if (previewEl) previewEl.appendChild(wrap);
+          mediaInput.value = '';
+        } catch (err) { console.error('Media upload error:', err); alert('Failed to upload media.'); }
+      });
+    }
+
     sendForm.addEventListener('submit', async (ev) => {
       ev.preventDefault();
       const text = msgInput.value && msgInput.value.trim();
-      if (!text || !activeThreadId) return;
+      if (!text && pendingMedia.length === 0) return; // allow sending only media
+      if (!activeThreadId) return;
 
       try {
         const shopId = await getCurrentShopId();
         if (!shopId) return;
 
-        // Send via server API
+        // Send via server API including media URLs
         const response = await fetch(`${API_BASE_URL}/api/messaging/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -987,7 +1165,8 @@ function setupMessages() {
             shop_id: shopId,
             customer_id: activeThread?.customer_id,
             to: activeThread.external_recipient,
-            body: text
+            body: text || '',
+            media: pendingMedia.map(m => m.url)
           })
         });
 
@@ -998,8 +1177,11 @@ function setupMessages() {
         const result = await response.json();
         console.log('✅ Message sent:', result);
 
-        // Clear input
+        // Clear input and pending media
         msgInput.value = '';
+        pendingMedia = [];
+        const previewEl = document.getElementById('mediaPreview');
+        if (previewEl) previewEl.innerHTML = '';
 
         // Reload messages (will be updated via Realtime soon)
         await loadMessages(activeThreadId);
