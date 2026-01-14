@@ -1,5 +1,0 @@
-replacement==>replacement
-
-regex:STRIPE_SECRET_KEY=YOUR_STRIPE_SECRET_KEY_HERE
-
-regex:sk-[A-Za-z0-9_\-]{10,}==>REDACTED_SK_KEY
