@@ -1,0 +1,101 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Completed Jobs</title><link rel="stylesheet" href="styles.css"></head><body>
+<header class="top">
+  <div class="container row top row">
+    <a class="brand" id="brandLink" href="dashboard.html" aria-label="Home">
+      <img id="headerLogo" src="assets/XposeManagementCRMlogo.png" alt="Logo">
+    </a>
+    <button id="menuToggle" class="menu-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button><nav id="mainNav">
+      <a href="staff-portal.html" class="staff-only-nav" style="display:none">Staff Portal</a>
+      <a href="dashboard.html" class="owner-nav">Dashboard</a>
+      <a href="appointments.html" class="">Appointments</a>
+      <a href="claim-board.html" class="">Claim Board</a>
+      <a href="jobs.html" class="">Jobs</a>
+      <a href="staff-jobs.html" class="active">My Jobs</a>
+      <a href="completed-jobs.html" class="active">Completed Jobs</a>
+      <a href="messages.html" class="">Messages</a>
+      <a href="invoices.html" class="">Invoices</a>
+      <a href="customers.html" class="">Customers</a>
+      <a href="revenue.html" class="owner-nav">Revenue</a>
+      <a href="settings.html" class="owner-nav">Settings</a>
+      <a href="profile.html" class="">Profile</a>
+      <a href="#" id="mobileThemeToggle" class="mobile-nav-btn mobile-special">Theme</a>
+      <a href="#" id="mobileLogoutBtn" class="mobile-nav-btn mobile-special">Logout</a>
+    </nav>
+    <div>
+      <button id="themeToggle" class="btn" aria-label="Toggle theme">Theme</button>
+      <button id="logoutBtn" class="btn" aria-label="Logout">Logout</button>
+    </div>
+  </div>
+</header>
+<main class="container" style="padding:16px 0"><h1>Completed Jobs</h1>
+<div class="card">
+  <table class="table" id="completedJobsTable">
+    <thead><tr>
+      <th>Job #</th>
+      <th>Customer</th>
+      <th>Vehicle</th>
+      <th>Service</th>
+      <th>Completed By</th>
+      <th>Completed At</th>
+      <th>Actions</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+  <p class="notice" id="completedEmpty"></p>
+</div>
+
+<div id="jobViewModal" class="modal-overlay hidden" onclick="closeJobViewModal()">
+  <div class="modal-content" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <h3>Job Details</h3>
+      <button onclick="closeJobViewModal()" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body" id="jobViewContent"></div>
+    <div class="modal-foot"><button onclick="closeJobViewModal()" class="btn">Close</button></div>
+  </div>
+</div>
+
+<footer class="container">© Xpose Market</footer>
+<script src="vendor/supabase.umd.js"></script>
+<script type="module" src="pages/completed-jobs.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const mobileTheme = document.getElementById('mobileThemeToggle');
+    const mobileLogout = document.getElementById('mobileLogoutBtn');
+    const themeToggle = document.getElementById('themeToggle');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    if (mobileTheme) {
+      mobileTheme.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (themeToggle) themeToggle.click();
+      });
+    }
+    if (mobileLogout) {
+      mobileLogout.addEventListener('click', (e) => {
+        e.preventDefault();
+        // close mobile nav if open
+        const menuToggle = document.getElementById('menuToggle');
+        const mainNav = document.getElementById('mainNav');
+        if (mainNav && menuToggle && mainNav.classList.contains('active')) {
+          mainNav.classList.remove('active');
+          menuToggle.classList.remove('active');
+        }
+        if (typeof showLogoutConfirmModal === 'function') return showLogoutConfirmModal();
+        if (typeof logout === 'function') return logout();
+        // No-op fallback: handlers unavailable
+        console.warn('Logout handler not available');
+      });
+    }
+
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (typeof showLogoutConfirmModal === 'function') return showLogoutConfirmModal();
+        if (typeof logout === 'function') return logout();
+        console.warn('Logout handler not available');
+      });
+    }
+  });
+</script>
+</body></html>

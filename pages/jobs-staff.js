@@ -433,6 +433,14 @@ function renderJobsTable(tableId, emptyId, jobs) {
     unclaimBtn.onclick = async () => { await unclaimJob(job); };
     actionsDiv.appendChild(unclaimBtn);
 
+    // Wire status pill to open status modal (same flow as jobs page)
+    statusSpan.style.cursor = 'pointer';
+    statusSpan.title = 'Click to change status';
+    statusSpan.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openStatusModalForStaff(job);
+    });
+
     actionsCell.appendChild(actionsDiv);
 
     tr.appendChild(assignedCell);
@@ -497,11 +505,234 @@ function openJobActionsModal(job, appt) {
   modal.classList.remove('hidden');
 }
 
+// Simple promise-based confirm modal used instead of native `confirm()`
+function openConfirmModal(message) {
+  return new Promise((resolve) => {
+    let modal = document.getElementById('confirmModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'confirmModal';
+      modal.className = 'modal-overlay hidden';
+      modal.innerHTML = `
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width:380px;">
+          <div class="modal-head"><h3>Confirm</h3></div>
+          <div class="modal-body"><p id="confirmModalMessage"></p></div>
+          <div class="modal-foot" style="gap:8px;">
+            <button id="confirmCancel" class="btn">Cancel</button>
+            <button id="confirmOk" class="btn info">Confirm</button>
+          </div>
+        </div>`;
+      modal.onclick = () => { modal.classList.add('hidden'); resolve(false); };
+      document.body.appendChild(modal);
+    }
+    const msgEl = modal.querySelector('#confirmModalMessage');
+    const okBtn = modal.querySelector('#confirmOk');
+    const cancelBtn = modal.querySelector('#confirmCancel');
+    if (msgEl) msgEl.textContent = message || 'Are you sure?';
+    const cleanup = () => {
+      okBtn.onclick = null;
+      cancelBtn.onclick = null;
+    };
+    okBtn.onclick = () => { modal.classList.add('hidden'); cleanup(); resolve(true); };
+    cancelBtn.onclick = () => { modal.classList.add('hidden'); cleanup(); resolve(false); };
+    modal.classList.remove('hidden');
+  });
+}
+
+// Update job status from staff page and persist changes
+async function updateJobStatusStaff(jobId, newStatus) {
+  try {
+    const idx = allJobs.findIndex(j => j.id === jobId);
+    if (idx === -1) return;
+    const now = new Date().toISOString();
+    allJobs[idx].status = newStatus;
+    allJobs[idx].updated_at = now;
+
+    // If completed, record who completed it and when
+    if (newStatus === 'completed') {
+      allJobs[idx].completed_at = now;
+      try {
+        // Use authId (from supabase.auth.getUser earlier) and resolve staff name from shop_staff
+        const sup = supabase || getSupabaseClient();
+        if (sup && authId) {
+          // Try to find shop_staff row for this authId
+          const { data: staffRows } = await sup.from('shop_staff').select('id,first_name,last_name,auth_id').eq('auth_id', authId).limit(1);
+          const staff = (staffRows && staffRows.length) ? staffRows[0] : null;
+          allJobs[idx].completed_by = staff ? { id: staff.id, auth_id: staff.auth_id, name: `${staff.first_name||''} ${staff.last_name||''}`.trim() } : { auth_id: authId };
+        } else {
+          allJobs[idx].completed_by = { auth_id: authId || null };
+        }
+      } catch (e) {
+        allJobs[idx].completed_by = { auth_id: authId || null };
+      }
+    }
+
+    // Persist to jobs table (if available) and data JSON
+    try {
+      const sup = supabase || getSupabaseClient();
+      const shop = shopId || (JSON.parse(localStorage.getItem('xm_session')||'{}')).shopId;
+      if (!sup) {
+        console.warn('No Supabase client available; skipping remote persistence');
+        showErrorBanner('Offline: changes saved locally only');
+      } else {
+        // Update jobs table and report any error
+        try {
+          console.log('[jobs-staff] Persisting status change to jobs table', { jobId, newStatus, shop });
+          const { data: jobUpdateData, error: jobErr } = await sup.from('jobs').update({ status: newStatus, updated_at: now, completed_at: allJobs[idx].completed_at || null, completed_by: allJobs[idx].completed_by || null }).eq('id', jobId);
+          if (jobErr) {
+            console.error('jobs table update error', jobErr);
+            showErrorBanner('Failed to update job record');
+          } else {
+            console.log('jobs table updated', jobUpdateData);
+          }
+        } catch (e) {
+          console.error('Exception updating jobs table', e);
+          showErrorBanner('Failed to update job record');
+        }
+
+        // Also update linked appointment status when present
+        try {
+          const appointmentId = allJobs[idx].appointment_id;
+          if (appointmentId) {
+            console.log('[jobs-staff] Updating linked appointment', appointmentId, 'to status', newStatus);
+            const { data: apptUpdate, error: apptErr } = await sup.from('appointments').update({ status: newStatus, updated_at: now }).eq('id', appointmentId);
+            if (apptErr) {
+              console.error('appointments table update error', apptErr);
+              showErrorBanner('Failed to update linked appointment');
+            } else {
+              console.log('appointments table updated', apptUpdate);
+            }
+            // Also reflect change in local allAppointments array
+            const aIdx = allAppointments.findIndex(a => a.id === appointmentId);
+            if (aIdx !== -1) {
+              allAppointments[aIdx].status = newStatus;
+              allAppointments[aIdx].updated_at = now;
+            }
+          }
+        } catch (e) {
+          console.error('Exception updating appointment', e);
+          showErrorBanner('Failed to update linked appointment');
+        }
+
+        // Upsert into data table for full sync and report errors
+        try {
+          const { data: currentData, error: currentDataErr } = await sup.from('data').select('*').eq('shop_id', shop).single();
+          if (currentDataErr) console.warn('Could not read current data row', currentDataErr);
+          const payload = {
+            shop_id: shop,
+            appointments: allAppointments,
+            settings: currentData?.settings || {},
+            jobs: Array.isArray(currentData?.jobs) ? currentData.jobs.slice() : (currentData?.jobs || []),
+            threads: currentData?.threads || [],
+            invoices: currentData?.invoices || [],
+            updated_at: new Date().toISOString()
+          };
+          // replace job inside payload.jobs if present
+          if (Array.isArray(payload.jobs)) {
+            const jIdx = payload.jobs.findIndex(j => j.id === jobId);
+            if (jIdx !== -1) payload.jobs[jIdx] = allJobs[idx];
+            else payload.jobs.push(allJobs[idx]);
+          }
+          const { data: upsertData, error: upsertErr } = await sup.from('data').upsert(payload, { onConflict: 'shop_id' });
+          if (upsertErr) {
+            console.error('data upsert error', upsertErr);
+            showErrorBanner('Failed to sync change to data store');
+          } else {
+            console.log('data upserted', upsertData);
+          }
+        } catch (e) {
+          console.error('Exception upserting data row', e);
+          showErrorBanner('Failed to sync change to data store');
+        }
+      }
+    } catch (e) { console.warn('Failed to persist job status', e); showErrorBanner('Failed to persist job status'); }
+
+    // Save locally
+    try {
+      const local = JSON.parse(localStorage.getItem('xm_data')||'{}');
+      local.jobs = allJobs;
+      localStorage.setItem('xm_data', JSON.stringify(local));
+    } catch (e) { /* ignore */ }
+
+    // Re-render filtered jobs for this staff (completed jobs will be omitted)
+    let filtered = [];
+    if (authId) {
+      filtered = allJobs.filter(j => String(j.assigned_to||'') === String(authId));
+      filtered = filtered.concat(allJobs.filter(j => String(j.assigned||'') === String(authId)));
+      const seen = new Set();
+      filtered = filtered.filter(j => { if (!j||!j.id) return false; if (seen.has(j.id)) return false; seen.add(j.id); return true; });
+    }
+    renderJobs(filtered);
+
+    // If completed, notify and show a small toast
+    if (newStatus === 'completed') {
+      showSuccessBanner('Job marked completed and moved to Completed Jobs.');
+    } else {
+      showSuccessBanner('Job status updated.');
+    }
+  } catch (err) {
+    console.error('updateJobStatusStaff failed', err);
+    showErrorBanner('Failed to update job status.');
+  }
+}
+
 function closeJobActionsModal() {
   const modal = document.getElementById('jobActionsModal');
   if (modal) modal.classList.add('hidden');
   currentActionJob = null;
   currentActionAppt = null;
+}
+
+// Create and show a status modal for staff page (mirrors jobs page flow)
+function openStatusModalForStaff(job) {
+  try {
+    let modal = document.getElementById('statusModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'statusModal';
+      modal.className = 'modal-overlay hidden';
+      modal.onclick = () => { modal.classList.add('hidden'); };
+      modal.innerHTML = `
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 400px;">
+          <div class="modal-head">
+            <h3>Select Status</h3>
+            <button onclick="document.getElementById('statusModal')?.classList.add('hidden')" class="btn-close">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div id="statusPills" style="display:flex;flex-direction:column;gap:12px;"></div>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+    }
+
+    const pillsContainer = modal.querySelector('#statusPills');
+    if (!pillsContainer) return;
+    pillsContainer.innerHTML = '';
+
+    const STATUSES = [ {k:'in_progress', t:'In Progress'}, {k:'awaiting_parts', t:'Awaiting Parts'}, {k:'completed', t:'Completed'} ];
+    STATUSES.forEach(s => {
+      const pill = document.createElement('button');
+      pill.className = 'btn';
+      pill.style.width = '100%';
+      pill.style.textAlign = 'left';
+      pill.textContent = s.t.toUpperCase();
+      if (job.status === s.k) pill.classList.add('active');
+      pill.onclick = async () => {
+        modal.classList.add('hidden');
+        if (s.k === 'completed') {
+          // Open in-page confirmation modal instead of native confirm()
+          try {
+            const ok = await openConfirmModal('Mark this job as completed?');
+            if (!ok) return;
+          } catch (e) { return; }
+        }
+        await updateJobStatusStaff(job.id, s.k);
+      };
+      pillsContainer.appendChild(pill);
+    });
+
+    modal.classList.remove('hidden');
+  } catch (e) { console.error('openStatusModalForStaff failed', e); }
 }
 
 function handleJobActionView() {

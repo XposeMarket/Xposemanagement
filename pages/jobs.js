@@ -2616,101 +2616,91 @@ async function updateJobStatus(jobId, newStatus) {
  * Open assign modal (simple prompt for now)
  */
 function openAssignModal(job) {
-  // Build a modal that matches the Remove confirmation modal style
-  let modal = document.getElementById('assignModal');
+  // Use the same foreman-style assign modal (id: assignJobModal)
+  let modal = document.getElementById('assignJobModal');
   if (!modal) {
     modal = document.createElement('div');
-    modal.id = 'assignModal';
+    modal.id = 'assignJobModal';
     modal.className = 'modal-overlay hidden';
     modal.innerHTML = `
-      <div class="modal-content" onclick="event.stopPropagation()" style="max-width:420px;width:100%;min-width:0;padding:0 18px;box-sizing:border-box;margin:10vh auto; border-radius:12px;">
+      <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 480px;">
         <div class="modal-head">
-          <h3 style="font-size:1.25rem;">Assign Job</h3>
-          <button onclick="document.getElementById('assignModal')?.classList.add('hidden')" class="btn-close">&times;</button>
+          <h3>Assign Job</h3>
+          <button type="button" class="btn-close" onclick="closeAssignModal()">&times;</button>
         </div>
-        <div class="modal-body" style="padding-bottom: 6px;">
-          <div style="margin-bottom:12px;">
-            <label for="assignUserSelect" style="display:block;font-weight:600;margin-bottom:6px;font-size:1.08rem;">Select staff member</label>
-            <select id="assignUserSelect" style="width:100%;padding:14px 10px;font-size:1.12rem;border-radius:10px;border:1.5px solid var(--line);background:#f9f9ff;max-width:100vw;">
-              <option value="">-- Select staff --</option>
-            </select>
-          </div>
-          <div id="assignModalError" style="color:#ef4444;font-weight:500;margin-top:4px;display:none;font-size:1.05rem"></div>
-          <div style="display:flex;flex-direction:column;gap:14px;margin-top:16px;">
-            <button id="assignConfirmBtn" class="btn info" style="width:100%;font-size:1.08rem;padding:14px 0;display:flex;align-items:center;justify-content:center;">Assign</button>
-            <button id="assignCancelBtn" class="btn" style="width:100%;font-size:1.08rem;padding:14px 0;display:flex;align-items:center;justify-content:center;">Cancel</button>
-          </div>
+        <div class="modal-body">
+          <p style="margin-bottom: 12px; color: var(--muted);">Select a staff member to assign this job to:</p>
+          <div id="staffListContainer" style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto;"></div>
+        </div>
+        <div class="modal-foot">
+          <button onclick="closeAssignModal()" class="btn">Cancel</button>
         </div>
       </div>
     `;
+    modal.onclick = () => closeAssignModal();
     document.body.appendChild(modal);
   }
 
-  // Populate staff dropdown from shop_staff first, fallback to allUsers
-  (async function populateAssignList(){
-    const select = modal.querySelector('#assignUserSelect');
-    const errorDiv = modal.querySelector('#assignModalError');
-    select.innerHTML = '<option value="">-- Loading staff --</option>';
-
+  // Populate staff list and show modal
+  (async function populateAndShow() {
+    const container = modal.querySelector('#staffListContainer');
+    modal.dataset.jobId = job.id;
+    container.innerHTML = '<div class="notice">Loading staff...</div>';
     try {
-      const supabase = getSupabaseClient();
-      const shopId = getCurrentShopId();
+      const sup = getSupabaseClient();
+      const shop = getCurrentShopId();
       let staffRows = [];
-      if (supabase && shopId) {
-        try {
-          const { data: sdata, error: sErr } = await supabase.from('shop_staff').select('*').eq('shop_id', shopId);
-          if (!sErr && Array.isArray(sdata) && sdata.length) {
-            staffRows = sdata.map(s => ({ id: s.auth_id || s.id, first: s.first_name || s.first || '', last: s.last_name || s.last || '', email: s.email, role: s.role || 'staff', shop_staff_id: s.id }));
-          }
-        } catch (e) { console.warn('Could not load shop_staff', e); }
-      }
-
-      // If no shop_staff found, fall back to allUsers loaded earlier
-      if (!staffRows.length) {
-        staffRows = (allUsers || []).map(u => ({ id: u.id, first: u.first || u.first_name || '', last: u.last || u.last_name || '', email: u.email, role: u.role }));
-      }
-
-      // Render options
-      if (!staffRows.length) {
-        select.innerHTML = '<option value="">No staff available</option>';
-        errorDiv.style.display = 'block';
-        errorDiv.textContent = 'No staff members available. Invite staff or add shop_staff entries.';
-      } else {
-        select.innerHTML = '<option value="">-- Select staff --</option>' + staffRows.map(s => `<option value="${s.id}">${(s.first||'').trim()} ${(s.last||'').trim()}${s.role ? ' - ' + s.role : ''}</option>`).join('');
-        errorDiv.style.display = 'none';
-      }
-
-      // Wire buttons
-      const confirmBtn = modal.querySelector('#assignConfirmBtn');
-      const cancelBtn = modal.querySelector('#assignCancelBtn');
-
-      confirmBtn.onclick = async () => {
-        const selected = select.value;
-        if (!selected) {
-          errorDiv.style.display = 'block';
-          errorDiv.textContent = 'Please select a staff member to assign.';
-          return;
+      if (sup && shop) {
+        const { data: sdata, error: sErr } = await sup.from('shop_staff').select('*').eq('shop_id', shop);
+        if (!sErr && Array.isArray(sdata) && sdata.length) {
+          staffRows = sdata.map(s => s);
         }
-        modal.classList.add('hidden');
-        await assignJob(job.id, selected);
-      };
-
-      cancelBtn.onclick = () => modal.classList.add('hidden');
-
-      // Show modal
+      }
+      if (!staffRows.length) {
+        container.innerHTML = '<p class="notice">No staff available. Add staff in Settings.</p>';
+      } else {
+        container.innerHTML = staffRows.map(staff => {
+          const displayRole = (staff.role === 'foreman') ? 'Foreman' : 'Staff';
+          const first = staff.first_name || staff.first || '';
+          const last = staff.last_name || staff.last || '';
+          const authId = staff.auth_id || staff.id || '';
+          const safeFirst = (first || '').replace(/'/g, "\\'");
+          const safeLast = (last || '').replace(/'/g, "\\'");
+          return `
+            <button class="btn" style="text-align:left; justify-content:flex-start; padding:12px;" onclick="selectStaffForAssign('${authId}', '${safeFirst} ${safeLast}')">
+              <div style="display:flex;flex-direction:column;align-items:flex-start;">
+                <strong>${first} ${last}</strong>
+                <span style="font-size:12px;color:var(--muted);">${staff.email || ''} • ${displayRole}</span>
+              </div>
+            </button>
+          `;
+        }).join('');
+      }
       modal.classList.remove('hidden');
-      modal.onclick = (e) => { if (e.target === modal) modal.classList.add('hidden'); };
-
-    } catch (err) {
-      console.error('Failed to populate assign list', err);
-      select.innerHTML = '<option value="">Error loading staff</option>';
-      const errorDiv = modal.querySelector('#assignModalError');
-      errorDiv.style.display = 'block';
-      errorDiv.textContent = 'Error loading staff list.';
+    } catch (e) {
+      console.error('Failed to load staff for assign modal', e);
+      container.innerHTML = '<p class="notice">Error loading staff list</p>';
       modal.classList.remove('hidden');
     }
   })();
 }
+
+window.closeAssignModal = function() {
+  const m = document.getElementById('assignJobModal'); if (m) m.classList.add('hidden');
+};
+
+window.selectStaffForAssign = async function(staffAuthId, staffName) {
+  try {
+    const modal = document.getElementById('assignJobModal');
+    const jobId = modal?.dataset?.jobId;
+    if (!jobId || !staffAuthId) return;
+    closeAssignModal();
+    await assignJob(jobId, staffAuthId);
+  } catch (e) {
+    console.error('selectStaffForAssign failed', e);
+    showErrorBanner('Failed to assign job');
+  }
+};
 
 // Expose assign modal and assign helper globally so other pages can reuse it
 try {

@@ -296,7 +296,17 @@ async function applyNavPermissions(userRow = null) {
     // Show or hide staff-only navigation links based on whether staff is hourly for this shop.
     // If we couldn't determine shop-specific status, show staff-only links.
     document.querySelectorAll('.staff-only-nav').forEach(el => {
-      el.style.display = (shopStaffFound ? (isHourlyForShop ? '' : 'none') : '');
+      try {
+        const href = (el.getAttribute && el.getAttribute('href')) ? el.getAttribute('href') : '';
+        // Always show Completed Jobs to staff and foreman regardless of shop hourly status
+        if (href && href.toLowerCase().includes('completed-jobs.html')) {
+          el.style.display = '';
+        } else {
+          el.style.display = (shopStaffFound ? (isHourlyForShop ? '' : 'none') : '');
+        }
+      } catch (e) {
+        el.style.display = (shopStaffFound ? (isHourlyForShop ? '' : 'none') : '');
+      }
     });
     // Update brand link: if we know the shop-specific payment type, choose accordingly.
     const brandLink = document.getElementById('brandLink');
