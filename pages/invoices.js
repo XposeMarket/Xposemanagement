@@ -406,9 +406,12 @@ function setupInvoices() {
     const addLaborEl = document.getElementById('addLabor');
     const addServiceEl = document.getElementById('addService');
     if (addPartEl) addPartEl.onclick = () => {
-      const job = (window.jobs || []).find(j => j.appointment_id === inv.appointment_id) || null;
+        const job = (jobs || []).find(j => j.appointment_id === inv.appointment_id) || null;
+        const appt = (appointments || []).find(a => a.id === inv.appointment_id) || null;
+        const vehicleStr = job ? (job.vehicle || job.vehicle_display || null) : (inv.vehicle || appt?.vehicle || appt?.vehicle_display || null);
+        const vehicleObj = job ? { vehicle: job.vehicle || job.vehicle_display || '', jobNumber: job.number || job.job_number || job.jobNo } : { vehicle: inv.vehicle || appt?.vehicle || appt?.vehicle_display || '', jobNumber: null };
       if (window.partPricingModal) {
-        window.partPricingModal.show({ manual_entry: true, name: '' }, job ? job.id : null, job ? (job.vehicle || job.vehicle_display || null) : null);
+        window.partPricingModal.show({ manual_entry: true, name: '' }, job ? job.id : null, vehicleObj);
       } else {
         inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'part' }); renderItems(inv.items); scrollInvoiceModalToBottom();
       }
@@ -504,10 +507,12 @@ function setupInvoices() {
     const addServiceBtn = document.getElementById('addServiceBtn');
     const cancelItemBtn = document.getElementById('cancelItemBtn');
     if (addPartBtn) addPartBtn.onclick = () => {
-      const job = (window.jobs || []).find(j => j.appointment_id === inv.appointment_id) || null;
+        const job = (jobs || []).find(j => j.appointment_id === inv.appointment_id) || null;
+        const appt = (appointments || []).find(a => a.id === inv.appointment_id) || null;
+        const vehicleObj = job ? { vehicle: job.vehicle || job.vehicle_display || '', jobNumber: job.number || job.job_number || job.jobNo } : { vehicle: inv.vehicle || appt?.vehicle || appt?.vehicle_display || '', jobNumber: null };
       itemTypeModal.classList.add('hidden');
       if (window.partPricingModal) {
-        window.partPricingModal.show({ manual_entry: true, name: '' }, job ? job.id : null, job ? (job.vehicle || job.vehicle_display || null) : null);
+        window.partPricingModal.show({ manual_entry: true, name: '' }, job ? job.id : null, vehicleObj);
       } else {
         inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'part' }); renderItems(inv.items); scrollInvoiceModalToBottom();
       }

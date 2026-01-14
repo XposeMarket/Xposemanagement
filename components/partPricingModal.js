@@ -120,12 +120,19 @@ class PartPricingModal {
       jobVehicle = jobVehicleOrCallback;
       actualCallback = callback;
     }
-    // Defensive: if jobVehicle is an object, try to build a string
+    // Defensive: if jobVehicle is an object, try to build a string and capture job number
     if (jobVehicle && typeof jobVehicle === 'object') {
-      const y = jobVehicle.year || jobVehicle.vehicle_year || 'Unknown';
-      const m = jobVehicle.make || jobVehicle.vehicle_make || 'Unknown';
-      const mo = jobVehicle.model || jobVehicle.vehicle_model || 'Unknown';
-      jobVehicle = `${y} ${m} ${mo}`;
+      const orig = jobVehicle; // keep original object
+      const y = orig.year || orig.vehicle_year || '';
+      const m = orig.make || orig.vehicle_make || '';
+      const mo = orig.model || orig.vehicle_model || '';
+      const parts = [y, m, mo].filter(Boolean);
+      // If we built a vehicle string, use it; otherwise fallback to provided vehicle string fields
+      jobVehicle = parts.length ? parts.join(' ') : orig.vehicle || orig.vehicle_display || '';
+      // Capture a provided job number if present on the object
+      this.jobNumber = orig.number || orig.job_number || orig.jobNo || orig.jobNumber || null;
+    } else {
+      this.jobNumber = null;
     }
     // Fallback if jobVehicle is missing or empty
     if (!jobVehicle || !String(jobVehicle).trim()) {
@@ -152,7 +159,23 @@ class PartPricingModal {
     if (jobContextEl && jobVehicleEl && jobIdEl) {
       if (jobId || jobVehicle) {
         jobVehicleEl.textContent = jobVehicle;
-        jobIdEl.textContent = jobId ? `Job #${jobId.slice(-6).toUpperCase()}` : '';
+        // Prefer provided job number (set when show() received an object), else try to find job record
+        let jobLabel = '';
+        if (this.jobNumber) {
+          jobLabel = `Job #${this.jobNumber}`;
+        } else if (jobId) {
+          try {
+            const jobObj = (window.jobs || []).find(j => j.id === jobId);
+            if (jobObj && (jobObj.number || jobObj.job_number || jobObj.jobNo)) {
+              jobLabel = `Job #${jobObj.number || jobObj.job_number || jobObj.jobNo}`;
+            } else {
+              jobLabel = `Job #${String(jobId).slice(-6).toUpperCase()}`;
+            }
+          } catch (e) {
+            jobLabel = `Job #${String(jobId).slice(-6).toUpperCase()}`;
+          }
+        }
+        jobIdEl.textContent = jobLabel;
         jobContextEl.style.display = 'block';
       } else {
         jobContextEl.style.display = 'none';
