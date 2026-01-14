@@ -100,7 +100,7 @@ function showNotification(message, type = 'success') {
     <!-- Google Business Search Section -->
     <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--line);">
       <h4 style="margin-bottom:12px;">🔍 Connect Your Google Business</h4>
-      <p style="font-size:0.875rem;color:var(--muted);margin-bottom:12px;">Link your Google Business profile to send review requests to customers.</p>
+      <p style="font-size:0.875rem;color:var(--muted);margin-bottom:12px;">Link your Google Business profile to send review requests to customers in their invoices.</p>
       
       <div id="googleBusinessInfo" style="display:none;padding:12px;background:var(--bg);border-radius:8px;margin-bottom:12px;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
@@ -203,15 +203,22 @@ function showNotification(message, type = 'success') {
     <div id="shopOwner" style="margin-bottom:8px; font-weight:600">Shop Owner: <span id="shopOwnerName">-</span></div>
     <table class="table" id="staffTable"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Pay Type</th><th>Hourly Rate</th><th>Actions</th></tr></thead><tbody></tbody></table>
         <style>
-          .owner-badge {
-            background: #ffd700;
-            color: #041014;
-            font-weight: bold;
-            border-radius: 4px;
-            padding: 2px 6px;
-            margin-left: 6px;
-            font-size: 0.9em;
-          }
+              .owner-badge {
+                background: #ffd700;
+                color: #041014;
+                font-weight: bold;
+                border-radius: 4px;
+                padding: 2px 6px;
+                margin-left: 6px;
+                font-size: 0.9em;
+              }
+              .staff-section-header {
+                background: rgba(0,0,0,0.04);
+                color: var(--text);
+                font-weight: 700;
+                padding: 10px 8px;
+                border-top: 1px solid var(--line);
+              }
           .pay-type-badge {
             padding: 4px 10px;
             border-radius: 12px;
@@ -527,16 +534,30 @@ document.addEventListener('DOMContentLoaded', function(){
         if(owner){ ownerEl.textContent = `${owner.first || ''} ${owner.last || ''} - ${owner.email || ''}`; }
         else ownerEl.textContent = 'None';
 
-        // Populate staff table
+        // Populate staff table (grouped by role for predictable ordering)
         tbody.innerHTML = '';
-        if(!allTeamMembers.length){ tbody.innerHTML = '<tr><td colspan="6" class="muted">No team members found.</td></tr>'; if(slotsUsedEl) slotsUsedEl.textContent = '0'; }
-        else {
+        if(!allTeamMembers.length){
+          tbody.innerHTML = '<tr><td colspan="6" class="muted">No team members found.</td></tr>';
+          if(slotsUsedEl) slotsUsedEl.textContent = '0';
+        } else {
           let used = 0;
           let shopOwnerId = shop.owner_id ? String(shop.owner_id).trim() : null;
-          allTeamMembers.forEach(u => {
+
+          // Helper: insert a section header row
+          function insertSectionHeader(title){
+            const shr = document.createElement('tr');
+            const cell = document.createElement('td');
+            cell.colSpan = 6;
+            cell.className = 'staff-section-header';
+            cell.textContent = title;
+            shr.appendChild(cell);
+            tbody.appendChild(shr);
+          }
+
+          // Helper: render a single member row (keeps existing behavior)
+          function renderMemberRow(u){
             const tr = document.createElement('tr');
             const isOwner = shopOwnerId && String(u.id).trim() === shopOwnerId;
-            // Prefer explicit shop_staff_id for staffId
             if (!isOwner && u.shop_staff_id) tr.dataset.staffId = u.shop_staff_id;
             if (u.id) tr.dataset.userId = u.id;
 
@@ -550,10 +571,12 @@ document.addEventListener('DOMContentLoaded', function(){
               tdName.appendChild(badge);
             }
             tr.appendChild(tdName);
+
             const tdEmail = document.createElement('td');
             tdEmail.setAttribute('data-label', 'Email');
             tdEmail.textContent = u.email || '';
             tr.appendChild(tdEmail);
+
             const tdRole = document.createElement('td');
             tdRole.setAttribute('data-label', 'Role');
             if(isOwner){
@@ -576,11 +599,10 @@ document.addEventListener('DOMContentLoaded', function(){
               tdRole.appendChild(roleEl);
             }
             tr.appendChild(tdRole);
-            
+
             // Pay Type cell
             const tdPayType = document.createElement('td');
             tdPayType.setAttribute('data-label', 'Pay Type');
-            // Determine if hourly (has hourly_rate > 0) or flat rate (default)
             const isHourly = u.hourly_rate && Number(u.hourly_rate) > 0;
             const payTypeBadge = document.createElement('span');
             payTypeBadge.className = 'pay-type-badge';
@@ -598,11 +620,9 @@ document.addEventListener('DOMContentLoaded', function(){
               payTypeBadge.style.color = 'white';
             }
             tdPayType.appendChild(payTypeBadge);
-            if(isOwner){
-              tdPayType.textContent = '—';
-            }
+            if(isOwner){ tdPayType.textContent = '—'; }
             tr.appendChild(tdPayType);
-            
+
             // Hourly Rate cell
             const tdRate = document.createElement('td');
             tdRate.setAttribute('data-label', 'Hourly Rate');
@@ -614,7 +634,6 @@ document.addEventListener('DOMContentLoaded', function(){
             rateInput.value = (rateVal !== '') ? String(rateVal) : '';
             rateInput.style.width = '100px';
             rateInput.dataset.email = (u.email || '').toLowerCase();
-            // Add a save button (check) to explicitly persist hourly rate
             const saveBtn = document.createElement('button');
             saveBtn.className = 'btn';
             saveBtn.type = 'button';
@@ -624,13 +643,7 @@ document.addEventListener('DOMContentLoaded', function(){
             saveBtn.style.padding = '6px 8px';
             saveBtn.disabled = true;
             saveBtn.style.opacity = '0.5';
-
-            // Mark dirty when user edits the value
-            rateInput.addEventListener('input', () => {
-              saveBtn.disabled = false;
-              saveBtn.style.opacity = '1';
-            });
-
+            rateInput.addEventListener('input', () => { saveBtn.disabled = false; saveBtn.style.opacity = '1'; });
             saveBtn.addEventListener('click', async (e) => {
               e.preventDefault();
               const raw = rateInput.value;
@@ -646,13 +659,10 @@ document.addEventListener('DOMContentLoaded', function(){
                 }
                 if (res && res.error) throw res.error;
                 showNotification('Hourly rate saved.', 'success');
-                saveBtn.disabled = true;
-                saveBtn.style.opacity = '0.5';
-                // Refresh team list to show persisted value
+                saveBtn.disabled = true; saveBtn.style.opacity = '0.5';
                 await renderTeam();
               } catch (ex) {
                 console.error('Failed to save hourly rate', ex);
-                // Helpful guidance for missing column error (PostgREST PGRST204)
                 const missingColMsg = ex?.message || '';
                 if ((ex && ex.code === 'PGRST204') || /Could not find the 'hourly_rate' column/i.test(missingColMsg)) {
                   showNotification('DB column `hourly_rate` missing. See console for migration SQL.', 'error');
@@ -665,31 +675,59 @@ document.addEventListener('DOMContentLoaded', function(){
                 }
               }
             });
-
             tdRate.appendChild(rateInput);
             tdRate.appendChild(saveBtn);
             tr.appendChild(tdRate);
+
             const tdAct = document.createElement('td');
             tdAct.setAttribute('data-label', 'Actions');
-            if(isOwner){
-              tdAct.textContent = '';
-            } else {
-              // Manage button that opens modal
+            if(isOwner){ tdAct.textContent = ''; }
+            else {
               const manageBtn = document.createElement('button');
               manageBtn.className = 'btn';
               manageBtn.textContent = 'Manage';
               manageBtn.style.background = 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)';
               manageBtn.style.color = 'white';
               manageBtn.style.border = 'none';
-              manageBtn.addEventListener('click', () => {
-                openStaffManageModal(u, tr);
-              });
+              manageBtn.addEventListener('click', () => { openStaffManageModal(u, tr); });
               tdAct.appendChild(manageBtn);
             }
             tr.appendChild(tdAct);
             tbody.appendChild(tr);
-            if(!isOwner) used++;
+            return !isOwner; // return true if counts toward used slots
+          }
+
+          // Group members into sections
+          const groups = { top: [], foreman: [], staff: [], service_writer: [], receptionist: [], others: [] };
+          allTeamMembers.forEach(u => {
+            const isOwner = shopOwnerId && String(u.id).trim() === shopOwnerId;
+            if (isOwner || (u.role === 'admin')) groups.top.push(u);
+            else if (u.role === 'foreman') groups.foreman.push(u);
+            else if (!u.role || u.role === 'staff') groups.staff.push(u);
+            else if (u.role === 'service_writer') groups.service_writer.push(u);
+            else if (u.role === 'receptionist') groups.receptionist.push(u);
+            else groups.others.push(u);
           });
+
+          const sections = [
+            { title: 'Admin / Owner', items: groups.top },
+            { title: 'Foreman', items: groups.foreman },
+            { title: 'Staff', items: groups.staff },
+            { title: 'Service Writer', items: groups.service_writer },
+            { title: 'Receptionist', items: groups.receptionist },
+            { title: 'Other', items: groups.others }
+          ];
+
+          // Render sections in order
+          sections.forEach((sec, idx) => {
+            if (!sec.items || sec.items.length === 0) return;
+            insertSectionHeader(sec.title);
+            sec.items.forEach(u => {
+              const counts = renderMemberRow(u);
+              if (counts) used++;
+            });
+          });
+
           if(slotsUsedEl) slotsUsedEl.textContent = String(used);
         }
       }
