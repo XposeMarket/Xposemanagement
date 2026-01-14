@@ -12,6 +12,57 @@ function formatCurrency(val) {
   return `$${(val || 0).toFixed(2)}`;
 }
 
+// Utility: return YYYY-MM-DD string in local timezone (avoid UTC shift from toISOString())
+function localIsoDate(input) {
+  const d = new Date(input);
+  if (isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// Parse a date/time string preferring local timezone when the input has no timezone
+function parseDatePreferLocal(raw) {
+  if (!raw) return null;
+  // If it's already a Date, return copy
+  if (raw instanceof Date) return new Date(raw.getTime());
+  // If contains explicit timezone (Z or +hh:mm), let Date handle it
+  if (/[zZ]|[\+\-]\d{2}:?\d{2}$/.test(raw)) {
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // If looks like YYYY-MM-DDTHH:MM:SS (no zone) or YYYY-MM-DD HH:MM:SS, parse components as local
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}):(\d{2}))?/);
+  if (isoMatch) {
+    const y = parseInt(isoMatch[1], 10);
+    const m = parseInt(isoMatch[2], 10) - 1;
+    const d = parseInt(isoMatch[3], 10);
+    const hh = isoMatch[4] ? parseInt(isoMatch[4], 10) : 0;
+    const mm = isoMatch[5] ? parseInt(isoMatch[5], 10) : 0;
+    const ss = isoMatch[6] ? parseInt(isoMatch[6], 10) : 0;
+    const dt = new Date(y, m, d, hh, mm, ss);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+  // Fallback to Date constructor
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Format a Date as local YYYY-MM-DDTHH:MM:SS without timezone suffix
+function formatLocalIsoNoZone(d) {
+  if (!d) return null;
+  const dt = d instanceof Date ? d : new Date(d);
+  if (isNaN(dt.getTime())) return null;
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  const hh = String(dt.getHours()).padStart(2, '0');
+  const mm = String(dt.getMinutes()).padStart(2, '0');
+  const ss = String(dt.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${day}T${hh}:${mm}:${ss}`;
+}
+
 // Utility: get status class for colored pills
 function getStatusClass(status) {
   if (!status) return '';
@@ -148,7 +199,7 @@ function renderWeeklyDaysOverview(currentWeek, invoices, appointments, jobs) {
   for (let i = 0; i < 7; i++) {
     const d = new Date(weekStart);
     d.setDate(weekStart.getDate() + i);
-    const iso = d.toISOString().slice(0, 10);
+    const iso = localIsoDate(d);
     const dayName = d.toLocaleDateString(undefined, { weekday: 'short' });
     const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     days.push({ iso, dayName, dateStr, date: d, revenue: 0 });
@@ -166,8 +217,8 @@ function renderWeeklyDaysOverview(currentWeek, invoices, appointments, jobs) {
       const appt = appointments.find(a => a.id === j.appointment_id);
       const rawDate = appt?.preferred_date || appt?.preferred_time || j.created_at || j.updated_at;
       if (!rawDate) return false;
-      const jDate = new Date(rawDate);
-      return jDate >= dayStart && jDate <= dayEnd;
+      const jDate = parseDatePreferLocal(rawDate);
+      return jDate && jDate >= dayStart && jDate <= dayEnd;
     });
     
     // Calculate total revenue for the day
@@ -238,7 +289,7 @@ function showHourlyStaffModal(staffObj, clockEntries, currentWeek) {
   for (let i = 0; i < 7; i++) {
     const d = new Date(weekStart);
     d.setDate(weekStart.getDate() + i);
-    const iso = d.toISOString().slice(0, 10);
+    const iso = localIsoDate(d);
     const dayName = d.toLocaleDateString(undefined, { weekday: 'short' });
     const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
     days.push({ iso, dayName, dateStr, date: d, entries: [], totalMinutes: 0 });
@@ -247,13 +298,15 @@ function showHourlyStaffModal(staffObj, clockEntries, currentWeek) {
   // Group clock entries by day
   clockEntries.forEach(entry => {
     if (!entry.clock_in) return;
-    const clockInDate = new Date(entry.clock_in);
-    const iso = clockInDate.toISOString().slice(0, 10);
+    const clockInDate = parseDatePreferLocal(entry.clock_in);
+    // Debug: show raw vs parsed for troubleshooting timezone issues
+    try { console.debug('[revenue][clock-entry] raw:', entry.clock_in, 'parsedLocal:', clockInDate && clockInDate.toString(), 'localTime:', clockInDate && clockInDate.toLocaleTimeString()); } catch(e) {}
+    const iso = localIsoDate(clockInDate);
     const day = days.find(d => d.iso === iso);
     if (day) {
       day.entries.push(entry);
       if (entry.clock_out) {
-        const clockOut = new Date(entry.clock_out);
+        const clockOut = parseDatePreferLocal(entry.clock_out);
         const diffMs = clockOut - clockInDate;
         day.totalMinutes += diffMs / 1000 / 60;
       }
@@ -282,12 +335,12 @@ function showHourlyStaffModal(staffObj, clockEntries, currentWeek) {
     let entriesHtml = '';
     if (hasEntries) {
       entriesHtml = day.entries.map(entry => {
-        const clockIn = new Date(entry.clock_in);
+            const clockIn = parseDatePreferLocal(entry.clock_in);
         const clockInTime = clockIn.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         let clockOutTime = 'Still clocked in';
         let duration = '—';
         if (entry.clock_out) {
-          const clockOut = new Date(entry.clock_out);
+          const clockOut = parseDatePreferLocal(entry.clock_out);
           clockOutTime = clockOut.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const diffMs = clockOut - clockIn;
           const diffMins = Math.round(diffMs / 1000 / 60);
@@ -435,8 +488,8 @@ async function setupRevenuePage() {
       // Fetch time_clock daily summary data for hourly staff for the current week
       let timeClockData = [];
       try {
-        const startDate = currentWeek.start.toISOString().slice(0,10);
-        const endDate = currentWeek.end.toISOString().slice(0,10);
+        const startDate = localIsoDate(currentWeek.start);
+        const endDate = localIsoDate(currentWeek.end);
         const { data: clockData, error: clockErr } = await supabase
           .from('time_clock_daily_summary')
           .select('*')
@@ -458,47 +511,51 @@ async function setupRevenuePage() {
         staffClockData[staffId].push(entry);
       });
 
-      // If the daily summary view returned no rows, attempt to fallback to raw time_clock rows
-      if ((!timeClockData || timeClockData.length === 0)) {
-        try {
-          console.debug('[revenue] time_clock_daily_summary empty — falling back to raw time_clock rows for week');
-          const startIso = currentWeek.start.toISOString();
-          const endIso = currentWeek.end.toISOString();
-          const { data: rawClock, error: rawErr } = await supabase
-            .from('time_clock')
-            .select('*')
-            .eq('shop_id', shopId)
-            .gte('clock_in', startIso)
-            .lte('clock_in', endIso);
-          const rawRows = (rawErr || !rawClock) ? [] : (rawClock || []);
-          console.debug('[revenue] raw time_clock rows fetched:', rawRows.length, rawRows && rawRows.slice && rawRows.slice(0,5));
-          // Aggregate minutes per staff per day into staffClockData-like structure
-          const aggByStaff = {};
+      // Regardless of daily-summary results, try to fetch raw `time_clock` rows for the week.
+      // If raw rows are returned, prefer them (they contain actual clock_in/clock_out timestamps).
+      try {
+        const startIso = currentWeek.start.toISOString();
+        const endIso = currentWeek.end.toISOString();
+        const { data: rawClock, error: rawErr } = await supabase
+          .from('time_clock')
+          .select('*')
+          .eq('shop_id', shopId)
+          .gte('clock_in', startIso)
+          .lte('clock_in', endIso);
+        const rawRows = (rawErr || !rawClock) ? [] : (rawClock || []);
+        if (rawRows && rawRows.length) {
+          try { console.debug('[revenue][raw-time_clock] rows fetched:', rawRows.length, rawRows.slice(0,5)); } catch(e) {}
+          // Populate staffClockData entries keyed by staff id / auth id / email so later code can prefer raw rows
           rawRows.forEach(r => {
-            if (!r.clock_in) return;
-            if (!r.clock_out) return; // ignore open clocks
-            const inT = new Date(r.clock_in);
-            const outT = new Date(r.clock_out);
-            if (isNaN(inT.getTime()) || isNaN(outT.getTime())) return;
-            const mins = Math.round((outT - inT) / 60000);
-            const sid = r.staff_id || r.staff_auth_id || null;
+            const sid = r.staff_id || r.staff_auth_id || r.staff_email || null;
             if (!sid) return;
-            if (!aggByStaff[sid]) aggByStaff[sid] = 0;
-            aggByStaff[sid] += Math.max(0, mins);
+            if (!staffClockData[sid]) staffClockData[sid] = [];
+            // push raw row directly — downstream code will detect presence of clock_in/clock_out
+            staffClockData[sid].push(r);
           });
-          Object.keys(aggByStaff).forEach(sid => {
-            staffClockData[sid] = [{ staff_id: sid, total_minutes: aggByStaff[sid] }];
-          });
-          console.debug('[revenue] synthesized staffClockData from raw time_clock:', Object.keys(staffClockData).length, staffClockData);
-        } catch (e) {
-          console.warn('[revenue] fallback raw time_clock fetch failed:', e);
+        } else {
+          try { console.debug('[revenue][raw-time_clock] no raw rows returned for week'); } catch(e) {}
         }
+      } catch (e) {
+        console.warn('[revenue] raw time_clock fetch failed:', e);
       }
 
       // Calculate weekly hours for each hourly staff member from daily summaries
       function calcWeeklyHoursFromClock(entries) {
         let totalMinutes = 0;
         entries.forEach(entry => {
+          if (!entry) return;
+          // If this entry is a raw time_clock row, compute minutes from clock_in/clock_out
+          if (entry.clock_in) {
+            try {
+              const inT = parseDatePreferLocal(entry.clock_in);
+              const outT = entry.clock_out ? parseDatePreferLocal(entry.clock_out) : null;
+              if (inT && outT && !isNaN(inT.getTime()) && !isNaN(outT.getTime())) {
+                totalMinutes += Math.round((outT - inT) / 60000);
+                return;
+              }
+            } catch (e) { /* fallthrough to summary handling */ }
+          }
           // daily summary may provide total_minutes or total_hours
           const mins = Number(entry.total_minutes || Math.round(Number(entry.total_hours || 0) * 60) || 0);
           totalMinutes += mins;
@@ -557,17 +614,76 @@ async function setupRevenuePage() {
           // Use same fallback as main panel: try auth_id, id, then email
           let clockEntries = staffClockData[staffObj.auth_id] || staffClockData[staffObj.id] || staffClockData[staffObj.email] || [];
 
-          // If entries are from time_clock_daily_summary (no clock_in), synthesize modal-friendly entries
+          // If entries are from time_clock_daily_summary (no clock_in), try to fetch raw time_clock rows
           if (clockEntries.length && !clockEntries[0].clock_in && clockEntries[0].work_date) {
-            clockEntries = clockEntries.map(row => {
-              // Synthesize a pseudo-entry for the modal: one per day, with total_minutes as duration
-              const day = row.work_date;
-              const mins = Number(row.total_minutes || Math.round(Number(row.total_hours || 0) * 60) || 0);
-              // Fake a clock_in at 9:00am, clock_out at 9:00am + mins
-              const clockIn = new Date(day + 'T09:00:00');
-              const clockOut = new Date(clockIn.getTime() + mins * 60000);
-              return { clock_in: clockIn.toISOString(), clock_out: clockOut.toISOString(), _summary: true };
-            });
+            try {
+              const startIso = currentWeek.start.toISOString();
+              const endIso = currentWeek.end.toISOString();
+              let rawRows = [];
+              // Try by numeric staff id first
+              if (staffObj.id) {
+                try {
+                  const { data: byId, error: byIdErr } = await supabase.from('time_clock')
+                    .select('*')
+                    .eq('shop_id', shopId)
+                    .eq('staff_id', staffObj.id)
+                    .gte('clock_in', startIso)
+                    .lte('clock_in', endIso);
+                  if (!byIdErr && byId && byId.length) rawRows = byId;
+                } catch (e) { /* ignore */ }
+              }
+              // If none, try by staff auth id
+              if ((!rawRows || rawRows.length === 0) && staffObj.auth_id) {
+                try {
+                  const { data: byAuth, error: byAuthErr } = await supabase.from('time_clock')
+                    .select('*')
+                    .eq('shop_id', shopId)
+                    .eq('staff_auth_id', staffObj.auth_id)
+                    .gte('clock_in', startIso)
+                    .lte('clock_in', endIso);
+                  if (!byAuthErr && byAuth && byAuth.length) rawRows = byAuth;
+                } catch (e) { /* ignore */ }
+              }
+
+              if (rawRows && rawRows.length) {
+                // Debug: show rawRows fetched (useful to detect RLS filtering)
+                try { console.debug('[revenue][raw-time_clock] rows fetched:', rawRows.length, rawRows.slice(0,5)); } catch(e) {}
+                // Map raw rows into modal-friendly entries preserving actual clock_in/out
+                clockEntries = rawRows.filter(r => r.clock_in).map(r => ({
+                  clock_in: formatLocalIsoNoZone(parseDatePreferLocal(r.clock_in)),
+                  clock_out: r.clock_out ? formatLocalIsoNoZone(parseDatePreferLocal(r.clock_out)) : null,
+                  _raw: true,
+                  _src: r
+                }));
+              } else {
+                try { console.debug('[revenue][raw-time_clock] no raw rows returned, falling back to daily_summary synthesis'); } catch(e) {}
+                // Fallback: synthesize a pseudo-entry for the modal: one per day, with total_minutes as duration
+                clockEntries = clockEntries.map(row => {
+                  const day = row.work_date;
+                  const mins = Number(row.total_minutes || Math.round(Number(row.total_hours || 0) * 60) || 0);
+                  const parts = (day || '').split('-');
+                  const y = parseInt(parts[0],10);
+                  const mo = parseInt(parts[1]||'1',10) - 1;
+                  const da = parseInt(parts[2]||'1',10);
+                  const clockInDate = new Date(y, mo, da, 9, 0, 0);
+                  const clockOutDate = new Date(clockInDate.getTime() + mins * 60000);
+                  return { clock_in: formatLocalIsoNoZone(clockInDate), clock_out: formatLocalIsoNoZone(clockOutDate), _summary: true };
+                });
+              }
+            } catch (err) {
+              // On any error, fallback to synthesis
+              clockEntries = clockEntries.map(row => {
+                const day = row.work_date;
+                const mins = Number(row.total_minutes || Math.round(Number(row.total_hours || 0) * 60) || 0);
+                const parts = (day || '').split('-');
+                const y = parseInt(parts[0],10);
+                const mo = parseInt(parts[1]||'1',10) - 1;
+                const da = parseInt(parts[2]||'1',10);
+                const clockInDate = new Date(y, mo, da, 9, 0, 0);
+                const clockOutDate = new Date(clockInDate.getTime() + mins * 60000);
+                return { clock_in: formatLocalIsoNoZone(clockInDate), clock_out: formatLocalIsoNoZone(clockOutDate), _summary: true };
+              });
+            }
           }
 
           // Build the weekly breakdown modal
@@ -613,14 +729,14 @@ async function setupRevenuePage() {
                 const day = parseInt(m[2],10);
                 const year = parseInt(m[3],10);
                 const dt = new Date(year, month-1, day);
-                return isNaN(dt.getTime()) ? null : dt.toISOString().slice(0,10);
+                return isNaN(dt.getTime()) ? null : localIsoDate(dt);
               }
               // Other readable strings - try Date constructor
               let d = new Date(raw);
-              if (!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+              if (!isNaN(d.getTime())) return localIsoDate(d);
             } else {
               const d = new Date(raw);
-              if (!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+              if (!isNaN(d.getTime())) return localIsoDate(d);
             }
             return null;
           }
@@ -649,7 +765,7 @@ async function setupRevenuePage() {
           for (let i=0;i<7;i++) {
             const d = new Date(weekStart);
             d.setDate(weekStart.getDate() + i);
-            const iso = d.toISOString().slice(0,10);
+            const iso = localIsoDate(d);
             days.push({ iso, label: d.toLocaleDateString(undefined,{month:'short',day:'numeric'}), date: d });
           }
 
@@ -660,10 +776,10 @@ async function setupRevenuePage() {
             let key = 'unknown';
             if (jd && jd.isoDate && jd.isoDate !== 'unknown') {
               try {
-                // Normalize by constructing a Date and taking the ISO date portion
-                const d = new Date(jd.isoDate);
-                if (!isNaN(d.getTime())) {
-                  key = d.toISOString().slice(0,10);
+                // Normalize by parsing date preferring local timezone
+                const d = parseDatePreferLocal(jd.isoDate);
+                if (d) {
+                  key = localIsoDate(d);
                 } else if (typeof jd.isoDate === 'string' && jd.isoDate.length >= 10) {
                   key = jd.isoDate.slice(0,10);
                 }
@@ -908,8 +1024,8 @@ async function setupRevenuePage() {
 
       for (const rawDate of candidateDates) {
         if (!rawDate) continue;
-        const d = new Date(rawDate);
-        if (isNaN(d.getTime())) continue;
+        const d = parseDatePreferLocal(rawDate);
+        if (!d) continue;
         if (d >= weekStart && d <= weekEnd) return true;
       }
       return false;
@@ -919,12 +1035,12 @@ async function setupRevenuePage() {
     try {
       const invoiceDerived = (invoices || [])
         .filter(inv => inv && inv.appointment_id && !inv.job_id)
-        .filter(inv => {
+          .filter(inv => {
           const appt = appointments.find(a => a.id === inv.appointment_id) || {};
           const candidates = [appt.preferred_date, appt.preferred_time, inv.paid_date, inv.created_at, inv.due].filter(Boolean);
           for (const raw of candidates) {
-            const d = new Date(raw);
-            if (!isNaN(d.getTime()) && d >= weekStart && d <= weekEnd) return true;
+            const d = parseDatePreferLocal(raw);
+            if (d && d >= weekStart && d <= weekEnd) return true;
           }
           return false;
         })
@@ -999,7 +1115,7 @@ async function setupRevenuePage() {
         // Get scheduled date from appointment if available, else fallback to created_at
         const appt = appointments.find(a => a.id === j.appointment_id);
         const rawDate = appt?.preferred_date || appt?.preferred_time || j.created_at || j.updated_at || null;
-        const schedDate = rawDate ? new Date(rawDate).toLocaleDateString() : 'N/A';
+        const schedDate = rawDate ? (function(r){ const dd = parseDatePreferLocal(r); return dd ? dd.toLocaleDateString() : 'N/A'; })(rawDate) : 'N/A';
 
 
         // Match jobs page logic for customer name
@@ -1226,8 +1342,8 @@ async function setupRevenuePage() {
     let timeClockStaffCost = 0;
       try {
         // Use daily summary to aggregate minutes per staff for the week
-        const startDate = currentWeek.start.toISOString().slice(0,10);
-        const endDate = currentWeek.end.toISOString().slice(0,10);
+        const startDate = localIsoDate(currentWeek.start);
+        const endDate = localIsoDate(currentWeek.end);
         const { data: tcData, error: tcErr } = await supabase
           .from('time_clock_daily_summary')
           .select('*')
@@ -1345,8 +1461,8 @@ async function setupRevenuePage() {
           if (!r.clock_out) return;
           const staffKey = r.staff_id || r.staff_auth_id || null;
           if (!staffKey) return;
-          const inT = new Date(r.clock_in);
-          const outT = new Date(r.clock_out);
+          const inT = parseDatePreferLocal(r.clock_in);
+          const outT = parseDatePreferLocal(r.clock_out);
           if (isNaN(inT.getTime()) || isNaN(outT.getTime())) return;
           const mins = Math.round((outT - inT) / 60000);
           clockMinutesByStaff2[staffKey] = (clockMinutesByStaff2[staffKey] || 0) + Math.max(0, mins);
