@@ -212,6 +212,29 @@
     .image-modal-content img{ width:auto; max-width:100%; max-height:82vh; display:block; border-radius:8px; box-shadow:0 12px 36px rgba(0,0,0,0.6) }
     .image-modal-close{ position:absolute; top:-12px; right:-12px; width:40px; height:40px; border-radius:20px; border:none; background:#fff; color:#111; font-size:20px; cursor:pointer; box-shadow:0 6px 18px rgba(0,0,0,0.2) }
     .image-modal-caption{ margin-top:8px; text-align:center; color:#fff; font-size:0.95rem }
+    /* Collapsible feature panels */
+    .feature-toggle {
+      all: unset;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 1.45rem;
+      font-weight: 700;
+      color: #2a7cff;
+    }
+    .feature-toggle .chev {
+      transition: transform 0.2s ease;
+      font-size: 0.85rem;
+      color: #2a7cff;
+    }
+    .feature-section.collapsed .chev { transform: rotate(-90deg); }
+    .feature-section.collapsed .feature-img,
+    .feature-section.collapsed .feature-content > p,
+    .feature-section.collapsed .feature-content > .feature-extra {
+      display: none;
+    }
+    .feature-content > .feature-extra { margin-top:8px; color:#444; }
   </style>
 </head>
 <body>
@@ -367,6 +390,43 @@
         if(closeBtn) closeBtn.addEventListener('click', closeModal);
         if(modal) modal.addEventListener('click', (e) => { if(e.target === modal) closeModal(); });
         document.addEventListener('keydown', (e) => { if(e.key === 'Escape') closeModal(); });
+
+        // --- Collapsible feature panels (default: closed) ---
+        const featureSections = document.querySelectorAll('.feature-section');
+        featureSections.forEach(sec => {
+          const content = sec.querySelector('.feature-content');
+          if(!content) return;
+          const h2 = content.querySelector('h2');
+          // create toggle button from existing h2
+          const toggle = document.createElement('button');
+          toggle.className = 'feature-toggle';
+          toggle.type = 'button';
+          toggle.setAttribute('aria-expanded', 'false');
+          // chevron
+          const chev = document.createElement('span'); chev.className = 'chev'; chev.textContent = '▾';
+          // move h2 text into button
+          toggle.innerHTML = h2 ? h2.innerHTML : 'Feature';
+          toggle.appendChild(chev);
+          if(h2) h2.parentNode.replaceChild(toggle, h2);
+
+          // mark extra paragraphs/elements for easier hide/show
+          Array.from(content.children).forEach(child => {
+            if(!child.classList.contains('feature-toggle')) child.classList.add('feature-extra');
+          });
+
+          // start collapsed
+          sec.classList.add('collapsed');
+
+          function setExpanded(exp){
+            toggle.setAttribute('aria-expanded', String(exp));
+            if(exp) sec.classList.remove('collapsed'); else sec.classList.add('collapsed');
+          }
+
+          toggle.addEventListener('click', () => {
+            const cur = toggle.getAttribute('aria-expanded') === 'true';
+            setExpanded(!cur);
+          });
+        });
       });
     })();
   </script>
