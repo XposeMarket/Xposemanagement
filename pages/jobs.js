@@ -17,6 +17,7 @@ import { createShopNotification } from '../helpers/shop-notifications.js';
 import { getCurrentShopId } from '../helpers/multi-shop.js';
 import { getInspectionSummary } from '../helpers/inspection-api.js';
 import { inspectionForm } from '../components/inspectionFormModal.js';
+import { openDiagnosticsModal } from '../components/diagnostics/DiagnosticsModal.js';
 
 // Current job being edited
 let currentJobId = null;
@@ -4753,6 +4754,27 @@ async function setupJobs() {
   startNotesPolling();
   // Start polling for status updates so other users see live status changes
   if (typeof startStatusPolling === 'function') startStatusPolling();
+
+  // Wire up Diagnostics button
+  const diagBtn = document.getElementById('openDiagnosticsBtn');
+  if (diagBtn) {
+    diagBtn.addEventListener('click', () => {
+      // Get all active jobs
+      const activeJobs = allJobs.filter(j => j.status !== 'completed');
+      
+      openDiagnosticsModal({
+        jobs: activeJobs,
+        appointments: allAppointments,
+        onClose: (playbook) => {
+          if (playbook) {
+            console.log('[jobs] Diagnostics closed with playbook:', playbook.title);
+            // Refresh the page to show any invoice updates
+            renderJobs();
+          }
+        }
+      });
+    });
+  }
 
   console.log('✅ Jobs page setup complete');
 }

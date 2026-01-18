@@ -548,8 +548,8 @@ import { getShopData } from './helpers/storage.js';
             // If either item matches a known service name, treat as a service-group
             const itmName = (itm.name || '').toLowerCase().trim();
             const linkedName = (linkedItem.name || '').toLowerCase().trim();
-            const itmIsService = serviceNames.length && serviceNames.includes(itmName);
-            const linkedIsService = serviceNames.length && serviceNames.includes(linkedName);
+            const itmIsService = (serviceNames.length && serviceNames.includes(itmName)) || itm.type === 'service' || itm.pricing_type === 'labor_based' || itm.pricingType === 'labor_based' || itm.isService === true;
+            const linkedIsService = (serviceNames.length && serviceNames.includes(linkedName)) || linkedItem.type === 'service' || linkedItem.pricing_type === 'labor_based' || linkedItem.pricingType === 'labor_based' || linkedItem.isService === true;
 
             if (itmIsService || linkedIsService) {
               // Identify service and partner (part or labor)
@@ -583,8 +583,8 @@ import { getShopData } from './helpers/storage.js';
         // Fallback: Check for sequential Service+Labor ONLY if the service has price=0 (labor-based service)
         // This prevents flat-rate services from being incorrectly grouped with unrelated labor items
         const nameLower = (itm.name || '').toLowerCase().trim();
-        const isServiceItem = serviceNames.length && serviceNames.includes(nameLower);
-        const isLaborBasedService = isServiceItem && (Number(itm.price) === 0 || itm.pricingType === 'labor' || itm.isLaborBased === true);
+        const isServiceItem = (serviceNames.length && serviceNames.includes(nameLower)) || itm.type === 'service' || itm.pricing_type === 'labor_based' || itm.pricingType === 'labor_based' || itm.isService === true;
+        const isLaborBasedService = isServiceItem && (Number(itm.price) === 0 || itm.pricingType === 'labor' || itm.pricing_type === 'labor_based' || itm.isLaborBased === true);
 
         if (isLaborBasedService) {
           for (let j = i + 1; j < items.length && j <= i + 2; j++) {
@@ -632,7 +632,7 @@ import { getShopData } from './helpers/storage.js';
         const name = (itm.name || '').toLowerCase().trim();
 
         // Priority 1: Service (strict - must match settings)
-        if (serviceNames.length && serviceNames.includes(name)) {
+        if ((serviceNames.length && serviceNames.includes(name)) || itm.type === 'service' || itm.pricing_type === 'labor_based' || itm.pricingType === 'labor_based' || itm.isService === true) {
           serviceItems.push(itm);
           continue;
         }

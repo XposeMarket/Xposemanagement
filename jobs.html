@@ -33,8 +33,14 @@
 <!-- Error banner for user notifications (preserved) -->
 <!-- Debug banner (hidden in UI) -->
 <!-- ...existing code... -->
-<main class="container" style="padding:16px 0"><h1>Jobs</h1>
-
+<main class="container" style="padding:16px 0">
+  <!-- Header with title and Diagnostics button -->
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+    <h1 style="margin: 0;">Jobs</h1>
+    <button id="openDiagnosticsBtn" class="btn" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); color: white; padding: 10px 20px; font-size: 1rem; display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 1.2rem;">🔧</span> Diagnostics
+    </button>
+  </div>
 
 <!-- Existing card (kept 1:1, just a heading added) -->
 <div class="card">

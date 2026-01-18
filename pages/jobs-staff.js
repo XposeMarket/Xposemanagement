@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '../helpers/supabase.js';
 import { inspectionForm } from '../components/inspectionFormModal.js';
 import { getInspectionSummary, checkForInspection } from '../helpers/inspection-api.js';
+import { openDiagnosticsModal } from '../components/diagnostics/DiagnosticsModal.js';
 
 let supabase = null;
 let authId = null;
@@ -139,6 +140,31 @@ async function init() {
   // Start polling for updates
   startDataPolling();
   startNotesPolling();
+  
+  // Wire up Diagnostics button
+  const diagBtn = document.getElementById('openDiagnosticsBtn');
+  if (diagBtn) {
+    diagBtn.addEventListener('click', () => {
+      // Get jobs assigned to this staff member
+      const myJobs = allJobs.filter(j => 
+        (String(j.assigned_to || '') === String(authId) || String(j.assigned || '') === String(authId)) &&
+        j.status !== 'completed'
+      );
+      
+      openDiagnosticsModal({
+        jobs: myJobs,
+        appointments: allAppointments,
+        isStaff: true,
+        onClose: (playbook) => {
+          if (playbook) {
+            console.log('[jobs-staff] Diagnostics closed with playbook:', playbook.title);
+            // Refresh the page to show any invoice updates
+            loadAndRender();
+          }
+        }
+      });
+    });
+  }
   
   console.log('✅ Staff Jobs page initialized with live polling');
 }

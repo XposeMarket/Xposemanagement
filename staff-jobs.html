@@ -30,7 +30,14 @@
 </header>
 <div id="notification" class="notification hidden"></div>
 <div id="errorBanner" class="notification hidden" style="background:#ef4444;color:white;"></div>
-<main class="container" style="padding:16px 0"><h1>My Jobs</h1>
+<main class="container" style="padding:16px 0">
+  <!-- Header with title and Diagnostics button -->
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+    <h1 style="margin: 0;">My Jobs</h1>
+    <button id="openDiagnosticsBtn" class="btn" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); color: white; padding: 10px 20px; font-size: 1rem; display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 1.2rem;">🔧</span> Diagnostics
+    </button>
+  </div>
 
 <div class="card">
   <h3>Active Jobs (In progress)</h3>
@@ -142,6 +149,7 @@
     </div>
   </div>
 
+</main>
 <footer class="container">© Xpose Market</footer>
 <script src="vendor/supabase.umd.js"></script>
 <script type="module" src="app.js"></script>

@@ -751,12 +751,25 @@ function setupInvoices() {
   }
 
   // Persist a service preset from the invoice modal into settings (data table)
-  async function addServiceFromInvoice(name, price) {
+  // Persist a service preset from the invoice modal into settings (data table)
+  // Supports saving labor-based presets by passing opts: { pricing_type: 'labor_based', labor_hours, labor_rate_name, labor_rate }
+  async function addServiceFromInvoice(name, price, opts = {}) {
     if (!name) throw new Error('Name required');
     settings.services = settings.services || [];
     if (settings.services.some(s => s.name === name)) throw new Error('Service exists');
 
-    settings.services.push({ name: name, price: price });
+    const newService = { name: name };
+    if (opts.pricing_type === 'labor_based') {
+      newService.pricing_type = 'labor_based';
+      newService.labor_hours = Number(opts.labor_hours) || 0;
+      newService.labor_rate_name = opts.labor_rate_name || '';
+      newService.price = Number(price) || (newService.labor_hours * (opts.labor_rate || 0));
+    } else {
+      newService.pricing_type = 'flat';
+      newService.price = Number(price) || 0;
+    }
+
+    settings.services.push(newService);
 
     try {
       if (supabase) {
@@ -988,6 +1001,15 @@ function setupInvoices() {
       row.appendChild(qtyInput);
       row.appendChild(priceInput);
       row.appendChild(typeInput);
+
+      // Controls container (holds small + buttons) placed inline in the row so buttons sit level with inputs
+      const controlsDiv = document.createElement('div');
+      controlsDiv.className = 'inv-item-controls';
+      controlsDiv.style.display = 'flex';
+      controlsDiv.style.gap = '8px';
+      controlsDiv.style.flexWrap = 'wrap';
+      controlsDiv.style.alignItems = 'center';
+      controlsDiv.style.marginLeft = '8px';
 
       const hasAttachedAfter = Array.isArray(items) && items[idx + 1] && items[idx + 1].type === 'labor' && items[idx + 1]._attached;
       // Remove button logic for all item types
@@ -1317,7 +1339,22 @@ function setupInvoices() {
           return;
         }
         try {
-          await addServiceFromInvoice(newName, newPrice);
+          // If this item is a labor-based service, capture labor metadata from adjacent labor row
+          let opts = {};
+          try {
+            const currentItem = items[idx];
+            if (currentItem && (currentItem.pricing_type === 'labor_based' || currentItem.pricingType === 'labor_based' || currentItem.type === 'service' && Number(currentItem.price) === 0)) {
+              // Look for a linked labor row (next item) or nearby labor item
+              const potential = items[idx + 1] || items.find((it, i) => i !== idx && it.linkedItemId === currentItem.id);
+              if (potential && (potential.type === 'labor' || potential.name && potential.name.toLowerCase().includes('labor') || potential.pricing_type === 'labor_based')) {
+                opts.pricing_type = 'labor_based';
+                opts.labor_hours = Number(potential.qty) || Number(potential.labor_hours) || 0;
+                opts.labor_rate_name = potential.labor_rate_name || potential.name || '';
+                opts.labor_rate = Number(potential.labor_rate) || Number(potential.price) || 0;
+              }
+            }
+          } catch (e) { /* ignore */ }
+          await addServiceFromInvoice(newName, newPrice, opts);
           const opt = document.createElement('option');
           opt.value = newName;
           opt.dataset.price = newPrice;
@@ -1336,9 +1373,15 @@ function setupInvoices() {
         }
       });
 
-  // append add-rate / add-service small buttons if present (after they're initialized)
-  if (laborSelect) row.appendChild(addRateBtn);
-  if (serviceSelect) row.appendChild(addServiceBtnSmall);
+  // append add-rate / add-service small buttons into the controls container (so they wrap)
+  if (laborSelect) controlsDiv.appendChild(addRateBtn);
+  if (serviceSelect) controlsDiv.appendChild(addServiceBtnSmall);
+
+  // Insert the controls into the row so they appear level with inputs
+  if (controlsDiv.children.length) row.appendChild(controlsDiv);
+
+  // Insert the row into the block
+  block.appendChild(row);
 
       // Meta line: show Parts / Labor totals for this item above the row
       const meta = document.createElement('div');
