@@ -392,10 +392,30 @@ function setupInvoices() {
   window.closeConfirmPayModal = closeConfirmPayModal;
 
   // Calculate invoice total
+  function calcSubtotal(inv) {
+    const items = inv.items || [];
+    const countedLabor = new Set();
+    return items.reduce((sum, itm) => {
+      // Skip service rows that are labor-based or have a linked labor
+      if ((itm.type === 'service')) {
+        const isExplicitLaborBased = itm.pricing_type === 'labor_based';
+        const hasLinkedLabor = items.some(i => i.type === 'labor' && (i.linkedItemId === itm.id || itm.linkedItemId === i.id));
+        if (isExplicitLaborBased || hasLinkedLabor) return sum;
+      }
+      // Deduplicate labor rows that reference the same service or are exact duplicates
+      if ((itm.type || '').toLowerCase() === 'labor') {
+        const key = itm.linkedItemId || `${(itm.name||'').trim()}|${Number(itm.qty)||0}|${Number(itm.price)||0}`;
+        if (countedLabor.has(key)) return sum;
+        countedLabor.add(key);
+      }
+      return sum + ((Number(itm.qty) || 0) * (Number(itm.price) || 0));
+    }, 0);
+  }
+
   function calcTotal(inv) {
-    let subtotal = (inv.items || []).reduce((sum, itm) => sum + (itm.qty * itm.price), 0);
-    let tax = subtotal * ((inv.tax_rate || 0) / 100);
-    let discount = subtotal * ((inv.discount || 0) / 100);
+    const subtotal = calcSubtotal(inv);
+    const tax = subtotal * ((inv.tax_rate || 0) / 100);
+    const discount = subtotal * ((inv.discount || 0) / 100);
     return subtotal + tax - discount;
   }
 
@@ -521,12 +541,13 @@ function setupInvoices() {
     if (addServiceBtn) addServiceBtn.onclick = () => { itemTypeModal.classList.add('hidden'); inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'service' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
     if (cancelItemBtn) cancelItemBtn.onclick = () => { itemTypeModal.classList.add('hidden'); };
     
-    // Calculate subtotal: sum of all items (no tax)
-    const subtotalVal = (inv.items || []).reduce((sum, itm) => sum + (itm.qty * itm.price), 0);
+    // Calculate subtotal using centralized helper which excludes service rows linked to labor
+    const subtotalVal = calcSubtotal(inv);
     const taxRate = inv.tax_rate || 0;
     const taxVal = subtotalVal * (taxRate / 100);
-    const totalVal = subtotalVal + taxVal;
-    
+    const discountVal = subtotalVal * ((inv.discount || 0) / 100);
+    const totalVal = subtotalVal + taxVal - discountVal;
+
     document.getElementById('subTotal').textContent = subtotalVal.toFixed(2);
     document.getElementById('grandTotal').textContent = totalVal.toFixed(2);
     
@@ -896,8 +917,27 @@ function setupInvoices() {
         services.forEach(s => {
           const opt = document.createElement('option');
           opt.value = s.name;
-          opt.dataset.price = s.price;
-          opt.text = `${s.name} - $${s.price}`;
+          
+          // Handle labor-based vs flat rate services in display
+          // ONLY show the service name in the dropdown - not the full formula
+          const isLaborBased = s.pricing_type === 'labor_based';
+          if (isLaborBased) {
+            const rate = laborRates.find(r => r.name === s.labor_rate_name);
+            const hourlyRate = rate ? rate.rate : 0;
+            const calculatedPrice = (s.labor_hours || 0) * hourlyRate;
+            opt.dataset.price = 0; // Service row price is 0 for labor-based - labor row has the price
+            opt.dataset.pricingType = 'labor_based';
+            opt.dataset.laborHours = s.labor_hours || 0;
+            opt.dataset.laborRate = hourlyRate;
+            opt.dataset.laborRateName = s.labor_rate_name || '';
+            opt.dataset.calculatedPrice = calculatedPrice;
+            // Only show service name in dropdown
+            opt.text = s.name;
+          } else {
+            opt.dataset.price = s.price;
+            opt.dataset.pricingType = 'flat';
+            opt.text = s.name;
+          }
           serviceSelect.appendChild(opt);
         });
         // If item name matches preset, preselect it
@@ -907,7 +947,15 @@ function setupInvoices() {
             serviceSelect.value = itm.name;
             // ensure price/name reflect preset
             const svc = (settings.services || []).find(s => s.name === itm.name);
-            priceInput.value = svc ? svc.price : '';
+            // For labor-based services, price should be 0 on service row (labor row has the price)
+            const isLaborBased = svc && svc.pricing_type === 'labor_based';
+            if (isLaborBased) {
+              priceInput.value = 0;
+              // Hide price input for labor-based services since the labor row handles pricing
+              priceInput.style.display = 'none';
+            } else {
+              priceInput.value = svc ? svc.price : '';
+            }
             nameInput.value = svc ? svc.name : itm.name;
             // hide name input since select is primary
             nameInput.style.display = 'none';
@@ -1140,15 +1188,16 @@ function setupInvoices() {
             nameInput.style.display = '';
             addRateBtn.style.display = '';
           } else {
-            // show the select (presets) and hide the free-text input
+            // show the select (presets) and hide the free-text input AND the + button
             laborSelect.style.display = '';
             nameInput.style.display = 'none';
             addRateBtn.style.display = 'none';
           }
         };
         laborSelect.addEventListener('change', updateAddBtn);
-        // initial state
-        updateAddBtn();
+        // CRITICAL: Call updateAddBtn AFTER all elements are appended to ensure proper initial state
+        // This is deferred to ensure the button display state is set correctly for pre-existing labor rates
+        setTimeout(() => updateAddBtn(), 0);
       }
 
       if (serviceSelect) {
@@ -1191,11 +1240,42 @@ function setupInvoices() {
           if (sel === '__custom__') {
             nameInput.value = '';
             priceInput.value = '';
+            priceInput.style.display = ''; // Show price input for custom services
             return;
           }
           const svc = (settings.services || []).find(s => s.name === sel);
           nameInput.value = svc ? svc.name : sel;
-          priceInput.value = svc ? svc.price : '';
+          
+          // Check if this is a labor-based service
+          const isLaborBased = svc && svc.pricing_type === 'labor_based';
+          if (isLaborBased) {
+            // Service row price = 0, hide price input
+            priceInput.value = 0;
+            priceInput.style.display = 'none';
+            
+            // Auto-add the labor row with the correct hours and rate
+            const laborHours = svc.labor_hours || 0;
+            const rate = laborRates.find(r => r.name === svc.labor_rate_name);
+            const hourlyRate = rate ? rate.rate : 0;
+            const laborItem = { 
+              name: svc.labor_rate_name || 'Labor', 
+              qty: laborHours, 
+              price: hourlyRate, 
+              type: 'labor', 
+              _attached: true,
+              pricing_type: 'labor_based'
+            };
+            // CRITICAL: Update the service item with name and pricing_type BEFORE rendering
+            // This ensures the service stays selected in the dropdown after re-render
+            items[idx].name = svc.name;
+            items[idx].pricing_type = 'labor_based';
+            items[idx].price = 0;
+            items.splice(idx + 1, 0, laborItem);
+            renderItems(items);
+          } else {
+            priceInput.value = svc ? svc.price : '';
+            priceInput.style.display = ''; // Show price input for flat rate services
+          }
         });
       }
 
@@ -1264,6 +1344,11 @@ function setupInvoices() {
       const meta = document.createElement('div');
       meta.className = 'inv-item-meta';
       const qty = Number(itm.qty) || Number(qtyInput.value) || 0;
+      // Ensure service rows that are labor-based show price = 0 in the UI
+      if ((itm.type === 'service') && itm.pricing_type === 'labor_based') {
+        priceInput.value = 0;
+        priceInput.style.display = 'none';
+      }
       const price = Number(itm.price) || Number(priceInput.value) || 0;
       const amt = (qty * price) || 0;
       let partsText = '';
@@ -1457,31 +1542,55 @@ function setupInvoices() {
         const price = priceRaw === '' ? 0 : parseFloat(priceRaw) || 0;
         const typeEl = row.querySelector('.itm-type');
         const type = typeEl ? (typeEl.value || 'part') : 'part';
-
-        // Try to find a matching prior item to preserve cost_price
+        // Try to find a matching prior item to preserve cost_price and metadata
         let matched = null;
         if (priorItems && priorItems.length) {
           matched = priorItems.find(pi => {
-            // Exact match by name + qty + price
             if ((pi.name || '').toString().trim() === name && Number(pi.qty || 0) === Number(qty) && Number(pi.price || 0) === Number(price)) return true;
-            // Match by name + price
             if ((pi.name || '').toString().trim() === name && Number(pi.price || 0) === Number(price)) return true;
-            // Match by name only (best effort)
             if ((pi.name || '').toString().trim() === name) return true;
             return false;
           });
         }
 
+        // Detect service preset pricing type from select (if present)
+        const svcSelect = row.querySelector('.itm-service-select');
+        let detectedPricingType = null;
+        let detectedLaborHours = null;
+        let detectedLaborRate = null;
+        if (svcSelect && svcSelect.selectedOptions && svcSelect.selectedOptions[0]) {
+          const opt = svcSelect.selectedOptions[0];
+          detectedPricingType = opt.dataset?.pricingType || opt.dataset?.pricing_type || null;
+          detectedLaborHours = opt.dataset?.laborHours ? parseFloat(opt.dataset.laborHours) || null : null;
+          detectedLaborRate = opt.dataset?.laborRate ? parseFloat(opt.dataset.laborRate) || null : null;
+        }
+
+        // Build item while preserving matched metadata when possible
         const item = { name, qty, price, type };
+        // Preserve matched id/cost/estimate fields
         if (matched) {
+          if (matched.id) item.id = matched.id;
           if (typeof matched.cost_price !== 'undefined') item.cost_price = Number(matched.cost_price);
           else if (typeof matched.cost !== 'undefined') item.cost_price = Number(matched.cost);
-          // Preserve estimate_status and related fields
           if (matched.estimate_status) item.estimate_status = matched.estimate_status;
           if (matched.estimate_sent_at) item.estimate_sent_at = matched.estimate_sent_at;
           if (matched.estimate_approved_at) item.estimate_approved_at = matched.estimate_approved_at;
-        } else {
-          // NEW ITEM - automatically mark as pending if it's a service or inventory (not part/labor)
+          if (matched.pricing_type) item.pricing_type = matched.pricing_type;
+          if (matched.linkedItemId) item.linkedItemId = matched.linkedItemId;
+        }
+
+        // If the service select indicates a labor-based pricing type, set it explicitly
+        if ((type || '').toLowerCase() === 'service' && detectedPricingType === 'labor_based') {
+          item.pricing_type = 'labor_based';
+          if (detectedLaborHours !== null) item.labor_hours = detectedLaborHours;
+          if (detectedLaborRate !== null) item.labor_rate = detectedLaborRate;
+          // Ensure service row price remains 0
+          item.price = 0;
+        }
+
+        // New items: assign id and mark estimates if appropriate
+        if (!item.id) item.id = `item_${Date.now()}_${Math.random().toString(36).substr(2,9)}`;
+        if (!matched) {
           const itemType = (type || '').toLowerCase();
           if (itemType !== 'part' && itemType !== 'labor') {
             item.estimate_status = 'pending';
@@ -1489,6 +1598,7 @@ function setupInvoices() {
             console.log(`🔔 New service/inventory item "${name}" marked as pending for customer approval`);
           }
         }
+
         return item;
       });
 
@@ -2239,8 +2349,8 @@ function setupInvoices() {
       customerName = inv.customer;
     }
 
-    // Calculate totals
-    const subtotal = (inv.items || []).reduce((sum, itm) => sum + (itm.qty * itm.price), 0);
+    // Calculate totals (use calcSubtotal to avoid double-counting labor-based services)
+    const subtotal = calcSubtotal(inv);
     const tax = subtotal * ((inv.tax_rate || 0) / 100);
     const discount = subtotal * ((inv.discount || 0) / 100);
     const total = subtotal + tax - discount;
@@ -2354,8 +2464,8 @@ function setupInvoices() {
       document.body.appendChild(modal);
     }
 
-    // Calculate total for display
-    const subtotal = (inv.items || []).reduce((sum, itm) => sum + (itm.qty * itm.price), 0);
+    // Calculate total for display (use calcSubtotal to avoid double-counting labor-based services)
+    const subtotal = calcSubtotal(inv);
     const tax = subtotal * ((inv.tax_rate || 0) / 100);
     const discount = subtotal * ((inv.discount || 0) / 100);
     const total = subtotal + tax - discount;

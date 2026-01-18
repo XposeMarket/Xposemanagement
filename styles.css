@@ -1208,6 +1208,32 @@ footer::after{ bottom: -6px; }
   flex-direction: column;
 }
 
+/* Service selection buttons inside the Jobs service modal */
+#serviceOptionsContainer .btn {
+  width: 100%;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  text-align: left;
+  box-shadow: 0 2px 8px rgba(16,24,40,0.04);
+  cursor: pointer;
+}
+#serviceOptionsContainer .btn:hover,
+#serviceOptionsContainer .btn:focus {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(16,24,40,0.08);
+  border-color: var(--accent);
+}
+
+/* Make the price text slightly muted and compact */
+#serviceOptionsContainer .btn span:last-child { color: var(--muted); font-size: 0.95rem; }
+
+
 /* Make the Folder modal taller and allow its body to scroll so folder items are visible */
 #folderModal .modal-content {
   width: min(760px, 92vw);

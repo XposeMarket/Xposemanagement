@@ -146,21 +146,93 @@ function showNotification(message, type = 'success') {
 
   <!-- Services and Labor Panel -->
   <div class="card">
-    <h3>Services</h3>
-    <div id="svcList"></div>
-    <div class="grid cols-3" style="margin-top:10px"><input id="svcName" placeholder="Service name"><input id="svcPrice" type="number" placeholder="Base price"><button id="svcAdd" class="btn primary">Add</button></div>
-    <p class="notice">Click a service to remove it.</p>
-    <div class="card" style="margin-top:16px">
-      <div class="toolbar" style="justify-content:space-between">
-        <h3>Manage Labor Rates</h3>
+    <!-- Labor Rates Section (moved to top since services depend on rates) -->
+    <div class="toolbar" style="justify-content:space-between">
+      <h3>Manage Labor Rates</h3>
+    </div>
+    <p class="muted" style="margin-bottom:12px;font-size:0.9rem;">The first rate you add becomes your <strong>default rate</strong>. Click a rate to manage it.</p>
+    <div id="labList"></div>
+    <div class="grid cols-3" style="margin-top:10px">
+      <input id="labName" placeholder="Rate name (e.g., Standard)">
+      <input id="labRate" type="number" step="0.01" placeholder="$/hr">
+      <button id="labAdd" class="btn primary">Add</button>
+    </div>
+    
+    <!-- Services Section -->
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--line);">
+      <h3>Services</h3>
+      <p class="muted" style="margin-bottom:12px;font-size:0.9rem;">Services can be flat-price or labor-based (hours × rate).</p>
+      <div id="svcList"></div>
+      
+      <!-- Add Service Form -->
+      <div style="margin-top:12px;padding:12px;background:var(--bg);border-radius:8px;">
+        <div style="margin-bottom:10px;">
+          <input id="svcName" placeholder="Service name" style="width:100%;">
+        </div>
+        <div style="margin-bottom:10px;">
+          <div class="pricing-type-pills" style="display:flex;gap:8px;">
+            <button type="button" id="svcPricingFlatBtn" class="pricing-pill" data-value="flat">Flat Price</button>
+            <button type="button" id="svcPricingLaborBtn" class="pricing-pill" data-value="labor_based">Labor-based</button>
+          </div>
+          <input type="hidden" name="svcPricingType" id="svcPricingTypeValue" value="">
+          <style>
+            .pricing-pill {
+              flex: 1;
+              padding: 12px 16px;
+              border: 2px solid var(--line);
+              border-radius: 8px;
+              background: var(--card);
+              color: var(--text);
+              font-weight: 600;
+              font-size: 0.95rem;
+              cursor: pointer;
+              transition: all 0.2s ease;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 6px;
+            }
+            .pricing-pill:hover:not(.active) {
+              border-color: var(--primary);
+              background: var(--bg);
+              transform: translateY(-1px);
+              box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            .pricing-pill.active {
+              border-color: var(--primary);
+              background: rgba(99, 102, 241, 0.15);
+              color: var(--text);
+              box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
+              transform: translateY(-1px);
+            }
+          </style>
+        </div>
+        
+        <!-- Flat Price Fields -->
+        <div id="svcFlatFields">
+          <input id="svcPrice" type="number" step="0.01" placeholder="Price ($)" style="width:100%;">
+        </div>
+        
+        <!-- Labor-based Fields (hidden by default) -->
+        <div id="svcLaborFields" style="display:none;">
+          <div class="grid cols-2" style="gap:10px;">
+            <div>
+              <label style="font-size:0.85rem;color:var(--muted);">Labor Hours</label>
+              <input id="svcLaborHours" type="number" step="0.25" min="0" placeholder="Hours (e.g., 1.5)">
+            </div>
+            <div>
+              <label style="font-size:0.85rem;color:var(--muted);">Labor Rate</label>
+              <select id="svcLaborRate" style="width:100%;">
+                <option value="">-- Select Rate --</option>
+              </select>
+            </div>
+          </div>
+          <div id="svcLaborPreview" style="margin-top:8px;font-size:0.9rem;color:var(--muted);"></div>
+        </div>
+        
+        <button id="svcAdd" class="btn primary" style="margin-top:10px;width:100%;">Add Service</button>
       </div>
-      <div id="labList"></div>
-      <div class="grid cols-3" style="margin-top:10px">
-        <input id="labName" placeholder="Rate name (e.g., Standard)">
-        <input id="labRate" type="number" step="0.01" placeholder="$/hr">
-        <button id="labAdd" class="btn primary">Add</button>
-      </div>
-      <p class="notice">Click a rate to remove it.</p>
+      <p class="notice" style="margin-top:8px;">Click a service to manage it.</p>
     </div>
   </div>
 
@@ -347,6 +419,44 @@ function showNotification(message, type = 'success') {
         </button>
       </div>
       <button id="staffManageCancel" class="btn" style="width: 100%; margin-top: 16px; padding: 12px;">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Labor Rate Management Modal -->
+  <div id="laborRateModal" class="modal-overlay hidden">
+    <div class="modal-content card" style="max-width: 400px; margin: 18vh auto; padding: 24px;">
+      <h3 style="margin: 0 0 8px 0;">Manage Labor Rate</h3>
+      <p id="laborRateModalName" style="color: var(--muted); margin: 0 0 16px 0; font-size: 1.1rem; font-weight: 600;">Standard - $125/hr</p>
+      <div id="laborRateDefaultBadge" style="display:none; margin-bottom: 16px; padding: 8px 12px; background: linear-gradient(135deg, #10b981 0%, #34d399 100%); color: white; border-radius: 8px; font-weight: 600; text-align: center;">
+        ⭐ Default Rate
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <button id="laborRateSwitchDefault" class="btn" style="width: 100%; padding: 14px; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px; background: linear-gradient(135deg, #10b981 0%, #34d399 100%); color: white; border: none;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          Set as Default
+        </button>
+        <button id="laborRateRemove" class="btn danger" style="width: 100%; padding: 14px; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          Remove Rate
+        </button>
+      </div>
+      <button id="laborRateCancel" class="btn" style="width: 100%; margin-top: 16px; padding: 12px;">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Service Management Modal -->
+  <div id="serviceModal" class="modal-overlay hidden">
+    <div class="modal-content card" style="max-width: 400px; margin: 18vh auto; padding: 24px;">
+      <h3 style="margin: 0 0 8px 0;">Manage Service</h3>
+      <p id="serviceModalName" style="color: var(--muted); margin: 0 0 8px 0; font-size: 1.1rem; font-weight: 600;">Oil Change</p>
+      <p id="serviceModalPrice" style="color: var(--text); margin: 0 0 16px 0; font-size: 1rem;">$49.99 (Flat)</p>
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <button id="serviceRemove" class="btn danger" style="width: 100%; padding: 14px; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          Remove Service
+        </button>
+      </div>
+      <button id="serviceCancel" class="btn" style="width: 100%; margin-top: 16px; padding: 12px;">Cancel</button>
     </div>
   </div>
 

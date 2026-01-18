@@ -1,4 +1,6 @@
 import { getSupabaseClient } from '../helpers/supabase.js';
+import { inspectionForm } from '../components/inspectionFormModal.js';
+import { getInspectionSummary, checkForInspection } from '../helpers/inspection-api.js';
 
 let supabase = null;
 let authId = null;
@@ -426,6 +428,18 @@ function renderJobsTable(tableId, emptyId, jobs) {
     noteBtn.onclick = () => { openJobNoteModalForAppt(appt); };
     actionsDiv.appendChild(noteBtn);
 
+    // Inspection button
+    const inspectBtn = document.createElement('button');
+    inspectBtn.className = 'btn small';
+    inspectBtn.style.background = '#8b5cf6';
+    inspectBtn.style.color = 'white';
+    inspectBtn.textContent = '📋 Inspect';
+    inspectBtn.onclick = (e) => {
+      e.stopPropagation();
+      openInspectionForm(job, appt);
+    };
+    actionsDiv.appendChild(inspectBtn);
+
     // Unclaim button
     const unclaimBtn = document.createElement('button');
     unclaimBtn.className = 'btn small danger';
@@ -473,6 +487,7 @@ function createMobileActionModal() {
         <p id="jobActionsCustomer" style="margin: 0 0 16px 0; color: var(--muted); font-size: 0.95rem;"></p>
         <div style="display: flex; flex-direction: column; gap: 10px;">
           <button id="jobActionView" class="btn" style="width: 100%; padding: 14px; font-size: 1rem;">View Details</button>
+          <button id="jobActionInspection" class="btn" style="width: 100%; padding: 14px; font-size: 1rem; background: #8b5cf6; color: white;">📋 Start Inspection</button>
           <button id="jobActionNote" class="btn info" style="width: 100%; padding: 14px; font-size: 1rem;">Add Note</button>
           <button id="jobActionUnclaim" class="btn danger" style="width: 100%; padding: 14px; font-size: 1rem;">Unclaim Job</button>
         </div>
@@ -483,6 +498,7 @@ function createMobileActionModal() {
   document.body.appendChild(modal);
 
   document.getElementById('jobActionView').onclick = handleJobActionView;
+  document.getElementById('jobActionInspection').onclick = handleJobActionInspection;
   document.getElementById('jobActionNote').onclick = handleJobActionNote;
   document.getElementById('jobActionUnclaim').onclick = handleJobActionUnclaim;
 }
@@ -743,6 +759,67 @@ function handleJobActionView() {
   openJobViewModal(job, appt);
 }
 
+function handleJobActionInspection() {
+  if (!currentActionJob) return;
+  const job = currentActionJob;
+  const appt = currentActionAppt || {};
+  closeJobActionsModal();
+  openInspectionForm(job, appt);
+}
+
+// ========== Inspection Form Integration ==========
+async function openInspectionForm(job, appt) {
+  try {
+    // Build vehicle info from appointment data
+    const vehicleInfo = {
+      id: appt.vehicle_id || null,
+      year: appt.vehicle_year || '',
+      make: appt.vehicle_make || '',
+      model: appt.vehicle_model || '',
+      vin: appt.vin || '',
+      mileage: appt.mileage || null
+    };
+
+    // If vehicle is a combined string, try to parse it
+    if (appt.vehicle && !vehicleInfo.year && !vehicleInfo.make) {
+      const parts = (appt.vehicle || '').split(' ');
+      if (parts.length >= 3) {
+        const yearMatch = parts[0].match(/^\d{4}$/);
+        if (yearMatch) {
+          vehicleInfo.year = parts[0];
+          vehicleInfo.make = parts[1];
+          vehicleInfo.model = parts.slice(2).join(' ');
+        }
+      }
+    }
+
+    // Build customer info
+    const customerInfo = {
+      id: appt.customer_id || null,
+      name: appt.customer || `${appt.customer_first || ''} ${appt.customer_last || ''}`.trim(),
+      phone: appt.phone || '',
+      email: appt.email || ''
+    };
+
+    // Open the inspection form
+    await inspectionForm.open({
+      appointmentId: appt.id,
+      jobId: job.id,
+      vehicleInfo,
+      customerInfo,
+      onClose: async (inspection) => {
+        if (inspection) {
+          showSuccessBanner('Inspection saved');
+          await loadAndRender();
+        }
+      }
+    });
+  } catch (e) {
+    console.error('openInspectionForm error:', e);
+    showErrorBanner('Failed to open inspection form');
+  }
+}
+
 function handleJobActionNote() {
   if (!currentActionAppt) {
     alert('No appointment linked to this job');
@@ -799,7 +876,12 @@ function openJobViewModal(job, appt) {
     <p><strong>Time:</strong> ${timeText}</p>
     <p><strong>Status:</strong> <span class="tag ${job.status || 'in_progress'}">${(job.status || 'in_progress').replace(/_/g, ' ')}</span></p>
     <p><strong>Assigned to:</strong> ${assignedLabel}</p>
+    <div id="inspectionStatusRow" style="margin-top: 8px;"></div>
   `;
+  
+  // Load inspection status asynchronously
+  loadInspectionStatusForModal(appt.id, job.id);
+  
   // Add a notes container and then asynchronously load notes for this appointment
   const notesWrapper = document.createElement('div');
   notesWrapper.id = 'jobViewNotesContainer';
@@ -811,6 +893,113 @@ function openJobViewModal(job, appt) {
   try { renderNotesForAppointment(appt.id); } catch (e) { console.warn('renderNotesForAppointment error', e); }
 
   modal.classList.remove('hidden');
+}
+
+// Load and display inspection status in view modal
+async function loadInspectionStatusForModal(appointmentId, jobId) {
+  const container = document.getElementById('inspectionStatusRow');
+  if (!container) return;
+  
+  try {
+    const summary = await getInspectionSummary(appointmentId, jobId);
+    
+    if (summary) {
+      // Inspection exists - show status and view button
+      const gradeColors = {
+        'A': { bg: '#dcfce7', color: '#166534' },
+        'B': { bg: '#dbeafe', color: '#1e40af' },
+        'C': { bg: '#fef3c7', color: '#92400e' },
+        'D': { bg: '#fed7aa', color: '#9a3412' },
+        'F': { bg: '#fee2e2', color: '#991b1b' }
+      };
+      const gradeStyle = gradeColors[summary.grade] || { bg: '#f3f4f6', color: '#374151' };
+      
+      const statusLabels = {
+        'draft': 'Draft',
+        'in_progress': 'In Progress',
+        'ready_for_review': 'Ready for Review',
+        'sent_to_customer': 'Sent to Customer',
+        'customer_responded': 'Customer Responded',
+        'closed': 'Closed'
+      };
+      const statusLabel = statusLabels[summary.status] || summary.status;
+      
+      container.innerHTML = `
+        <p style="margin: 0 0 8px 0;"><strong>Inspection:</strong> 
+          <span style="display: inline-flex; align-items: center; gap: 8px;">
+            <span class="tag" style="background: ${gradeStyle.bg}; color: ${gradeStyle.color}; font-weight: 700;">
+              Grade ${summary.grade}
+            </span>
+            <span style="color: #6b7280; font-size: 13px;">${statusLabel}</span>
+            ${summary.failCount > 0 ? `<span style="color: #ef4444; font-size: 12px;">${summary.failCount} failed</span>` : ''}
+          </span>
+        </p>
+        <button id="viewInspectionBtn" class="btn small" style="background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px;">
+          📋 View Inspection
+        </button>
+      `;
+      
+      // Add click handler for view button
+      document.getElementById('viewInspectionBtn')?.addEventListener('click', () => {
+        closeJobViewModal();
+        // Open the inspection viewer (we'll need to create this or use existing)
+        openInspectionViewer(summary.id, appointmentId, jobId);
+      });
+    } else {
+      // No inspection yet
+      container.innerHTML = `
+        <p style="margin: 0;"><strong>Inspection:</strong> 
+          <span style="color: #9ca3af; font-size: 13px;">Not started</span>
+        </p>
+      `;
+    }
+  } catch (e) {
+    console.warn('Failed to load inspection status:', e);
+    container.innerHTML = '';
+  }
+}
+
+// Open inspection viewer (read-only view of completed inspection)
+function openInspectionViewer(inspectionId, appointmentId, jobId) {
+  // For now, open the form in edit mode - we can create a read-only viewer later
+  // Find the job and appointment data
+  const job = allJobs.find(j => j.id === jobId);
+  const appt = allAppointments.find(a => a.id === appointmentId);
+  
+  if (!appt) {
+    alert('Could not find appointment data');
+    return;
+  }
+  
+  // Parse vehicle info
+  let vehicleInfo = {};
+  if (appt.vehicle) {
+    const parts = appt.vehicle.split(' ');
+    if (parts.length >= 3) {
+      vehicleInfo.year = parts[0];
+      vehicleInfo.make = parts[1];
+      vehicleInfo.model = parts.slice(2).join(' ');
+    }
+  }
+  
+  // Open the inspection form (it will load the existing inspection)
+  inspectionForm.open({
+    appointmentId: appointmentId,
+    jobId: jobId,
+    inspectionId: inspectionId,
+    vehicleInfo: vehicleInfo,
+    customerInfo: {
+      name: appt.customer,
+      phone: appt.phone,
+      email: appt.email
+    },
+    onClose: (inspection) => {
+      // Refresh the job list if inspection was saved
+      if (inspection) {
+        loadAndRender();
+      }
+    }
+  });
 }
 
 function closeJobViewModal() { 

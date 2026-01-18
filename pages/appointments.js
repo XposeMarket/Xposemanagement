@@ -14,6 +14,8 @@ import { getSupabaseClient } from '../helpers/supabase.js';
 import { getUUID } from '../helpers/uuid.js';
 import { currentUsesVehicles } from '../helpers/shop-config-loader.js';
 import { createShopNotification } from '../helpers/shop-notifications.js';
+import { getInspectionSummary } from '../helpers/inspection-api.js';
+import { inspectionForm } from '../components/inspectionFormModal.js';
 
 // Current appointment being edited
 let currentApptId = null;
@@ -2589,6 +2591,7 @@ async function openViewModal(appt) {
       <div><strong>Time:</strong> ${appt.preferred_time ? formatTime12(appt.preferred_time) : 'Not set'}</div>
       <div><strong>Status:</strong> <span class="tag ${getStatusClass(appt.status)}">${appt.status || 'new'}</span></div>
       ${invStatusHTML}
+      <div id="inspectionStatusRow"></div>
       <div><strong>Assigned to:</strong> <span id="viewModalAssignedTo">${appt.assigned_to ? 'Loading...' : 'Unassigned'}</span></div>
       ${appt.notes ? `<div><strong>Notes:</strong><br>${appt.notes}</div>` : ''}
     </div>
@@ -2603,6 +2606,9 @@ async function openViewModal(appt) {
       </div>
     </div>
   `;
+  
+  // Load inspection status asynchronously
+  loadInspectionStatusForViewModal(appt);
   
   editBtn.onclick = () => {
     modal.classList.add('hidden');
@@ -2627,6 +2633,111 @@ async function openViewModal(appt) {
       openAddNoteModal();
     });
   }
+}
+
+// Load and display inspection status in view modal
+async function loadInspectionStatusForViewModal(appt) {
+  const container = document.getElementById('inspectionStatusRow');
+  if (!container) return;
+  
+  try {
+    // Get job ID if exists
+    let jobId = null;
+    try {
+      const store = JSON.parse(localStorage.getItem('xm_data') || '{}');
+      const jobs = store.jobs || [];
+      const job = jobs.find(j => j.appointment_id === appt.id);
+      if (job) jobId = job.id;
+    } catch (e) {}
+    
+    const summary = await getInspectionSummary(appt.id, jobId);
+    
+    if (summary) {
+      // Inspection exists - show status and view button
+      const gradeColors = {
+        'A': { bg: '#dcfce7', color: '#166534' },
+        'B': { bg: '#dbeafe', color: '#1e40af' },
+        'C': { bg: '#fef3c7', color: '#92400e' },
+        'D': { bg: '#fed7aa', color: '#9a3412' },
+        'F': { bg: '#fee2e2', color: '#991b1b' }
+      };
+      const gradeStyle = gradeColors[summary.grade] || { bg: '#f3f4f6', color: '#374151' };
+      
+      const statusLabels = {
+        'draft': 'Draft',
+        'in_progress': 'In Progress',
+        'ready_for_review': 'Ready for Review',
+        'sent_to_customer': 'Sent to Customer',
+        'customer_responded': 'Customer Responded',
+        'closed': 'Closed'
+      };
+      const statusLabel = statusLabels[summary.status] || summary.status;
+      
+      container.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <strong>Inspection:</strong>
+          <span class="tag" style="background: ${gradeStyle.bg}; color: ${gradeStyle.color}; font-weight: 700;">
+            Grade ${summary.grade}
+          </span>
+          <span style="color: #6b7280; font-size: 13px;">${statusLabel}</span>
+          ${summary.failCount > 0 ? `<span style="color: #ef4444; font-size: 12px;">${summary.failCount} failed</span>` : ''}
+        </div>
+        <button id="viewInspectionBtn" class="btn small" style="margin-top: 8px; background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px;">
+          📋 View Inspection
+        </button>
+      `;
+      
+      // Add click handler for view button
+      document.getElementById('viewInspectionBtn')?.addEventListener('click', () => {
+        closeViewModal();
+        openInspectionFromAppt(summary.id, appt, jobId);
+      });
+    } else {
+      // No inspection yet
+      container.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;">
+          <strong>Inspection:</strong>
+          <span style="color: #9ca3af; font-size: 13px;">Not started</span>
+        </div>
+      `;
+    }
+  } catch (e) {
+    console.warn('Failed to load inspection status:', e);
+    container.innerHTML = '';
+  }
+}
+
+// Open inspection from appointment view modal
+function openInspectionFromAppt(inspectionId, appt, jobId) {
+  // Parse vehicle info
+  let vehicleInfo = {};
+  if (appt.vehicle) {
+    const parts = appt.vehicle.split(' ');
+    if (parts.length >= 3) {
+      vehicleInfo.year = parts[0];
+      vehicleInfo.make = parts[1];
+      vehicleInfo.model = parts.slice(2).join(' ');
+    }
+  }
+  
+  // Open the inspection form
+  inspectionForm.open({
+    appointmentId: appt.id,
+    jobId: jobId,
+    inspectionId: inspectionId,
+    vehicleInfo: vehicleInfo,
+    customerInfo: {
+      name: appt.customer,
+      phone: appt.phone,
+      email: appt.email
+    },
+    onClose: (inspection) => {
+      // Refresh if inspection was saved
+      if (inspection) {
+        loadAppointments();
+      }
+    }
+  });
 }
 
 /**

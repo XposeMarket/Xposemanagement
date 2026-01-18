@@ -2,6 +2,8 @@
  * pages/settings.js
  * Settings page setup - Shop info, services, labor rates, staff management
  * 
+ * Updated: Added default labor rate support and labor-based services (ProDemand style)
+ * 
  * Imported by: app.js
  * Imports from: helpers/
  */
@@ -16,6 +18,11 @@ function setupSettings() {
   let currentUser = null;
   let shopData = null;
   let settings = {};
+  
+  // Current labor rate being managed
+  let currentLaborRate = null;
+  // Current service being managed
+  let currentService = null;
   
   // Load shop data (prefer Supabase Auth -> users -> shops flow)
   async function loadShopData() {
@@ -155,12 +162,217 @@ function setupSettings() {
     renderServices();
     // Populate labor rates
     renderLaborRates();
+    // Update labor rate dropdown for services
+    updateLaborRateDropdown();
     
     // Update Google Business UI
     updateGoogleBusinessUI();
   }
   
-  // Render services
+  // ============================================
+  // LABOR RATES - With Default Support
+  // ============================================
+  
+  // Render labor rates with default indicator
+  function renderLaborRates() {
+    const labList = document.getElementById('labList');
+    if (!labList) return;
+    
+    const laborRates = settings.labor_rates || [];
+    
+    if (laborRates.length === 0) {
+      labList.innerHTML = '<div class="muted">No labor rates added yet. Add your first rate to set it as default.</div>';
+      return;
+    }
+    
+    labList.innerHTML = laborRates.map((rate, index) => {
+      const isDefault = rate.is_default === true;
+      const defaultBadge = isDefault ? '<span style="margin-left:8px;padding:2px 8px;background:linear-gradient(135deg,#10b981 0%,#34d399 100%);color:white;border-radius:12px;font-size:0.75rem;font-weight:600;">DEFAULT</span>' : '';
+      return `
+        <div class="chip" data-rate-name="${rate.name}" data-rate-index="${index}" style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+          ${rate.name} - $${rate.rate}/hr${defaultBadge}
+        </div>
+      `;
+    }).join('');
+    
+    // Add click listeners to manage labor rates
+    labList.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => openLaborRateModal(chip.dataset.rateName));
+    });
+  }
+  
+  // Open labor rate management modal
+  function openLaborRateModal(rateName) {
+    const laborRates = settings.labor_rates || [];
+    const rate = laborRates.find(r => r.name === rateName);
+    if (!rate) return;
+    
+    currentLaborRate = rate;
+    
+    const modal = document.getElementById('laborRateModal');
+    const nameEl = document.getElementById('laborRateModalName');
+    const defaultBadge = document.getElementById('laborRateDefaultBadge');
+    const switchDefaultBtn = document.getElementById('laborRateSwitchDefault');
+    const removeBtn = document.getElementById('laborRateRemove');
+    
+    if (!modal || !nameEl) return;
+    
+    nameEl.textContent = `${rate.name} - $${rate.rate}/hr`;
+    
+    if (rate.is_default) {
+      defaultBadge.style.display = 'block';
+      switchDefaultBtn.style.display = 'none';
+      // Cannot remove default rate
+      removeBtn.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/></svg>
+        Cannot Remove (Default)
+      `;
+      removeBtn.disabled = true;
+      removeBtn.style.opacity = '0.5';
+      removeBtn.style.cursor = 'not-allowed';
+    } else {
+      defaultBadge.style.display = 'none';
+      switchDefaultBtn.style.display = 'flex';
+      removeBtn.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        Remove Rate
+      `;
+      removeBtn.disabled = false;
+      removeBtn.style.opacity = '1';
+      removeBtn.style.cursor = 'pointer';
+    }
+    
+    modal.classList.remove('hidden');
+  }
+  
+  // Close labor rate modal
+  function closeLaborRateModal() {
+    const modal = document.getElementById('laborRateModal');
+    if (modal) modal.classList.add('hidden');
+    currentLaborRate = null;
+  }
+  
+  // Switch labor rate to default
+  async function switchToDefaultRate() {
+    if (!currentLaborRate) return;
+    
+    const laborRates = settings.labor_rates || [];
+    
+    // Remove default from all rates
+    laborRates.forEach(r => r.is_default = false);
+    
+    // Set current rate as default
+    const rate = laborRates.find(r => r.name === currentLaborRate.name);
+    if (rate) {
+      rate.is_default = true;
+    }
+    
+    await saveSettings();
+    closeLaborRateModal();
+    renderLaborRates();
+    updateLaborRateDropdown();
+    showNotification(`"${currentLaborRate.name}" is now the default labor rate`);
+  }
+  
+  // Add labor rate (first one becomes default)
+  async function addLaborRate() {
+    const labName = document.getElementById('labName').value.trim();
+    const labRate = parseFloat(document.getElementById('labRate').value) || 0;
+    
+    if (!labName) {
+      showNotification('Please enter a rate name', 'error');
+      return;
+    }
+    
+    settings.labor_rates = settings.labor_rates || [];
+    
+    // Check if rate already exists
+    if (settings.labor_rates.some(r => r.name === labName)) {
+      showNotification('Labor rate already exists', 'error');
+      return;
+    }
+    
+    // First rate becomes default automatically
+    const isFirst = settings.labor_rates.length === 0;
+    
+    settings.labor_rates.push({ 
+      name: labName, 
+      rate: labRate,
+      is_default: isFirst
+    });
+    
+    await saveSettings();
+    
+    // Clear inputs
+    document.getElementById('labName').value = '';
+    document.getElementById('labRate').value = '';
+    
+    renderLaborRates();
+    updateLaborRateDropdown();
+    
+    if (isFirst) {
+      showSectionNotice('labSaved', 'labList', `"${labName}" added as default rate!`);
+    } else {
+      showSectionNotice('labSaved', 'labList', 'Labor rate added!');
+    }
+  }
+  
+  // Remove labor rate (cannot remove default)
+  async function removeLaborRate() {
+    if (!currentLaborRate) return;
+    
+    if (currentLaborRate.is_default) {
+      showNotification('Cannot remove the default rate. Set another rate as default first.', 'error');
+      return;
+    }
+    
+    const ok = await showConfirm(`Remove labor rate "${currentLaborRate.name}"?`, 'Remove', 'Cancel');
+    if (!ok) {
+      closeLaborRateModal();
+      return;
+    }
+
+    settings.labor_rates = (settings.labor_rates || []).filter(r => r.name !== currentLaborRate.name);
+
+    await saveSettings();
+    closeLaborRateModal();
+    renderLaborRates();
+    updateLaborRateDropdown();
+    showSectionNotice('labSaved', 'labList', 'Labor rate removed');
+  }
+  
+  // Get default labor rate
+  function getDefaultLaborRate() {
+    const laborRates = settings.labor_rates || [];
+    return laborRates.find(r => r.is_default) || laborRates[0] || null;
+  }
+  
+  // Update labor rate dropdown in service form
+  function updateLaborRateDropdown() {
+    const select = document.getElementById('svcLaborRate');
+    if (!select) return;
+    
+    const laborRates = settings.labor_rates || [];
+    const defaultRate = getDefaultLaborRate();
+    
+    select.innerHTML = '<option value="">-- Select Rate --</option>';
+    
+    laborRates.forEach(rate => {
+      const opt = document.createElement('option');
+      opt.value = rate.name;
+      opt.dataset.rate = rate.rate;
+      const defaultLabel = rate.is_default ? ' (Default)' : '';
+      opt.textContent = `${rate.name} - $${rate.rate}/hr${defaultLabel}`;
+      if (rate.is_default) opt.selected = true;
+      select.appendChild(opt);
+    });
+  }
+  
+  // ============================================
+  // SERVICES - With Flat/Labor-Based Support
+  // ============================================
+  
+  // Render services with pricing type indicator
   function renderServices() {
     const svcList = document.getElementById('svcList');
     if (!svcList) return;
@@ -172,41 +384,233 @@ function setupSettings() {
       return;
     }
     
-    svcList.innerHTML = services.map(svc => `
-      <div class="chip" data-service="${svc.name}" style="cursor: pointer;">
-        ${svc.name} - $${svc.price}
-      </div>
-    `).join('');
+    svcList.innerHTML = services.map(svc => {
+      const isLaborBased = svc.pricing_type === 'labor_based';
+      let priceDisplay = '';
+      
+      if (isLaborBased) {
+        const rate = (settings.labor_rates || []).find(r => r.name === svc.labor_rate_name);
+        const hourlyRate = rate ? rate.rate : 0;
+        const calculatedPrice = (svc.labor_hours || 0) * hourlyRate;
+        priceDisplay = `${svc.labor_hours}hr × $${hourlyRate} = $${calculatedPrice.toFixed(2)}`;
+      } else {
+        priceDisplay = `$${svc.price || 0}`;
+      }
+      
+      const typeIcon = isLaborBased ? '⏱️' : '💵';
+      
+      return `
+        <div class="chip" data-service="${svc.name}" style="cursor: pointer;">
+          ${typeIcon} ${svc.name} - ${priceDisplay}
+        </div>
+      `;
+    }).join('');
     
-    // Add click listeners to remove
+    // Add click listeners to manage services
     svcList.querySelectorAll('.chip').forEach(chip => {
-      chip.addEventListener('click', () => removeService(chip.dataset.service));
+      chip.addEventListener('click', () => openServiceModal(chip.dataset.service));
     });
   }
   
-  // Render labor rates
-  function renderLaborRates() {
-    const labList = document.getElementById('labList');
-    if (!labList) return;
+  // Open service management modal
+  function openServiceModal(serviceName) {
+    const services = settings.services || [];
+    const service = services.find(s => s.name === serviceName);
+    if (!service) return;
     
-    const laborRates = settings.labor_rates || [];
+    currentService = service;
     
-    if (laborRates.length === 0) {
-      labList.innerHTML = '<div class="muted">No labor rates added yet.</div>';
+    const modal = document.getElementById('serviceModal');
+    const nameEl = document.getElementById('serviceModalName');
+    const priceEl = document.getElementById('serviceModalPrice');
+    
+    if (!modal || !nameEl || !priceEl) return;
+    
+    nameEl.textContent = service.name;
+    
+    if (service.pricing_type === 'labor_based') {
+      const rate = (settings.labor_rates || []).find(r => r.name === service.labor_rate_name);
+      const hourlyRate = rate ? rate.rate : 0;
+      const calculatedPrice = (service.labor_hours || 0) * hourlyRate;
+      priceEl.innerHTML = `
+        <span style="color:var(--muted);">Labor-based:</span> ${service.labor_hours}hr × $${hourlyRate}/hr<br>
+        <strong style="font-size:1.1rem;">= $${calculatedPrice.toFixed(2)}</strong>
+      `;
+    } else {
+      priceEl.innerHTML = `<span style="color:var(--muted);">Flat price:</span> <strong style="font-size:1.1rem;">$${service.price || 0}</strong>`;
+    }
+    
+    modal.classList.remove('hidden');
+  }
+  
+  // Close service modal
+  function closeServiceModal() {
+    const modal = document.getElementById('serviceModal');
+    if (modal) modal.classList.add('hidden');
+    currentService = null;
+  }
+  
+  // Add service (flat or labor-based)
+  async function addService() {
+    const svcName = document.getElementById('svcName').value.trim();
+    const pricingType = document.getElementById('svcPricingTypeValue')?.value || '';
+    
+    if (!svcName) {
+      showSectionNotice('svcNotice', 'svcList', 'Please enter a service name', 'error');
       return;
     }
     
-    labList.innerHTML = laborRates.map(rate => `
-      <div class="chip" data-rate="${rate.name}" style="cursor: pointer;">
-        ${rate.name} - $${rate.rate}/hr
-      </div>
-    `).join('');
+    if (!pricingType) {
+      showSectionNotice('svcNotice', 'svcList', 'Please select a pricing type (Flat Price or Labor-based)', 'error');
+      return;
+    }
     
-    // Add click listeners to remove
-    labList.querySelectorAll('.chip').forEach(chip => {
-      chip.addEventListener('click', () => removeLaborRate(chip.dataset.rate));
-    });
+    settings.services = settings.services || [];
+    
+    // Check if service already exists
+    if (settings.services.some(s => s.name === svcName)) {
+      showSectionNotice('svcNotice', 'svcList', 'Service already exists', 'error');
+      return;
+    }
+    
+    let newService = { name: svcName, pricing_type: pricingType };
+    
+    if (pricingType === 'labor_based') {
+      const laborHours = parseFloat(document.getElementById('svcLaborHours').value) || 0;
+      const laborRateName = document.getElementById('svcLaborRate').value;
+      
+      if (!laborRateName) {
+        showNotification('Please select a labor rate', 'error');
+        return;
+      }
+      
+      if (laborHours <= 0) {
+        showNotification('Please enter labor hours', 'error');
+        return;
+      }
+      
+      const rate = (settings.labor_rates || []).find(r => r.name === laborRateName);
+      const calculatedPrice = laborHours * (rate ? rate.rate : 0);
+      
+      newService.labor_hours = laborHours;
+      newService.labor_rate_name = laborRateName;
+      newService.price = calculatedPrice; // Store calculated price for compatibility
+    } else {
+      const svcPrice = parseFloat(document.getElementById('svcPrice').value) || 0;
+      newService.price = svcPrice;
+    }
+    
+    settings.services.push(newService);
+    
+    await saveSettings();
+    
+    // Clear inputs and reset pill buttons
+    document.getElementById('svcName').value = '';
+    document.getElementById('svcPrice').value = '';
+    document.getElementById('svcLaborHours').value = '';
+    
+    // Reset pill buttons to unselected state
+    const flatBtn = document.getElementById('svcPricingFlatBtn');
+    const laborBtn = document.getElementById('svcPricingLaborBtn');
+    const hiddenInput = document.getElementById('svcPricingTypeValue');
+    if (flatBtn) flatBtn.classList.remove('active');
+    if (laborBtn) laborBtn.classList.remove('active');
+    if (hiddenInput) hiddenInput.value = '';
+    
+    document.getElementById('svcFlatFields').style.display = '';
+    document.getElementById('svcLaborFields').style.display = 'none';
+    document.getElementById('svcLaborPreview').textContent = '';
+    
+    renderServices();
+    showSectionNotice('svcSaved', 'svcList', 'Service added!');
   }
+  
+  // Remove service
+  async function removeService() {
+    if (!currentService) return;
+    
+    const ok = await showConfirm(`Remove service "${currentService.name}"?`, 'Remove', 'Cancel');
+    if (!ok) {
+      closeServiceModal();
+      return;
+    }
+
+    settings.services = (settings.services || []).filter(s => s.name !== currentService.name);
+
+    await saveSettings();
+    closeServiceModal();
+    renderServices();
+    showSectionNotice('svcSaved', 'svcList', 'Service removed');
+  }
+  
+  // ============================================
+  // SERVICE FORM - Toggle Flat/Labor UI (Pill Buttons)
+  // ============================================
+  
+  function setupServiceFormToggle() {
+    const flatBtn = document.getElementById('svcPricingFlatBtn');
+    const laborBtn = document.getElementById('svcPricingLaborBtn');
+    const hiddenInput = document.getElementById('svcPricingTypeValue');
+    const flatFields = document.getElementById('svcFlatFields');
+    const laborFields = document.getElementById('svcLaborFields');
+    const laborHoursInput = document.getElementById('svcLaborHours');
+    const laborRateSelect = document.getElementById('svcLaborRate');
+    const laborPreview = document.getElementById('svcLaborPreview');
+    
+    if (!flatBtn || !laborBtn) return;
+    
+    function selectPill(type) {
+      // Update hidden input
+      if (hiddenInput) hiddenInput.value = type;
+      
+      // Update pill styles
+      if (type === 'flat') {
+        flatBtn.classList.add('active');
+        laborBtn.classList.remove('active');
+        flatFields.style.display = '';
+        laborFields.style.display = 'none';
+      } else {
+        flatBtn.classList.remove('active');
+        laborBtn.classList.add('active');
+        flatFields.style.display = 'none';
+        laborFields.style.display = '';
+        updateLaborPreview();
+      }
+    }
+    
+    function updateLaborPreview() {
+      const hours = parseFloat(laborHoursInput?.value) || 0;
+      const rateName = laborRateSelect?.value || '';
+      
+      if (!rateName || hours <= 0) {
+        laborPreview.textContent = '';
+        return;
+      }
+      
+      const rate = (settings.labor_rates || []).find(r => r.name === rateName);
+      const hourlyRate = rate ? rate.rate : 0;
+      const total = hours * hourlyRate;
+      
+      laborPreview.innerHTML = `<strong>Preview:</strong> ${hours}hr × ${hourlyRate}/hr = <strong>${total.toFixed(2)}</strong>`;
+    }
+    
+    // Pill button click handlers
+    flatBtn.addEventListener('click', () => selectPill('flat'));
+    laborBtn.addEventListener('click', () => selectPill('labor_based'));
+    
+    // Labor preview updates
+    laborHoursInput?.addEventListener('input', updateLaborPreview);
+    laborRateSelect?.addEventListener('change', updateLaborPreview);
+    
+    // Initialize with nothing selected (no pill highlighted)
+    flatBtn.classList.remove('active');
+    laborBtn.classList.remove('active');
+    if (hiddenInput) hiddenInput.value = '';
+  }
+  
+  // ============================================
+  // SHOP INFO
+  // ============================================
   
   // Save shop info
   async function saveShopInfo() {
@@ -304,89 +708,9 @@ function setupSettings() {
     }
   }
   
-  // Add service
-  async function addService() {
-    const svcName = document.getElementById('svcName').value.trim();
-    const svcPrice = parseFloat(document.getElementById('svcPrice').value) || 0;
-    
-    if (!svcName) {
-      showNotification('Please enter a service name', 'error');
-      return;
-    }
-    
-    settings.services = settings.services || [];
-    
-    // Check if service already exists
-    if (settings.services.some(s => s.name === svcName)) {
-      showNotification('Service already exists', 'error');
-      return;
-    }
-    
-    settings.services.push({ name: svcName, price: svcPrice });
-    
-    await saveSettings();
-    
-    // Clear inputs
-    document.getElementById('svcName').value = '';
-    document.getElementById('svcPrice').value = '';
-    
-    renderServices();
-    showSectionNotice('svcSaved', 'svcList', 'Service added!');
-  }
-  
-  // Remove service
-  async function removeService(serviceName) {
-    const ok = await showConfirm(`Remove service "${serviceName}"?`, 'Remove', 'Cancel');
-    if (!ok) return;
-
-    settings.services = (settings.services || []).filter(s => s.name !== serviceName);
-
-    await saveSettings();
-    renderServices();
-    showSectionNotice('svcSaved', 'svcList', 'Service removed');
-  }
-  
-  // Add labor rate
-  async function addLaborRate() {
-    const labName = document.getElementById('labName').value.trim();
-    const labRate = parseFloat(document.getElementById('labRate').value) || 0;
-    
-    if (!labName) {
-      showNotification('Please enter a rate name', 'error');
-      return;
-    }
-    
-    settings.labor_rates = settings.labor_rates || [];
-    
-    // Check if rate already exists
-    if (settings.labor_rates.some(r => r.name === labName)) {
-      showNotification('Labor rate already exists', 'error');
-      return;
-    }
-    
-    settings.labor_rates.push({ name: labName, rate: labRate });
-    
-    await saveSettings();
-    
-    // Clear inputs
-    document.getElementById('labName').value = '';
-    document.getElementById('labRate').value = '';
-    
-    renderLaborRates();
-    showSectionNotice('labSaved', 'labList', 'Labor rate added!');
-  }
-  
-  // Remove labor rate
-  async function removeLaborRate(rateName) {
-    const ok = await showConfirm(`Remove labor rate "${rateName}"?`, 'Remove', 'Cancel');
-    if (!ok) return;
-
-    settings.labor_rates = (settings.labor_rates || []).filter(r => r.name !== rateName);
-
-    await saveSettings();
-    renderLaborRates();
-    showSectionNotice('labSaved', 'labList', 'Labor rate removed');
-  }
+  // ============================================
+  // SETTINGS PERSISTENCE
+  // ============================================
   
   // Save settings to Supabase or localStorage
   async function saveSettings() {
@@ -440,6 +764,10 @@ function setupSettings() {
     }
   }
   
+  // ============================================
+  // NOTIFICATIONS
+  // ============================================
+  
   // Show notification
   function showNotification(message, type = 'success') {
     const shopSaved = document.getElementById('shopSaved');
@@ -463,6 +791,9 @@ function setupSettings() {
     el.id = id;
     el.className = 'notice';
     el.style.marginTop = '8px';
+    el.style.padding = '10px 12px';
+    el.style.borderRadius = '6px';
+    el.style.fontWeight = '500';
     if (after && after.parentNode) {
       // insert after the reference element
       if (after.nextSibling) after.parentNode.insertBefore(el, after.nextSibling);
@@ -479,9 +810,25 @@ function setupSettings() {
     try {
       const el = ensureSectionNotice(id, insertAfterId);
       el.textContent = message;
-      el.className = 'notice ' + (type === 'error' ? 'danger' : 'success');
+      
+      // Style based on type
+      if (type === 'error') {
+        el.style.background = '#fee2e2';
+        el.style.color = '#dc2626';
+        el.style.border = '1px solid #fca5a5';
+        el.className = 'notice danger';
+      } else {
+        el.style.background = '#d1fae5';
+        el.style.color = '#065f46';
+        el.style.border = '1px solid #6ee7b7';
+        el.className = 'notice success';
+      }
+      
       setTimeout(() => {
         el.textContent = '';
+        el.style.background = '';
+        el.style.color = '';
+        el.style.border = '';
         el.className = 'notice';
       }, 3500);
     } catch (e) {
@@ -489,9 +836,11 @@ function setupSettings() {
       showNotification(message, type);
     }
   }
-
   
-  // Google Business Search Functions
+  // ============================================
+  // GOOGLE BUSINESS
+  // ============================================
+  
   function quickSearchGoogle() {
     if (!shopData || !shopData.name) {
       showNotification('Please enter a shop name first', 'error');
@@ -598,6 +947,10 @@ function setupSettings() {
     }
   }
   
+  // ============================================
+  // CONFIRM MODAL
+  // ============================================
+  
   function showConfirm(message, okText = 'OK', cancelText = 'Cancel') {
     return new Promise((resolve) => {
       const modal = document.getElementById('confirmModal');
@@ -630,7 +983,11 @@ function setupSettings() {
     });
   }
   
-  // Event listeners
+  // ============================================
+  // EVENT LISTENERS
+  // ============================================
+  
+  // Shop info save
   const saveShopBtn = document.getElementById('saveShop');
   if (saveShopBtn) {
     saveShopBtn.addEventListener('click', saveShopInfo);
@@ -650,14 +1007,59 @@ function setupSettings() {
     });
   }
   
+  // Services
   const svcAddBtn = document.getElementById('svcAdd');
   if (svcAddBtn) {
     svcAddBtn.addEventListener('click', addService);
   }
   
+  // Labor rates
   const labAddBtn = document.getElementById('labAdd');
   if (labAddBtn) {
     labAddBtn.addEventListener('click', addLaborRate);
+  }
+  
+  // Labor rate modal buttons
+  const laborRateSwitchBtn = document.getElementById('laborRateSwitchDefault');
+  if (laborRateSwitchBtn) {
+    laborRateSwitchBtn.addEventListener('click', switchToDefaultRate);
+  }
+  
+  const laborRateRemoveBtn = document.getElementById('laborRateRemove');
+  if (laborRateRemoveBtn) {
+    laborRateRemoveBtn.addEventListener('click', removeLaborRate);
+  }
+  
+  const laborRateCancelBtn = document.getElementById('laborRateCancel');
+  if (laborRateCancelBtn) {
+    laborRateCancelBtn.addEventListener('click', closeLaborRateModal);
+  }
+  
+  // Close labor rate modal on backdrop click
+  const laborRateModal = document.getElementById('laborRateModal');
+  if (laborRateModal) {
+    laborRateModal.addEventListener('click', (e) => {
+      if (e.target === laborRateModal) closeLaborRateModal();
+    });
+  }
+  
+  // Service modal buttons
+  const serviceRemoveBtn = document.getElementById('serviceRemove');
+  if (serviceRemoveBtn) {
+    serviceRemoveBtn.addEventListener('click', removeService);
+  }
+  
+  const serviceCancelBtn = document.getElementById('serviceCancel');
+  if (serviceCancelBtn) {
+    serviceCancelBtn.addEventListener('click', closeServiceModal);
+  }
+  
+  // Close service modal on backdrop click
+  const serviceModal = document.getElementById('serviceModal');
+  if (serviceModal) {
+    serviceModal.addEventListener('click', (e) => {
+      if (e.target === serviceModal) closeServiceModal();
+    });
   }
   
   // Google Business search event listeners
@@ -671,7 +1073,6 @@ function setupSettings() {
     changeGoogleBtn.addEventListener('click', () => {
       document.getElementById('googleBusinessInfo').style.display = 'none';
       document.getElementById('googleSearchContainer').style.display = 'block';
-      document.getElementById('googleSearchResults').style.display = 'none';
     });
   }
   
@@ -701,29 +1102,8 @@ function setupSettings() {
     });
   }
   
-  const addManualGoogleBtn = document.getElementById('addManualGoogle');
-  if (addManualGoogleBtn) {
-    addManualGoogleBtn.addEventListener('click', async () => {
-      const urlInput = document.getElementById('manualGoogleUrl');
-      const url = urlInput.value.trim();
-      
-      if (!url) {
-        showNotification('Please enter a Google Business URL', 'error');
-        return;
-      }
-      
-      if (!url.startsWith('http')) {
-        showNotification('Please enter a valid URL starting with http:// or https://', 'error');
-        return;
-      }
-      
-      // Extract business name from URL or use shop name as fallback
-      let businessName = shopData?.name || 'My Business';
-      
-      await confirmGoogleBusiness(businessName, url);
-      urlInput.value = '';
-    });
-  }
+  // Setup service form toggle (flat vs labor-based)
+  setupServiceFormToggle();
   
   // Initial load
   loadShopData();

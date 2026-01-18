@@ -15,6 +15,8 @@ import { LS } from '../helpers/constants.js';
 import { saveAppointments } from './appointments.js?v=1767391500';
 import { createShopNotification } from '../helpers/shop-notifications.js';
 import { getCurrentShopId } from '../helpers/multi-shop.js';
+import { getInspectionSummary } from '../helpers/inspection-api.js';
+import { inspectionForm } from '../components/inspectionFormModal.js';
 
 // Current job being edited
 let currentJobId = null;
@@ -1515,6 +1517,7 @@ async function openJobViewModal(job, appt) {
       <div><strong>Date:</strong> ${appt.preferred_date ? new Date(appt.preferred_date).toLocaleDateString() : 'Not set'}</div>
       <div><strong>Time:</strong> ${formatTime12(appt.preferred_time)}</div>
       <div><strong>Status:</strong> <span class="tag ${getStatusClass(appt.status)}">${appt.status || 'new'}</span></div>
+      <div id="inspectionStatusRow"></div>
       ${appt.notes ? `<div><strong>Notes:</strong><br>${appt.notes}</div>` : ''}
     </div>
     
@@ -1529,6 +1532,9 @@ async function openJobViewModal(job, appt) {
     </div>
   `;
   
+  // Load inspection status asynchronously
+  loadInspectionStatusForJobViewModal(job, appt);
+  
   modal.classList.remove('hidden');
   
   // Load and render notes
@@ -1542,6 +1548,144 @@ async function openJobViewModal(job, appt) {
       openJobAddNoteModal();
     });
   }
+}
+
+// Load and display inspection status in job view modal
+async function loadInspectionStatusForJobViewModal(job, appt) {
+  const container = document.getElementById('inspectionStatusRow');
+  if (!container) return;
+  
+  try {
+    const summary = await getInspectionSummary(appt.id, job.id);
+    
+    if (summary) {
+      // Inspection exists - show status and view button
+      const gradeColors = {
+        'A': { bg: '#dcfce7', color: '#166534' },
+        'B': { bg: '#dbeafe', color: '#1e40af' },
+        'C': { bg: '#fef3c7', color: '#92400e' },
+        'D': { bg: '#fed7aa', color: '#9a3412' },
+        'F': { bg: '#fee2e2', color: '#991b1b' }
+      };
+      const gradeStyle = gradeColors[summary.grade] || { bg: '#f3f4f6', color: '#374151' };
+      
+      const statusLabels = {
+        'draft': 'Draft',
+        'in_progress': 'In Progress',
+        'ready_for_review': 'Ready for Review',
+        'sent_to_customer': 'Sent to Customer',
+        'customer_responded': 'Customer Responded',
+        'closed': 'Closed'
+      };
+      const statusLabel = statusLabels[summary.status] || summary.status;
+      
+      container.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <strong>Inspection:</strong>
+          <span class="tag" style="background: ${gradeStyle.bg}; color: ${gradeStyle.color}; font-weight: 700;">
+            Grade ${summary.grade}
+          </span>
+          <span style="color: #6b7280; font-size: 13px;">${statusLabel}</span>
+          ${summary.failCount > 0 ? `<span style="color: #ef4444; font-size: 12px;">${summary.failCount} failed</span>` : ''}
+        </div>
+        <button id="viewInspectionBtn" class="btn small" style="margin-top: 8px; background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px;">
+          📋 View Inspection
+        </button>
+      `;
+      
+      // Add click handler for view button
+      document.getElementById('viewInspectionBtn')?.addEventListener('click', () => {
+        closeJobViewModal();
+        openInspectionFromJob(summary.id, job, appt);
+      });
+    } else {
+      // No inspection yet — show 'Not started' and a Start button
+      container.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <strong>Inspection:</strong>
+          <span style="color: #9ca3af; font-size: 13px;">Not started</span>
+          <button id="startInspectionBtn" class="btn small info" style="margin-left:8px;">Start Inspection</button>
+        </div>
+      `;
+
+      // Wire up start button to open the inspection template flow
+      document.getElementById('startInspectionBtn')?.addEventListener('click', () => {
+        try {
+          // Close the job view modal to reveal the inspection UI
+          closeJobViewModal();
+
+          // Build vehicle info similarly to openInspectionFromJob
+          let vehicleInfo = {};
+          if (appt.vehicle) {
+            const parts = appt.vehicle.split(' ');
+            if (parts.length >= 3) {
+              vehicleInfo.year = parts[0];
+              vehicleInfo.make = parts[1];
+              vehicleInfo.model = parts.slice(2).join(' ');
+            } else {
+              vehicleInfo.model = appt.vehicle;
+            }
+          }
+
+          // Customer info
+          const customerInfo = { name: appt.customer, phone: appt.phone, email: appt.email };
+
+          // Open the inspection form (will show template selection when no inspection exists)
+          inspectionForm.open({
+            appointmentId: appt.id,
+            jobId: job.id,
+            vehicleInfo,
+            customerInfo,
+            onClose: async (inspection) => {
+              if (inspection) {
+                await loadJobs();
+                await renderJobs();
+              }
+            }
+          });
+        } catch (e) {
+          console.error('Failed to start inspection:', e);
+          showNotification('Unable to start inspection', 'error');
+        }
+      });
+    }
+  } catch (e) {
+    console.warn('Failed to load inspection status:', e);
+    container.innerHTML = '';
+  }
+}
+
+// Open inspection from job view modal
+function openInspectionFromJob(inspectionId, job, appt) {
+  // Parse vehicle info
+  let vehicleInfo = {};
+  if (appt.vehicle) {
+    const parts = appt.vehicle.split(' ');
+    if (parts.length >= 3) {
+      vehicleInfo.year = parts[0];
+      vehicleInfo.make = parts[1];
+      vehicleInfo.model = parts.slice(2).join(' ');
+    }
+  }
+  
+  // Open the inspection form
+  inspectionForm.open({
+    appointmentId: appt.id,
+    jobId: job.id,
+    inspectionId: inspectionId,
+    vehicleInfo: vehicleInfo,
+    customerInfo: {
+      name: appt.customer,
+      phone: appt.phone,
+      email: appt.email
+    },
+    onClose: (inspection) => {
+      // Refresh if inspection was saved
+      if (inspection) {
+        loadJobs().then(() => renderJobs());
+      }
+    }
+  });
 }
 
 /**
@@ -3588,6 +3732,7 @@ async function addLaborToInvoice(jobId, description, hours, rate, linkedItemId, 
   
   // Save invoice
   await saveInvoice(invoice);
+  try { window.dispatchEvent(new CustomEvent('partAdded', { detail: { jobId } })); } catch(e) {}
   
   console.log('Labor added to invoice:', laborItem);
 }
@@ -3814,10 +3959,11 @@ async function openServiceModal() {
   
   if (!serviceModal || !serviceContainer) return;
   
-  // Get available services from shop settings
+  // Get available services and labor rates from shop settings
   const supabase = getSupabaseClient();
   const shopId = getCurrentShopId();
   let services = [];
+  let laborRates = [];
   
   try {
     if (supabase && shopId) {
@@ -3825,11 +3971,15 @@ async function openServiceModal() {
       if (data?.settings?.services && Array.isArray(data.settings.services)) {
         services = data.settings.services;
       }
+      if (data?.settings?.labor_rates && Array.isArray(data.settings.labor_rates)) {
+        laborRates = data.settings.labor_rates;
+      }
     }
   } catch (e) {
     // Fallback to localStorage
     const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
     services = (localData.settings?.services) || [];
+    laborRates = (localData.settings?.labor_rates) || [];
   }
   
   // Populate service options
@@ -3851,14 +4001,27 @@ async function openServiceModal() {
     btn.style.alignItems = 'center';
     
     const serviceName = service.name || service;
-    const servicePrice = service.price || 0;
+    const isLaborBased = service.pricing_type === 'labor_based';
+    
+    let priceDisplay = '';
+    if (isLaborBased) {
+      const rate = laborRates.find(r => r.name === service.labor_rate_name);
+      const hourlyRate = rate ? rate.rate : 0;
+      const calculatedPrice = (service.labor_hours || 0) * hourlyRate;
+      // Show only service hours and total (no hourly breakdown)
+      priceDisplay = `${service.labor_hours}hr • $${calculatedPrice.toFixed(2)}`;
+    } else {
+      priceDisplay = `${parseFloat(service.price || 0).toFixed(2)}`;
+    }
+    
+    const typeIcon = isLaborBased ? '⏱️' : '💵';
     
     btn.innerHTML = `
-      <span>${serviceName}</span>
-      <span style="font-size: 0.9rem; color: var(--muted);">$${parseFloat(servicePrice).toFixed(2)}</span>
+      <span>${typeIcon} ${serviceName}</span>
+      <span style="font-size: 0.9rem; color: var(--muted);">${priceDisplay}</span>
     `;
     
-    btn.addEventListener('click', () => handleServiceSelection(service, serviceModal));
+    btn.addEventListener('click', () => handleServiceSelection(service, serviceModal, laborRates));
     serviceContainer.appendChild(btn);
   });
   
@@ -3868,7 +4031,7 @@ async function openServiceModal() {
 /**
  * Handle service selection
  */
-async function handleServiceSelection(service, serviceModal) {
+async function handleServiceSelection(service, serviceModal, laborRates = []) {
   try {
     // Get current job from partsModalHandler
     const partsHandler = window.partsModalHandler;
@@ -3887,9 +4050,103 @@ async function handleServiceSelection(service, serviceModal) {
     
     // Instead of adding immediately, open the Customize Service flow so user can add parts/labor or skip.
     const serviceName = service.name || service;
-    const servicePrice = parseFloat(service.price) || 0;
+    const isLaborBased = service.pricing_type === 'labor_based';
+    
+    if (isLaborBased) {
+      // Labor-based service: prepare draft and immediately add to invoice (skip customize flow)
+      const rate = laborRates.find(r => r.name === service.labor_rate_name);
+      const hourlyRate = rate ? rate.rate : 0;
+      const calculatedPrice = (service.labor_hours || 0) * hourlyRate;
+      newServiceDraft = { 
+        name: serviceName, 
+        price: calculatedPrice, 
+        type: 'service', 
+        qty: 1,
+        pricing_type: 'labor_based',
+        labor_hours: service.labor_hours,
+        labor_rate_name: service.labor_rate_name,
+        labor_rate: hourlyRate
+      };
 
-    newServiceDraft = { name: serviceName, price: servicePrice, type: 'service', qty: 1 };
+      // Auto-add labor-based service to invoice immediately, matching Skip & Add flow
+      try {
+        closeServiceModal();
+        const partsHandler = window.partsModalHandler;
+        // Ensure there's a job for this appointment
+        let existingJob = allJobs.find(j => j.appointment_id === appointment.id);
+        if (!existingJob) {
+          const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          existingJob = {
+            id: jobId,
+            appointment_id: appointment.id,
+            shop_id: appointment.shop_id,
+            status: 'in_progress',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            service: newServiceDraft.name,
+            service_price: newServiceDraft.price,
+            type: 'service',
+            qty: newServiceDraft.qty || 1,
+            year: appointment.vehicle_year || '',
+            make: appointment.vehicle_make || '',
+            model: appointment.vehicle_model || ''
+          };
+          allJobs.push(existingJob);
+          await saveJobs(allJobs);
+        } else {
+          existingJob.service = existingJob.service || newServiceDraft.name;
+          existingJob.service_price = existingJob.service_price || newServiceDraft.price;
+          existingJob.year = existingJob.year || appointment.vehicle_year || '';
+          existingJob.make = existingJob.make || appointment.vehicle_make || '';
+          existingJob.model = existingJob.model || appointment.vehicle_model || '';
+          await saveJobs(allJobs);
+        }
+        if (partsHandler) partsHandler.currentJob = existingJob;
+
+        // Add to invoice (split into service + labor rows)
+        let invoice = await getInvoiceForAppointment(appointment.id);
+        if (!invoice) invoice = await createInvoiceForAppointment(appointment);
+        if (invoice) {
+          invoice.items = invoice.items || [];
+          const alreadyHasService = invoice.items.some(item => item.type === 'service' && item.name === newServiceDraft.name);
+          if (!alreadyHasService) {
+            const serviceId = `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const laborId = `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_labor`;
+            invoice.items.push({
+              id: serviceId,
+              name: newServiceDraft.name,
+              type: 'service',
+              qty: 1,
+              price: 0,
+              pricing_type: 'labor_based',
+              linkedItemId: laborId
+            });
+            invoice.items.push({
+              id: laborId,
+              name: `Labor - ${newServiceDraft.name}`,
+              type: 'labor',
+              qty: newServiceDraft.labor_hours || 1,
+              price: newServiceDraft.labor_rate || 0,
+              linkedItemId: serviceId
+            });
+            await saveInvoice(invoice);
+            try { window.dispatchEvent(new CustomEvent('partAdded', { detail: { jobId: existingJob.id } })); } catch(e) {}
+            showNotification(`Service "${newServiceDraft.name}" added to invoice`, 'success');
+          }
+        }
+      } catch (e) {
+        console.error('[jobs] Auto-add labor-based service failed:', e);
+        showNotification('Failed to add labor-based service automatically', 'error');
+      }
+
+      newServiceDraft = null;
+      // Done — skip the customize modal
+      return;
+    } else {
+      // Flat rate service: simple object
+      const servicePrice = parseFloat(service.price) || 0;
+      newServiceDraft = { name: serviceName, price: servicePrice, type: 'service', qty: 1, pricing_type: 'flat' };
+    }
 
     // Close service modal and any parts modal overlay, then show the add-flow modal
     closeServiceModal();
@@ -4143,8 +4400,8 @@ async function setupJobs() {
           serviceContainer.appendChild(btn);
         }
 
-        // Prepare draft used by the add-flow
-        newServiceDraft = { name, price, type: 'service', qty: 1 };
+        // Prepare draft used by the add-flow (custom/Other is always flat rate)
+        newServiceDraft = { name, price, type: 'service', qty: 1, pricing_type: 'flat' };
         // Close service modal and show the save-confirm modal
         document.getElementById('serviceModal').classList.add('hidden');
         const confirmModal = document.getElementById('saveServiceConfirmModal');
@@ -4200,7 +4457,7 @@ async function setupJobs() {
           alert('Please enter a service name and rate.');
           return;
         }
-        newServiceDraft = { name, price: rate, type: 'service', qty: 1 };
+        newServiceDraft = { name, price: rate, type: 'service', qty: 1, pricing_type: 'flat' };
         document.getElementById('newServiceModal').classList.add('hidden');
         document.getElementById('serviceAddFlowModal').classList.remove('hidden');
       });
@@ -4255,14 +4512,43 @@ async function setupJobs() {
             invoice.items = invoice.items || [];
             const alreadyHasService = invoice.items.some(item => item.type === 'service' && item.name === newServiceDraft.name);
             if (!alreadyHasService) {
-              invoice.items.push({
-                id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                name: newServiceDraft.name,
-                price: newServiceDraft.price,
-                qty: newServiceDraft.qty || 1,
-                type: 'service'
-              });
+              // Check if labor-based service - split into 2 rows
+              if (newServiceDraft.pricing_type === 'labor_based') {
+                // Generate IDs for linking
+                const serviceId = `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                const laborId = `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_labor`;
+                
+                // Row 1: Service name with no price
+                invoice.items.push({
+                  id: serviceId,
+                  name: newServiceDraft.name,
+                  type: 'service',
+                  qty: 1,
+                  price: 0,
+                  pricing_type: 'labor_based',
+                  linkedItemId: laborId
+                });
+                // Row 2: Labor row with hours as qty and rate as price
+                invoice.items.push({
+                  id: laborId,
+                  name: `Labor - ${newServiceDraft.name}`,
+                  type: 'labor',
+                  qty: newServiceDraft.labor_hours || 1,
+                  price: newServiceDraft.labor_rate || 0,
+                  linkedItemId: serviceId
+                });
+              } else {
+                // Flat rate service
+                invoice.items.push({
+                  id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                  name: newServiceDraft.name,
+                  price: newServiceDraft.price,
+                  qty: newServiceDraft.qty || 1,
+                  type: 'service'
+                });
+              }
               await saveInvoice(invoice);
+              try { window.dispatchEvent(new CustomEvent('partAdded', { detail: { jobId: existingJob.id } })); } catch(e) {}
             }
           }
           newServiceDraft = null;
@@ -4338,14 +4624,43 @@ async function setupJobs() {
           }
           if (invoice) {
             invoice.items = invoice.items || [];
-            invoice.items.push({
-              id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-              name: newServiceDraft.name,
-              price: newServiceDraft.price,
-              qty: newServiceDraft.qty || 1,
-              type: 'service'
-            });
+            // Check if labor-based service - split into 2 rows
+            if (newServiceDraft.pricing_type === 'labor_based') {
+              // Generate IDs for linking
+              const serviceId = `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              const laborId = `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_labor`;
+              
+              // Row 1: Service name with no price
+              invoice.items.push({
+                id: serviceId,
+                name: newServiceDraft.name,
+                type: 'service',
+                qty: 1,
+                price: 0,
+                pricing_type: 'labor_based',
+                linkedItemId: laborId
+              });
+              // Row 2: Labor row with hours as qty and rate as price
+              invoice.items.push({
+                id: laborId,
+                name: `Labor - ${newServiceDraft.name}`,
+                type: 'labor',
+                qty: newServiceDraft.labor_hours || 1,
+                price: newServiceDraft.labor_rate || 0,
+                linkedItemId: serviceId
+              });
+            } else {
+              // Flat rate service
+              invoice.items.push({
+                id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                name: newServiceDraft.name,
+                price: newServiceDraft.price,
+                qty: newServiceDraft.qty || 1,
+                type: 'service'
+              });
+            }
             await saveInvoice(invoice);
+            try { window.dispatchEvent(new CustomEvent('partAdded', { detail: { jobId: existingJob.id } })); } catch(e) {}
           }
           newServiceDraft = null;
         }
@@ -4387,8 +4702,42 @@ async function setupJobs() {
         return;
       }
       invoice.items = invoice.items || [];
-      invoice.items.push({ ...newServiceDraft, id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` });
+      
+      // Check if this is a labor-based service - split into 2 rows
+      if (newServiceDraft.pricing_type === 'labor_based') {
+        // Generate IDs for linking
+        const serviceId = `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const laborId = `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}_labor`;
+        
+        // Row 1: Service name with no price (qty 1)
+        const serviceItem = {
+          id: serviceId,
+          name: newServiceDraft.name,
+          type: 'service',
+          qty: 1,
+          price: 0, // No price on service row for labor-based
+          pricing_type: 'labor_based',
+          linkedItemId: laborId // Link to labor item
+        };
+        invoice.items.push(serviceItem);
+        
+        // Row 2: Labor row with hours as qty and rate as price
+        const laborItem = {
+          id: laborId,
+          name: `Labor - ${newServiceDraft.name}`,
+          type: 'labor',
+          qty: newServiceDraft.labor_hours || 1,
+          price: newServiceDraft.labor_rate || 0,
+          linkedItemId: serviceId // Link back to service item
+        };
+        invoice.items.push(laborItem);
+      } else {
+        // Flat rate service - add as single item
+        invoice.items.push({ ...newServiceDraft, id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` });
+      }
+      
       await saveInvoice(invoice);
+      try { window.dispatchEvent(new CustomEvent('partAdded', { detail: { jobId: partsHandler?.currentJob?.id || null } })); } catch(e) {}
       // Close the flow modal and notify
       closeServiceAddFlowModal();
       showNotification(`Service "${newServiceDraft.name}" added to invoice`, 'success');

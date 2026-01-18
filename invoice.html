@@ -580,24 +580,26 @@ import { getShopData } from './helpers/storage.js';
           }
         }
         
-        // Fallback: Check for sequential Service+Part or Service+Labor, then Part+Labor
+        // Fallback: Check for sequential Service+Labor ONLY if the service has price=0 (labor-based service)
+        // This prevents flat-rate services from being incorrectly grouped with unrelated labor items
         const nameLower = (itm.name || '').toLowerCase().trim();
         const isServiceItem = serviceNames.length && serviceNames.includes(nameLower);
+        const isLaborBasedService = isServiceItem && (Number(itm.price) === 0 || itm.pricingType === 'labor' || itm.isLaborBased === true);
 
-        if (isServiceItem) {
+        if (isLaborBasedService) {
           for (let j = i + 1; j < items.length && j <= i + 2; j++) {
             if (usedIndexes.has(j)) continue;
             const nextItem = items[j];
             const nextName = (nextItem.name || '').toLowerCase().trim();
-            const nextIsPart = (nextItem.type === 'part') || nextItem.part_number || typeof nextItem.cost_price !== 'undefined' || nextName.startsWith('part:');
             const nextIsLabor = (nextItem.type === 'labor') || nextName.startsWith('labor') || nextName.includes('labor');
-            if (nextIsPart) { servicePartGroups.push([itm, nextItem]); usedIndexes.add(i); usedIndexes.add(j); break; }
             if (nextIsLabor) { serviceLaborGroups.push([itm, nextItem]); usedIndexes.add(i); usedIndexes.add(j); break; }
           }
           if (usedIndexes.has(i)) continue;
         }
 
         // Fallback: Check for sequential Part+Labor by type or naming convention
+        // NOTE: We do NOT auto-pair flat-rate services with labor here
+        // This prevents flat-rate services from being incorrectly grouped with unrelated labor items
         const isPartByType = (itm.type === 'part');
         const isPartByName = (itm.name || '').toLowerCase().trim().startsWith('part:');
         
@@ -758,7 +760,7 @@ import { getShopData } from './helpers/storage.js';
           itemsTbody.appendChild(trSpacer);
         }
       }
-      // Render Service+Labor groups
+      // Render Service+Labor groups (each service with its labor in own section)
       if (serviceLaborGroups.length) {
         for (const [service, labor] of serviceLaborGroups) {
           let groupTitle = (service.groupName && service.groupName.trim()) || (service.name && service.name.trim()) || 'Service + Labor';
@@ -766,16 +768,12 @@ import { getShopData } from './helpers/storage.js';
           trHeader.innerHTML = `<td colspan="4" style="font-weight:bold;background:var(--line);color:var(--text);padding:8px;">${groupTitle}</td>`;
           itemsTbody.appendChild(trHeader);
 
-          // Service row
-          const svcQty = Number(service.qty) || 0;
-          const svcPrice = Number(service.price) || 0;
-          const svcTotal = svcQty * svcPrice;
-          subtotal += svcTotal;
+          // Service row - show empty price/total (price is on labor row)
           const trSvc = document.createElement('tr');
-          trSvc.innerHTML = `<td style="padding-left:20px;">${service.name}</td><td style="text-align:center">${svcQty}</td><td style="text-align:right">${svcPrice.toFixed(2)}</td><td style="text-align:right">${svcTotal.toFixed(2)}</td>`;
+          trSvc.innerHTML = `<td style="padding-left:20px;">${service.name}</td><td style="text-align:center"></td><td style="text-align:right"></td><td style="text-align:right"></td>`;
           itemsTbody.appendChild(trSvc);
 
-          // Labor row
+          // Labor row - this is where the price shows
           const laborQty = Number(labor.qty) || 0;
           const laborPrice = Number(labor.price) || 0;
           const laborTotal = laborQty * laborPrice;
@@ -785,8 +783,8 @@ import { getShopData } from './helpers/storage.js';
           trLabor.innerHTML = `<td style="padding-left:20px;">${displayLaborName}</td><td style="text-align:center">${laborQty}</td><td style="text-align:right">${laborPrice.toFixed(2)}</td><td style="text-align:right">${laborTotal.toFixed(2)}</td>`;
           itemsTbody.appendChild(trLabor);
 
-          // Group subtotal
-          const groupSubtotal = svcTotal + laborTotal;
+          // Group subtotal (only labor total since service has no separate price)
+          const groupSubtotal = laborTotal;
           const trSubtotal = document.createElement('tr');
           trSubtotal.innerHTML = `<td colspan="3" style="text-align:right;padding-right:10px;font-weight:500;font-style:italic;">Subtotal</td><td style="text-align:right;font-weight:500;">${groupSubtotal.toFixed(2)}</td>`;
           itemsTbody.appendChild(trSubtotal);
