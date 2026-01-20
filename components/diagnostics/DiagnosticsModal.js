@@ -199,13 +199,35 @@ function showSearchView() {
 
 window.diagShowSearch = showSearchView;
 window.diagUpdateVehicle = function() {
+  const prevMake = selectedVehicle.make;
+  const prevModel = selectedVehicle.model;
+
   selectedVehicle.year = document.getElementById('diagYearSelect')?.value || '';
   selectedVehicle.make = document.getElementById('diagMakeSelect')?.value || '';
-  selectedVehicle.model = document.getElementById('diagModelSelect')?.value || '';
+  // read model after we update make/year
   const modelSel = document.getElementById('diagModelSelect');
-  if (modelSel && selectedVehicle.make) {
-    modelSel.innerHTML = `<option value="">Model</option>` + getModelsForMake(selectedVehicle.make).map(m => `<option value="${m}">${m}</option>`).join('');
+
+  // Only rebuild the model list if the make changed (or if models are empty)
+  if (modelSel) {
+    if (selectedVehicle.make && selectedVehicle.make !== prevMake) {
+      const models = getModelsForMake(selectedVehicle.make) || [];
+      modelSel.innerHTML = `<option value="">Model</option>` + models.map(m => `<option value="${m}">${m}</option>`).join('');
+      modelSel.disabled = models.length === 0;
+      // try to restore previous model if it still exists
+      if (prevModel && models.includes(prevModel)) {
+        modelSel.value = prevModel;
+        selectedVehicle.model = prevModel;
+      } else {
+        // clear selected model when make changed
+        modelSel.value = '';
+        selectedVehicle.model = '';
+      }
+    } else {
+      // make didn't change — simply read the current model value
+      selectedVehicle.model = modelSel.value || '';
+    }
   }
+
   updateVehicleDisplay();
 };
 window.diagQuickSearch = function(q) { document.getElementById('diagSearchInput').value = q; window.diagDoSearch(); };
