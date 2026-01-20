@@ -29,6 +29,16 @@ if (HAS_STRIPE_KEY) {
 
 const app = express();
 
+// Simple request logger to help debug incoming requests (method, path, origin)
+app.use((req, res, next) => {
+  try {
+    const origin = req.headers.origin || req.headers.referer || 'no-origin';
+    console.log(`[request] ${req.method} ${req.path} origin=${origin} host=${req.headers.host}`);
+  } catch (e) {
+    // ignore logging errors
+  }
+  return next();
+});
 // Normalize frontend origin from env (ensure scheme and no trailing slash)
 function normalizeOrigin(val) {
   if (!val) return val;

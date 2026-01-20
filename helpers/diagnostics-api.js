@@ -19,13 +19,15 @@ import { getSupabaseClient } from './supabase.js';
 function getApiBaseUrl() {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
-    // Local development - Express server runs on port 3000
+    // Local development - Express server runs on port 4000 (observed at runtime)
     if (host === 'localhost' || host === '127.0.0.1') {
       return 'http://127.0.0.1:4000';
     }
+    // Always use the Vercel backend for production
+    return 'https://xpose-stripe-server.vercel.app';
   }
-  // Production - same origin
-  return '';
+  // Fallback for non-browser environments
+  return 'https://xpose-stripe-server.vercel.app';
 }
 
 // ============================================
