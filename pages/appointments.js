@@ -2178,7 +2178,7 @@ async function renderAppointments(appointments = allAppointments) {
     if (!isStaffUser) {
       statusSpan.style.cursor = 'pointer';
       statusSpan.title = 'Click to change status';
-      statusSpan.addEventListener('click', () => openStatusModal(appt));
+      statusSpan.addEventListener('click', (e) => { e.stopPropagation(); openStatusModal(appt); });
     }
     tdStatus.appendChild(statusSpan);
     tr.appendChild(tdStatus);

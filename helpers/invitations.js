@@ -299,8 +299,11 @@ function createInvitationsModal() {
       <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; border-bottom: 1px solid var(--line);">
         <h2 style="margin: 0;">Notifications</h2>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button id="markAllInvitationsRead" class="btn" style="font-size:13px;">Mark all read</button>
-          <button id="clearAllInvitationsRead" class="btn" style="font-size:13px;">Clear all read</button>
+          <div class="desktop-inv-actions">
+            <button id="markAllInvitationsRead" class="btn" style="font-size:13px;">Mark all read</button>
+            <button id="clearAllInvitationsRead" class="btn" style="font-size:13px;">Clear all read</button>
+          </div>
+          <button id="invNotifOverflow" class="mobile-inv-overflow btn" aria-haspopup="dialog" aria-expanded="false" style="display:none;font-size:16px;line-height:1;padding:6px 8px">&hellip;</button>
           <button id="closeInvitationsModal" class="btn" aria-label="Close">✕</button>
         </div>
       </div>
@@ -314,6 +317,27 @@ function createInvitationsModal() {
   modal.querySelector('#closeInvitationsModal').addEventListener('click', () => {
     modal.classList.add('hidden');
   });
+
+  // Inject responsive styles for invitation modal actions (only once)
+  if (!document.getElementById('invit-actions-styles')) {
+    const st = document.createElement('style');
+    st.id = 'invit-actions-styles';
+    st.innerHTML = `
+      .desktop-inv-actions{ display:flex; gap:8px; align-items:center; }
+      .mobile-inv-overflow{ display:none; }
+      @media (max-width:600px){
+        .desktop-inv-actions{ display:none !important; }
+        .mobile-inv-overflow{ display:inline-flex !important; }
+      }
+    `;
+    document.head.appendChild(st);
+  }
+
+  // Mobile overflow button opens a small actions modal (delegates to hidden desktop buttons)
+  const overflowBtn = modal.querySelector('#invNotifOverflow');
+  if (overflowBtn) {
+    overflowBtn.addEventListener('click', () => { openInvActionsModal(); });
+  }
 
   // Click outside to close
   modal.addEventListener('click', (e) => {
@@ -473,6 +497,57 @@ function createInvitationsModal() {
   }
 
   return modal;
+}
+
+// Small modal for mobile to expose the same actions (marks/clear)
+function openInvActionsModal(){
+  if (document.getElementById('invActionsModalOverlay')) return;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'invActionsModalOverlay';
+  overlay.className = 'modal-overlay';
+  overlay.style.display = 'flex';
+  overlay.innerHTML = `
+    <div class="modal-content card" style="max-width:320px;margin:18vh auto;padding:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <strong>Notification actions</strong>
+        <button id="closeInvActionsModal" class="btn">✕</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-direction:column;">
+        <button id="modalMarkAllInvitationsRead" class="btn">Mark all read</button>
+        <button id="modalClearAllInvitationsRead" class="btn">Clear all read</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Delegates: trigger the hidden desktop buttons so existing handlers run
+  const markBtn = document.getElementById('markAllInvitationsRead');
+  const clearBtn = document.getElementById('clearAllInvitationsRead');
+
+  overlay.querySelector('#modalMarkAllInvitationsRead').addEventListener('click', () => {
+    if (markBtn) markBtn.click();
+    closeInvActionsModal();
+  });
+  overlay.querySelector('#modalClearAllInvitationsRead').addEventListener('click', () => {
+    if (clearBtn) clearBtn.click();
+    closeInvActionsModal();
+  });
+
+  overlay.querySelector('#closeInvActionsModal').addEventListener('click', () => { closeInvActionsModal(); });
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeInvActionsModal(); });
+  const esc = (e) => { if (e.key === 'Escape') closeInvActionsModal(); };
+  overlay._esc = esc;
+  window.addEventListener('keydown', esc);
+}
+
+function closeInvActionsModal(){
+  const ov = document.getElementById('invActionsModalOverlay');
+  if (!ov) return;
+  if (ov._esc) window.removeEventListener('keydown', ov._esc);
+  ov.remove();
 }
 
 /**
