@@ -133,8 +133,14 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // For Twilio webhooks
 
-// Serve static files
-app.use(express.static('.'));
+// Serve static files - but NOT for /api routes (let Express routes handle those)
+app.use((req, res, next) => {
+  // Skip static file serving for /api routes
+  if (req.path.startsWith('/api')) {
+    return next();
+  }
+  express.static('.')(req, res, next);
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -2316,6 +2322,194 @@ app.post('/api/send-tracking', async (req, res) => {
   }
 });
 
+// ===========================
+// AI LABOR LOOKUP Route
+// ===========================
+
+app.post('/api/ai-labor-lookup', async (req, res) => {
+  console.log('[AI-Labor] Request received:', JSON.stringify(req.body, null, 2));
+  
+  const {
+    operationId,
+    operationName,
+    dbLaborHours,
+    vehicleYear,
+    vehicleMake,
+    vehicleModel,
+    engineType
+  } = req.body;
+
+  // Validate required fields
+  if (!operationName || !vehicleYear || !vehicleMake || !vehicleModel) {
+    return res.status(400).json({ 
+      status: 'error', 
+      error: 'Missing required fields',
+      fallback: true
+    });
+  }
+
+  // Check for OpenAI key
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) {
+    console.error('[AI-Labor] OPENAI_API_KEY not configured');
+    return res.status(500).json({
+      status: 'error',
+      error: 'OpenAI API key not configured',
+      fallback: true
+    });
+  }
+
+  // Initialize Supabase
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  let supabase = null;
+  if (supabaseUrl && supabaseServiceKey) {
+    const { createClient } = require('@supabase/supabase-js');
+    supabase = createClient(supabaseUrl, supabaseServiceKey);
+  }
+
+  try {
+    // Check cache first
+    if (supabase && operationId) {
+      try {
+        let cacheQuery = supabase
+          .from('vehicle_labor_cache')
+          .select('*')
+          .eq('operation_id', operationId)
+          .eq('vehicle_year', vehicleYear)
+          .ilike('vehicle_make', vehicleMake)
+          .ilike('vehicle_model', vehicleModel);
+
+        if (engineType) {
+          cacheQuery = cacheQuery.ilike('engine_type', engineType);
+        }
+
+        const { data: cachedResults } = await cacheQuery;
+
+        if (cachedResults?.length > 0) {
+          if (engineType || cachedResults.length === 1) {
+            const cached = cachedResults[0];
+            console.log('[AI-Labor] Cache HIT');
+            return res.json({
+              status: 'complete',
+              source: 'cache',
+              data: {
+                engine_type: cached.engine_type,
+                labor_hours_low: cached.ai_labor_hours_low,
+                labor_hours_typical: cached.ai_labor_hours_typical,
+                labor_hours_high: cached.ai_labor_hours_high,
+                confidence: cached.ai_labor_confidence,
+                labor_notes: cached.ai_labor_notes,
+                sources: cached.sources || [],
+                required_tools: cached.required_tools || [],
+                vehicle_specific_tips: cached.vehicle_specific_tips || []
+              }
+            });
+          } else if (cachedResults.length > 1) {
+            return res.json({
+              status: 'needs_engine_selection',
+              source: 'cache',
+              variants: cachedResults.map(c => ({
+                engine_type: c.engine_type,
+                labor_hours_low: c.ai_labor_hours_low,
+                labor_hours_typical: c.ai_labor_hours_typical,
+                labor_hours_high: c.ai_labor_hours_high,
+                confidence: c.ai_labor_confidence,
+                notes: c.ai_labor_notes,
+                is_most_common: c.is_most_common || false
+              }))
+            });
+          }
+        }
+      } catch (cacheErr) {
+        console.warn('[AI-Labor] Cache query failed:', cacheErr.message);
+      }
+    }
+
+    // Call OpenAI
+    console.log('[AI-Labor] Calling OpenAI for:', vehicleYear, vehicleMake, vehicleModel, '-', operationName);
+
+    const searchPrompt = `Find the REAL labor time for this automotive repair:
+
+SERVICE: ${operationName}
+VEHICLE: ${vehicleYear} ${vehicleMake} ${vehicleModel}
+${engineType ? `ENGINE: ${engineType}` : ''}
+${dbLaborHours ? `DB ESTIMATE: ${dbLaborHours.low}-${dbLaborHours.high} hrs` : ''}
+
+Respond with JSON:
+{
+  "needs_engine_selection": boolean,
+  "engine_variants": [{"engine_type": "2.5L", "is_most_common": true, "labor_hours_low": 0.8, "labor_hours_typical": 1.0, "labor_hours_high": 1.2, "confidence": "high", "notes": "..."}],
+  "single_result": {"engine_type": "All", "labor_hours_low": number, "labor_hours_typical": number, "labor_hours_high": number, "confidence": "high"|"medium"|"low", "labor_notes": "...", "sources": [], "required_tools": [], "vehicle_specific_tips": []}
+}`;
+
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: 'You are an automotive labor time expert. Respond with ONLY valid JSON.' },
+          { role: 'user', content: searchPrompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 2000,
+        response_format: { type: 'json_object' }
+      })
+    });
+
+    if (!openaiResponse.ok) {
+      throw new Error(`OpenAI API error: ${openaiResponse.status}`);
+    }
+
+    const openaiData = await openaiResponse.json();
+    const aiResult = JSON.parse(openaiData.choices[0]?.message?.content || '{}');
+    console.log('[AI-Labor] OpenAI result:', JSON.stringify(aiResult, null, 2));
+
+    // Handle multiple engine variants
+    if (aiResult.needs_engine_selection && !engineType && aiResult.engine_variants?.length > 1) {
+      return res.json({
+        status: 'needs_engine_selection',
+        source: 'ai',
+        variants: aiResult.engine_variants
+      });
+    }
+
+    // Single result
+    const result = aiResult.single_result || aiResult;
+
+    return res.json({
+      status: 'complete',
+      source: 'ai',
+      data: {
+        engine_type: result.engine_type || engineType || 'all',
+        labor_hours_low: result.labor_hours_low,
+        labor_hours_typical: result.labor_hours_typical,
+        labor_hours_high: result.labor_hours_high,
+        confidence: result.confidence || 'medium',
+        labor_notes: result.labor_notes,
+        sources: result.sources || [],
+        required_tools: result.required_tools || [],
+        vehicle_specific_tips: result.vehicle_specific_tips || []
+      }
+    });
+
+  } catch (error) {
+    console.error('[AI-Labor] Error:', error.message);
+    return res.status(500).json({
+      status: 'error',
+      error: error.message,
+      fallback: true
+    });
+  }
+});
+
+console.log('✅ AI Labor Lookup route registered');
+
 // Twilio Messaging Routes
 // ===========================
 
@@ -2345,8 +2539,8 @@ try {
   // Get messages for a thread
   app.get('/api/messaging/messages/:threadId', messagingAPI.getMessages);
 
-  // Permanently delete a thread (service-role)
-  app.delete('/api/messaging/threads/:threadId', messagingAPI.deleteThread);
+  // Permanently delete a thread (service-role) - disabled, function not exported
+  // app.delete('/api/messaging/threads/:threadId', messagingAPI.deleteThread);
 
   // Release/delete a Twilio number
   app.delete('/api/messaging/numbers/:numberId', messagingAPI.releaseNumber);

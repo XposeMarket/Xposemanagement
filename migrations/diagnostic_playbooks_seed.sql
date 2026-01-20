@@ -10,6 +10,11 @@ VALUES ('global', 'P0300 - Random/Multiple Cylinder Misfire Detected',
   ARRAY['misfire', 'random misfire', 'multiple cylinder'],
   '{
     "summary": "Random or multiple cylinder misfire detected. Common causes include ignition system issues, fuel delivery problems, or vacuum leaks.",
+    "triage_questions": [
+      {"q": "Is the check engine light flashing?", "answers": ["Yes - flashing", "No - steady", "No light"]},
+      {"q": "When is the misfire most noticeable?", "answers": ["At idle", "Under acceleration", "All the time", "Cold start only"]},
+      {"q": "Any recent work done on the vehicle?", "answers": ["Yes - tune-up related", "Yes - other work", "No recent work"]}
+    ],
     "likely_causes": [
       {"name": "Ignition coil failure", "description": "Coils can fail intermittently under load"},
       {"name": "Spark plug worn/fouled", "description": "Check gap and condition"},
@@ -27,7 +32,8 @@ VALUES ('global', 'P0300 - Random/Multiple Cylinder Misfire Detected',
     "what_results_mean": [
       {"condition": "Misfire follows coil", "then": "Replace ignition coil"},
       {"condition": "Plugs oil-fouled", "then": "Check valve seals/rings"},
-      {"condition": "Plugs white/lean", "then": "Vacuum leak or fuel delivery issue"}
+      {"condition": "Plugs white/lean", "then": "Vacuum leak or fuel delivery issue"},
+      {"condition": "Flashing CEL", "then": "STOP driving - potential cat damage"}
     ],
     "safety_warnings": ["Do not drive with flashing CEL - can damage catalytic converter"],
     "suggested_services": [
@@ -208,7 +214,7 @@ VALUES ('global', 'AC Not Blowing Cold Air',
   }'::jsonb, 0.80)
 ON CONFLICT DO NOTHING;
 
--- Overheating
+-- Overheating (with triage questions!)
 INSERT INTO public.diagnostic_playbooks (scope, title, symptoms, dtc_codes, keywords, playbook, confidence)
 VALUES ('global', 'Engine Overheating Diagnosis',
   ARRAY['overheating', 'overheat', 'temp_high', 'hot'],
@@ -234,6 +240,12 @@ VALUES ('global', 'Engine Overheating Diagnosis',
       {"title": "Check cooling fans", "description": "Should come on with AC or high temp"},
       {"title": "Pressure test", "description": "Find external leaks"},
       {"title": "Check for combustion gases", "description": "Block test for head gasket"}
+    ],
+    "what_results_mean": [
+      {"condition": "Overheats at idle only", "then": "Cooling fan issue or airflow restriction"},
+      {"condition": "Heater blows cold", "then": "Low coolant, thermostat stuck, or water pump failure"},
+      {"condition": "Coolant loss with no visible leak", "then": "Possible head gasket - combustion test needed"},
+      {"condition": "White smoke from exhaust", "then": "Likely head gasket or cracked head"}
     ],
     "safety_warnings": ["Never open radiator cap when hot", "Steam can cause severe burns"],
     "suggested_services": [
@@ -269,6 +281,161 @@ VALUES ('global', 'P0128 - Coolant Thermostat Below Regulating Temperature',
       {"name": "Coolant Temp Sensor Replacement", "labor_hours": 0.5}
     ]
   }'::jsonb, 0.88)
+ON CONFLICT DO NOTHING;
+
+-- Check Engine Light (general - with triage questions!)
+INSERT INTO public.diagnostic_playbooks (scope, title, symptoms, dtc_codes, keywords, playbook, confidence)
+VALUES ('global', 'Check Engine Light On - General Diagnosis',
+  ARRAY['check_engine', 'cel', 'engine_light', 'mil'],
+  ARRAY[]::text[],
+  ARRAY['check engine', 'check engine light', 'CEL', 'engine light', 'MIL'],
+  '{
+    "summary": "Check engine light is illuminated. Need to scan for codes to determine specific issue.",
+    "triage_questions": [
+      {"q": "Is the light steady or flashing?", "answers": ["Steady", "Flashing"]},
+      {"q": "Any noticeable driveability issues?", "answers": ["Runs rough", "Loss of power", "Stalling", "Runs fine"]},
+      {"q": "Any recent fuel fill-up?", "answers": ["Yes - within last day", "No"]}
+    ],
+    "likely_causes": [
+      {"name": "Emissions related", "description": "Most common - O2 sensors, cat, EVAP"},
+      {"name": "Loose gas cap", "description": "Triggers EVAP codes"},
+      {"name": "Ignition/fuel issue", "description": "If driveability symptoms present"},
+      {"name": "Sensor failure", "description": "Various sensors can trigger CEL"}
+    ],
+    "diagnostic_steps": [
+      {"title": "Scan for codes", "description": "Read DTCs and freeze frame data"},
+      {"title": "Check gas cap", "description": "Ensure tight - clear codes if loose"},
+      {"title": "Research specific codes", "description": "Look up procedures for codes found"}
+    ],
+    "what_results_mean": [
+      {"condition": "Flashing CEL", "then": "SEVERE MISFIRE - stop driving immediately"},
+      {"condition": "P0440-P0457 codes", "then": "EVAP system - often gas cap related"},
+      {"condition": "Light on after fuel fill", "then": "Likely loose gas cap - tighten and drive"}
+    ],
+    "safety_warnings": ["Flashing CEL = severe misfire - can damage catalytic converter"],
+    "suggested_services": [
+      {"name": "Diagnostic Scan", "labor_hours": 0.5},
+      {"name": "Gas Cap Replacement", "labor_hours": 0.1}
+    ]
+  }'::jsonb, 0.70)
+ON CONFLICT DO NOTHING;
+
+-- Battery Drain (with triage questions!)
+INSERT INTO public.diagnostic_playbooks (scope, title, symptoms, dtc_codes, keywords, playbook, confidence)
+VALUES ('global', 'Battery Drain / Parasitic Draw',
+  ARRAY['battery_drain', 'dead_battery', 'parasitic_draw'],
+  ARRAY[]::text[],
+  ARRAY['battery drain', 'dead battery', 'parasitic draw', 'battery dies'],
+  '{
+    "summary": "Battery drains when vehicle sits. Could be a parasitic draw from a module staying awake or a failing battery.",
+    "triage_questions": [
+      {"q": "How long until battery is dead?", "answers": ["Overnight", "Few days", "Week or more"]},
+      {"q": "How old is the battery?", "answers": ["Less than 2 years", "2-4 years", "Over 4 years", "Unknown"]},
+      {"q": "Any aftermarket accessories?", "answers": ["Yes - stereo/alarm/lights", "No"]}
+    ],
+    "likely_causes": [
+      {"name": "Old/weak battery", "description": "Cannot hold charge"},
+      {"name": "Parasitic draw", "description": "Something staying on"},
+      {"name": "Alternator diode failure", "description": "Backfeeding battery"},
+      {"name": "Aftermarket accessories", "description": "Improperly wired draining battery"}
+    ],
+    "diagnostic_steps": [
+      {"title": "Test battery", "description": "Load test and check CCA"},
+      {"title": "Measure parasitic draw", "description": "Should be under 50mA after sleep"},
+      {"title": "Pull fuses one by one", "description": "Find circuit causing draw"}
+    ],
+    "what_results_mean": [
+      {"condition": "Draw over 50mA", "then": "Parasitic draw present - isolate circuit"},
+      {"condition": "Battery fails load test", "then": "Replace battery first"},
+      {"condition": "Dies overnight", "then": "Significant draw - likely module not sleeping"}
+    ],
+    "safety_warnings": ["Disconnect battery negative when working on electrical"],
+    "suggested_services": [
+      {"name": "Battery Test", "labor_hours": 0.3},
+      {"name": "Parasitic Draw Test", "labor_hours": 1.0},
+      {"name": "Battery Replacement", "labor_hours": 0.3}
+    ]
+  }'::jsonb, 0.82)
+ON CONFLICT DO NOTHING;
+
+-- Rough Idle (with triage questions!)
+INSERT INTO public.diagnostic_playbooks (scope, title, symptoms, dtc_codes, keywords, playbook, confidence)
+VALUES ('global', 'Rough Idle Diagnosis',
+  ARRAY['rough_idle', 'shaking', 'idle_surge', 'vibration'],
+  ARRAY[]::text[],
+  ARRAY['rough idle', 'shaking at idle', 'vibration', 'idle rough', 'engine shakes'],
+  '{
+    "summary": "Engine runs rough at idle. Could be ignition, fuel, air, or mechanical issue.",
+    "triage_questions": [
+      {"q": "Is check engine light on?", "answers": ["Yes", "No"]},
+      {"q": "When is it most noticeable?", "answers": ["Cold start", "Warm engine", "Always"]},
+      {"q": "Any recent tune-up or maintenance?", "answers": ["Yes - within 30k miles", "No - overdue", "Unknown"]}
+    ],
+    "likely_causes": [
+      {"name": "Spark plugs worn", "description": "Check if overdue for replacement"},
+      {"name": "Vacuum leak", "description": "Causes lean misfire at idle"},
+      {"name": "Dirty throttle body", "description": "Carbon buildup affecting airflow"},
+      {"name": "Fuel injector issue", "description": "Dirty or stuck injector"},
+      {"name": "Motor mount worn", "description": "Transmits vibration to cabin"}
+    ],
+    "diagnostic_steps": [
+      {"title": "Scan for codes", "description": "Check for misfire or lean codes"},
+      {"title": "Inspect spark plugs", "description": "Check condition and gap"},
+      {"title": "Check vacuum lines", "description": "Look for cracks, loose connections"},
+      {"title": "Inspect throttle body", "description": "Check for carbon buildup"},
+      {"title": "Check motor mounts", "description": "Look for cracks, excessive play"}
+    ],
+    "what_results_mean": [
+      {"condition": "Misfire codes present", "then": "Focus on ignition system"},
+      {"condition": "Lean codes present", "then": "Look for vacuum leaks"},
+      {"condition": "No codes, rough when cold only", "then": "Could be normal or IAC/throttle body"}
+    ],
+    "safety_warnings": [],
+    "suggested_services": [
+      {"name": "Spark Plug Replacement", "labor_hours": 1.0},
+      {"name": "Throttle Body Cleaning", "labor_hours": 0.5},
+      {"name": "Smoke Test - Vacuum Leak", "labor_hours": 0.5},
+      {"name": "Motor Mount Replacement", "labor_hours": 1.5}
+    ]
+  }'::jsonb, 0.80)
+ON CONFLICT DO NOTHING;
+
+-- Transmission Issues (with triage questions!)
+INSERT INTO public.diagnostic_playbooks (scope, title, symptoms, dtc_codes, keywords, playbook, confidence)
+VALUES ('global', 'Transmission Shifting Issues',
+  ARRAY['hard_shift', 'slipping', 'no_shift', 'transmission'],
+  ARRAY[]::text[],
+  ARRAY['transmission', 'hard shift', 'slipping', 'wont shift', 'jerking'],
+  '{
+    "summary": "Transmission is not shifting properly. Could be fluid level, solenoid, or internal mechanical issue.",
+    "triage_questions": [
+      {"q": "What is the symptom?", "answers": ["Hard shifts", "Slipping", "Wont shift at all", "Delayed engagement"]},
+      {"q": "Is check engine/transmission light on?", "answers": ["Yes", "No"]},
+      {"q": "When was fluid last serviced?", "answers": ["Recently", "Over 50k miles ago", "Never/unknown"]}
+    ],
+    "likely_causes": [
+      {"name": "Low/burnt fluid", "description": "Check level and condition"},
+      {"name": "Solenoid failure", "description": "Electronic shift control"},
+      {"name": "Valve body issue", "description": "Hydraulic control problem"},
+      {"name": "Internal damage", "description": "Clutch packs, bands worn"}
+    ],
+    "diagnostic_steps": [
+      {"title": "Check fluid", "description": "Level and condition (should be red, not brown/burnt)"},
+      {"title": "Scan for codes", "description": "Check transmission-specific DTCs"},
+      {"title": "Road test", "description": "Note when and how symptoms occur"},
+      {"title": "Check for leaks", "description": "Pan gasket, lines, cooler"}
+    ],
+    "what_results_mean": [
+      {"condition": "Fluid brown/burnt smell", "then": "Internal damage likely - may need rebuild"},
+      {"condition": "Specific solenoid codes", "then": "May be able to replace solenoid only"},
+      {"condition": "Fluid low with leak", "then": "Fix leak, refill, retest"}
+    ],
+    "safety_warnings": ["Driving with transmission issues can cause further damage"],
+    "suggested_services": [
+      {"name": "Transmission Fluid Service", "labor_hours": 1.0},
+      {"name": "Transmission Diagnosis", "labor_hours": 1.0}
+    ]
+  }'::jsonb, 0.75)
 ON CONFLICT DO NOTHING;
 
 SELECT 'Diagnostic playbooks inserted. Total: ' || COUNT(*) as result FROM public.diagnostic_playbooks;
