@@ -6,15 +6,9 @@
  * Caches results globally for platform-wide reuse
  */
 
-import { createClient } from '@supabase/supabase-js';
+const { createClient } = require('@supabase/supabase-js');
 
-// Initialize Supabase with service role key for write access
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -27,6 +21,8 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  console.log('[ai-labor-lookup] Request received');
 
   // Check for required env vars
   if (!process.env.OPENAI_API_KEY) {
@@ -46,6 +42,12 @@ export default async function handler(req, res) {
       fallback: true
     });
   }
+
+  // Initialize Supabase
+  const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
 
   const {
     operationId,
@@ -73,7 +75,6 @@ export default async function handler(req, res) {
     // STEP 1: Check cache first
     // ========================================
     let cachedResults = [];
-    let cacheError = null;
 
     try {
       let cacheQuery = supabase
@@ -90,29 +91,17 @@ export default async function handler(req, res) {
 
       const result = await cacheQuery;
       cachedResults = result.data || [];
-      cacheError = result.error;
 
-      if (cacheError) {
-        console.error('[ai-labor-lookup] Cache query error:', cacheError.message);
-        // Continue anyway - cache might not exist yet
+      if (result.error) {
+        console.error('[ai-labor-lookup] Cache query error:', result.error.message);
       }
     } catch (e) {
       console.error('[ai-labor-lookup] Cache query exception:', e.message);
-      // Continue anyway - table might not exist
     }
 
     // If we have engine type and exact cache hit, return it
-    if (engineType && cachedResults?.length >= 1) {
+    if (engineType && cachedResults.length >= 1) {
       const cached = cachedResults[0];
-      
-      // Increment hit count (don't await, fire and forget)
-      supabase
-        .from('vehicle_labor_cache')
-        .update({ hit_count: (cached.hit_count || 0) + 1 })
-        .eq('id', cached.id)
-        .then(() => {})
-        .catch(() => {});
-
       console.log(`[ai-labor-lookup] Cache HIT for ${vehicleYear} ${vehicleMake} ${vehicleModel} ${engineType}`);
 
       return res.json({
@@ -123,7 +112,7 @@ export default async function handler(req, res) {
     }
 
     // If no engine type but we have multiple cached variants, ask user to pick
-    if (!engineType && cachedResults?.length > 1) {
+    if (!engineType && cachedResults.length > 1) {
       const variants = cachedResults.map(c => ({
         engine_type: c.engine_type,
         labor_hours_low: c.ai_labor_hours_low,
@@ -145,16 +134,8 @@ export default async function handler(req, res) {
     }
 
     // If we have exactly one cached result, return it
-    if (!engineType && cachedResults?.length === 1) {
+    if (!engineType && cachedResults.length === 1) {
       const cached = cachedResults[0];
-      
-      supabase
-        .from('vehicle_labor_cache')
-        .update({ hit_count: (cached.hit_count || 0) + 1 })
-        .eq('id', cached.id)
-        .then(() => {})
-        .catch(() => {});
-
       console.log(`[ai-labor-lookup] Cache HIT (single) for ${vehicleYear} ${vehicleMake} ${vehicleModel}`);
 
       return res.json({
@@ -178,70 +159,45 @@ export default async function handler(req, res) {
       dbLaborHours
     });
 
-    // Use gpt-4o only (no turbo fallbacks)
-    const models = ['gpt-4o'];
-    let aiResult = null;
-    let lastError = null;
-
-    for (const model of models) {
-      try {
-        console.log(`[ai-labor-lookup] Trying model: ${model}`);
-        
-        const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert automotive service advisor and labor time researcher. Find REAL, ACCURATE labor times from actual industry sources like RepairPal, YourMechanic, Mitchell 1, MOTOR, AllData, and automotive forums. Be specific to the exact vehicle. You must respond with ONLY valid JSON, no markdown.'
           },
-          body: JSON.stringify({
-            model: model,
-            messages: [
-              {
-                role: 'system',
-                content: `You are an expert automotive service advisor and labor time researcher. Find REAL, ACCURATE labor times from actual industry sources like RepairPal, YourMechanic, Mitchell 1, MOTOR, AllData, and automotive forums. Be specific to the exact vehicle. You must respond with ONLY valid JSON, no markdown.`
-              },
-              {
-                role: 'user',
-                content: searchPrompt
-              }
-            ],
-            temperature: 0.3,
-            max_tokens: 2000,
-            response_format: { type: 'json_object' }
-          })
-        });
+          {
+            role: 'user',
+            content: searchPrompt
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 2000,
+        response_format: { type: 'json_object' }
+      })
+    });
 
-        if (!openaiResponse.ok) {
-          const errorText = await openaiResponse.text();
-          console.error(`[ai-labor-lookup] OpenAI ${model} error:`, openaiResponse.status, errorText);
-          lastError = `OpenAI ${model}: ${openaiResponse.status}`;
-          continue; // Try next model
-        }
-
-        const openaiData = await openaiResponse.json();
-        const aiContent = openaiData.choices[0]?.message?.content;
-
-        if (!aiContent) {
-          lastError = 'No content in OpenAI response';
-          continue;
-        }
-
-        aiResult = JSON.parse(aiContent);
-        console.log(`[ai-labor-lookup] ${model} succeeded`);
-        break; // Success!
-
-      } catch (e) {
-        console.error(`[ai-labor-lookup] ${model} failed:`, e.message);
-        lastError = e.message;
-        continue;
-      }
+    if (!openaiResponse.ok) {
+      const errorText = await openaiResponse.text();
+      console.error('[ai-labor-lookup] OpenAI error:', openaiResponse.status, errorText);
+      throw new Error(`OpenAI API error: ${openaiResponse.status}`);
     }
 
-    if (!aiResult) {
-      throw new Error(lastError || 'All OpenAI models failed');
+    const openaiData = await openaiResponse.json();
+    const aiContent = openaiData.choices[0]?.message?.content;
+
+    if (!aiContent) {
+      throw new Error('No content in OpenAI response');
     }
 
-    console.log('[ai-labor-lookup] AI result:', JSON.stringify(aiResult, null, 2));
+    const aiResult = JSON.parse(aiContent);
+    console.log('[ai-labor-lookup] OpenAI succeeded');
 
     // ========================================
     // STEP 3: Handle the response
@@ -250,7 +206,7 @@ export default async function handler(req, res) {
     if (aiResult.needs_engine_selection && !engineType && aiResult.engine_variants?.length > 1) {
       // Multiple engines found - cache each variant
       for (const variant of aiResult.engine_variants) {
-        await upsertCacheEntry({
+        await upsertCacheEntry(supabase, {
           operationId,
           vehicleYear,
           vehicleMake,
@@ -281,7 +237,7 @@ export default async function handler(req, res) {
     const finalEngineType = result.engine_type || engineType || 'all';
 
     // Cache the result
-    await upsertCacheEntry({
+    await upsertCacheEntry(supabase, {
       operationId,
       vehicleYear,
       vehicleMake,
@@ -322,7 +278,7 @@ export default async function handler(req, res) {
       fallback: true
     });
   }
-}
+};
 
 /**
  * Format cached data for response
@@ -393,7 +349,7 @@ Confidence: high = multiple sources agree, medium = some data, low = estimated.`
 /**
  * Upsert a cache entry
  */
-async function upsertCacheEntry({
+async function upsertCacheEntry(supabase, {
   operationId,
   vehicleYear,
   vehicleMake,
