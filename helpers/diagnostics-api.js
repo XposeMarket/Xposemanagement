@@ -435,9 +435,11 @@ export async function getVehicleSpecificLabor({
   }
 
   try {
-    // Use the correct API base URL
-    const apiBase = getApiBaseUrl();
-    const apiUrl = `${apiBase}/api/ai-labor-lookup`;
+    // Use Vercel backend in production; keep local host for dev
+    const isLocalHost = (typeof window !== 'undefined') && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const apiUrl = isLocalHost
+      ? 'http://127.0.0.1:4000/api/ai-labor-lookup'
+      : 'https://xpose-stripe-server.vercel.app/api/ai-labor-lookup';
     
     console.log(`[diagnostics-api] Fetching AI labor from: ${apiUrl}`);
     console.log(`[diagnostics-api] Vehicle: ${vehicle.year} ${vehicle.make} ${vehicle.model} - ${operationName}`);
