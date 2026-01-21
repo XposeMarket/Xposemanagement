@@ -77,9 +77,9 @@ function createModal() {
     <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 900px; width: 95%; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;">
       <div class="modal-head" style="padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex; align-items: center; gap: 12px;">
-          <span style="font-size: 24px;">🔧</span>
-          <div>
-            <h3 style="margin: 0; font-size: 1.2rem;">Repair Assistant</h3>
+          <img src="/assets/cortex-mark.png" alt="Cortex" style="width:28px;height:28px;object-fit:contain;" />
+          <div style="display:flex;align-items:center;gap:10px;">
+            <h3 style="margin: 0; font-size: 1.2rem;">Cortex</h3>
             <p id="diagVehicleInfo" style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--muted);">Search diagnostics, services, or repairs</p>
           </div>
         </div>
@@ -669,7 +669,7 @@ function renderOperationView(op, rate, hrs, vehicle) {
           <div style="display: flex; align-items: center; gap: 12px;">
             <div style="width: 24px; height: 24px; border: 3px solid #f59e0b; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
             <div>
-              <div style="font-weight: 600; color: #92400e;">🔍 Researching labor times...</div>
+              <div style="font-weight: 600; color: #92400e;">🔍 Cortex is Researching labor times...</div>
               <div style="font-size: 0.85rem; color: #b45309;">${vehicle.year} ${vehicle.make} ${vehicle.model}</div>
             </div>
           </div>

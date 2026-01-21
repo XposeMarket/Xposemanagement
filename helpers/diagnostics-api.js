@@ -411,6 +411,13 @@ export const COMMON_MODELS = {
 };
 
 export function getModelsForMake(make) {
+  try {
+    if (typeof window !== 'undefined' && window.VEHICLE_DATA && window.VEHICLE_DATA[make] && window.VEHICLE_DATA[make].models) {
+      return Object.keys(window.VEHICLE_DATA[make].models).sort();
+    }
+  } catch (e) {
+    // ignore and fallback
+  }
   return COMMON_MODELS[make] || [];
 }
 
