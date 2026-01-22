@@ -6,8 +6,9 @@
 import { 
   unifiedSearch, getPlaybookById, getOperationById, logSearchRequest, recordFixOutcome,
   getFixStatistics, submitFeedback, getCommonDtcInfo, COMMON_MAKES, getYearOptions, getModelsForMake,
-  getVehicleSpecificLabor
+  getVehicleSpecificLabor, getAiDiagnosticAnalysis
 } from '../../helpers/diagnostics-api.js';
+import { getAiGeneralDiagnosis } from '../../helpers/diagnostics-api.js';
 import { getSupabaseClient } from '../../helpers/supabase.js';
 
 // State
@@ -26,6 +27,9 @@ let aiLaborState = {
   selectedEngine: null,
   error: null
 };
+
+// AI Diagnostic cache to avoid re-requesting while modal re-renders
+let aiDiagCache = {}; // { [playbookId]: { requested: bool, loading: bool, result: object|null, error: string|null } }
 
 let currentIsStaff = false;
 export function openDiagnosticsModal({ jobs = [], appointments = [], onClose, isStaff = false }) {
@@ -414,19 +418,100 @@ window.diagViewPlaybook = async function(id) {
   const pb = playbook.playbook || {}, rate = getDefaultLaborRate();
   const canAdd = !!currentJob && !currentIsStaff;
   const noJobMsg = currentIsStaff ? '' : '<span style="font-size: 0.8rem; color: var(--muted); font-style: italic;">Select job to add</span>';
-  
+
   // Initialize triage answers for this playbook if not exists
   if (!triageAnswers[id]) triageAnswers[id] = {};
-  
+
   // Check if has triage questions
   const hasTriageQ = pb.triage_questions && pb.triage_questions.length > 0;
   const recommendations = hasTriageQ ? getTriageRecommendation(id, pb.triage_questions) : null;
-  
+
+  // --- AI Diagnostic Analysis State (non-blocking) ---
+  let aiDiagHtml = '';
+  let aiDiagResult = null;
+  let aiDiagLoading = false;
+  let aiDiagError = null;
+
+  // General AI HTML for playbooks without triage
+  let generalAiHtml = '';
+
+  // Determine cache entry for this playbook
+  const cacheKey = id;
+  if (!aiDiagCache[cacheKey]) aiDiagCache[cacheKey] = { requested: false, loading: false, result: null, error: null };
+  const entry = aiDiagCache[cacheKey];
+
+  // If all triage questions are answered, trigger AI analysis asynchronously (non-blocking)
+  let answeredAll = false;
+  if (hasTriageQ) {
+    answeredAll = pb.triage_questions.every((_, i) => triageAnswers[id][i]);
+    if (answeredAll && !entry.requested) {
+      // mark requested and loading, then fetch in background
+      entry.requested = true;
+      entry.loading = true;
+      // Re-render immediately so users see the loading panel
+      try { window.diagViewPlaybook(id); } catch (e) { /* ignore */ }
+      (async () => {
+        try {
+          const triageQA = pb.triage_questions.map((q, i) => ({ question: q.q, answer: triageAnswers[id][i] }));
+          const likelyCauses = (pb.likely_causes || []).map(c => typeof c === 'string' ? c : (c.name || c));
+          const vehicle = currentVehicle || selectedVehicle;
+          const res = await getAiDiagnosticAnalysis({
+            playbookId: id,
+            playbookTitle: playbook.title,
+            vehicleYear: vehicle?.year,
+            vehicleMake: vehicle?.make,
+            vehicleModel: vehicle?.model,
+            engineType: vehicle?.engine,
+            triageAnswers: triageQA,
+            likelyCauses
+          });
+          entry.result = res;
+          entry.loading = false;
+        } catch (e) {
+          entry.error = e.message || 'AI analysis failed';
+          entry.loading = false;
+        }
+        // Re-render the playbook view to show results
+        try { window.diagViewPlaybook(id); } catch (e) { /* ignore */ }
+      })();
+    }
+  }
+
+  // If there are NO triage questions, trigger the general diagnosis AI asynchronously
+  if (!hasTriageQ) {
+    const vehicle = currentVehicle || selectedVehicle;
+    if (vehicle?.year && vehicle?.make && vehicle?.model && !entry.requested) {
+      entry.requested = true;
+      entry.loading = true;
+      // Re-render immediately to show loading state
+      try { window.diagViewPlaybook(id); } catch (e) { /* ignore */ }
+      (async () => {
+        try {
+          const res = await getAiGeneralDiagnosis({
+            diagnosisTitle: playbook.title,
+            vehicleYear: vehicle.year,
+            vehicleMake: vehicle.make,
+            vehicleModel: vehicle.model
+          });
+          entry.result = res;
+          entry.loading = false;
+        } catch (e) {
+          entry.error = e.message || 'General analysis failed';
+          entry.loading = false;
+        }
+        try { window.diagViewPlaybook(id); } catch (e) { /* ignore */ }
+      })();
+    }
+  }
+
+  // Read values from cache for rendering
+  aiDiagResult = entry.result;
+  aiDiagLoading = entry.loading;
+  aiDiagError = entry.error;
+
   // Build triage questions HTML
   let triageHtml = '';
   if (hasTriageQ) {
-    const answeredAll = pb.triage_questions.every((_, i) => triageAnswers[id][i]);
-    
     triageHtml = `
       <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 2px solid #f59e0b; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;">
         <h4 style="margin: 0 0 16px 0; color: #92400e; display: flex; align-items: center; gap: 8px;">
@@ -446,9 +531,9 @@ window.diagViewPlaybook = async function(id) {
                       ? 'background: #10b981; color: white; border-color: #10b981;' 
                       : 'background: white; color: #374151; border: 1px solid #d1d5db;';
                     return `<button 
-                      onclick="window.diagAnswerTriage('${id}', ${idx}, '${ans.replace(/'/g, "\\'")}')" 
-                      class="btn small" 
-                      style="${btnStyle} padding: 8px 16px; border-radius: 20px; font-size: 0.9rem; transition: all 0.2s;">
+                      onclick=\"window.diagAnswerTriage('${id}', ${idx}, '${ans.replace(/'/g, "\\'")}')\" 
+                      class=\"btn small\" 
+                      style=\"${btnStyle} padding: 8px 16px; border-radius: 20px; font-size: 0.9rem; transition: all 0.2s;\">
                       ${isSelected ? '✓ ' : ''}${ans}
                     </button>`;
                   }).join('')}
@@ -457,20 +542,50 @@ window.diagViewPlaybook = async function(id) {
             `;
           }).join('')}
         </div>
-        
         <!-- Recommendations based on answers -->
-        <div id="triageRecommendations" style="margin-top: 16px; ${recommendations ? '' : 'display: none;'}">
+        <div id=\"triageRecommendations\" style=\"margin-top: 16px; ${recommendations ? '' : 'display: none;'}\">
           ${recommendations ? `
-            <div style="background: white; border-radius: 8px; padding: 12px 16px; border-left: 4px solid #10b981;">
-              <h5 style="margin: 0 0 8px 0; color: #166534; display: flex; align-items: center; gap: 6px;">
+            <div style=\"background: white; border-radius: 8px; padding: 12px 16px; border-left: 4px solid #10b981;\">
+              <h5 style=\"margin: 0 0 8px 0; color: #166534; display: flex; align-items: center; gap: 6px;\">
                 <span>💡</span> Based on your answers:
               </h5>
-              <ul style="margin: 0; padding-left: 20px; color: #1f2937;">
-                ${recommendations.map(r => `<li style="margin-bottom: 4px;">${r.text}${r.service ? ` → <strong>${r.service}</strong>` : ''}</li>`).join('')}
+              <ul style=\"margin: 0; padding-left: 20px; color: #1f2937;\">
+                ${recommendations.map(r => `<li style=\"margin-bottom: 4px;\">${r.text}${r.service ? ` → <strong>${r.service}</strong>` : ''}</li>`).join('')}
               </ul>
             </div>
           ` : ''}
         </div>
+        <!-- Triage questions area: questions + recommendations + inline triage analysis -->
+        ${(answeredAll && (aiDiagLoading || aiDiagResult)) ? `
+          <div style="margin-top: 20px;">
+            <h4 style="margin: 0 0 8px 0; color: #0e7490; display: flex; align-items: center; gap: 8px;"><span>🤖</span> Cortex Triage Analysis</h4>
+            ${aiDiagLoading ? `
+              <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 2px solid #f59e0b; border-radius: 8px; padding: 16px; margin-top: 8px; position: relative;">
+                <div style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px;">
+                  <div style="width:24px;height:24px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation: spin 1s linear infinite;position:absolute;top:0;left:0;"></div>
+                </div>
+                <div style="margin-left: 56px;">
+                  <div style="font-weight:600;color:#92400e;">🔍 Cortex is analyzing your answers...</div>
+                </div>
+              </div>
+            ` : ''}
+            ${aiDiagError ? `<div style="color: #991b1b;">Analysis failed: ${aiDiagError}</div>` : ''}
+            ${aiDiagResult && aiDiagResult.status !== 'error' ? (() => {
+              let confColor = '#64748b', confBg = '#f1f5f9', confBorder = '#cbd5e1';
+              if (aiDiagResult.confidence === 'high') { confColor = '#166534'; confBg = '#dcfce7'; confBorder = '#86efac'; }
+              else if (aiDiagResult.confidence === 'medium') { confColor = '#92400e'; confBg = '#fef3c7'; confBorder = '#fcd34d'; }
+              else if (aiDiagResult.confidence === 'low') { confColor = '#991b1b'; confBg = '#fee2e2'; confBorder = '#fecaca'; }
+              return `
+                <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 14px 16px; margin-top: 8px;">
+                  <div style="font-size: 1.1rem; color: #0369a1; font-weight: 600;">Most Probable Cause: <span style="color: #0e7490;">${aiDiagResult.probableCause || aiDiagResult.cause || 'N/A'}</span></div>
+                  ${aiDiagResult.explanation ? `<div style="margin-top: 8px; color: #334155;">${aiDiagResult.explanation}</div>` : ''}
+                  ${aiDiagResult.whatToCheck ? `<div style="margin-top: 8px; color: #0e7490;"><strong>What to check:</strong> ${aiDiagResult.whatToCheck}</div>` : ''}
+                  ${aiDiagResult.confidence ? `<div style="margin-top: 8px;"><span style="font-size: 0.85rem; padding: 4px 12px; border-radius: 12px; background: ${confBg}; color: ${confColor}; font-weight: 600; border: 1px solid ${confBorder};">${(aiDiagResult.confidence || '').toUpperCase()} CONFIDENCE</span></div>` : ''}
+                </div>
+              `;
+            })() : ''}
+          </div>
+        ` : ''}
       </div>
     `;
   }
@@ -485,14 +600,43 @@ window.diagViewPlaybook = async function(id) {
         </div>
         <div style="padding: 20px;">
           ${pb.summary ? `<p style="margin: 0 0 20px 0; line-height: 1.6;">${pb.summary}</p>` : ''}
-          
+
+          ${ (!hasTriageQ && (aiDiagLoading || aiDiagResult)) ? `
+            <div style="margin-top: 20px;">
+              <h4 style="margin: 0 0 8px 0; color: #0e7490; display: flex; align-items: center; gap: 8px;"><span>🤖</span> Cortex Analysis</h4>
+              ${aiDiagLoading ? `
+                <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 2px solid #f59e0b; border-radius: 8px; padding: 16px; margin-top: 8px; position: relative;">
+                  <div style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px;">
+                    <div style="width: 24px; height: 24px; border: 3px solid #f59e0b; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; position:absolute; top:0; left:0;"></div>
+                  </div>
+                  <div style="margin-left: 56px;">
+                    <div style="font-weight:600;color:#92400e;">🔍 Cortex is researching most probable causes...</div>
+                    <div style="font-size:0.85rem;color:#b45309;">${(currentVehicle || selectedVehicle)?.year || ''} ${(currentVehicle || selectedVehicle)?.make || ''} ${(currentVehicle || selectedVehicle)?.model || ''}</div>
+                  </div>
+                </div>
+              ` : ''}
+              ${aiDiagError ? `<div style="color: #991b1b;">Analysis failed: ${aiDiagError}</div>` : ''}
+              ${aiDiagResult && aiDiagResult.status !== 'error' ? (() => {
+                let confColor = '#64748b', confBg = '#f1f5f9', confBorder = '#cbd5e1';
+                if (aiDiagResult.confidence === 'high') { confColor = '#166534'; confBg = '#dcfce7'; confBorder = '#86efac'; }
+                else if (aiDiagResult.confidence === 'medium') { confColor = '#92400e'; confBg = '#fef3c7'; confBorder = '#fcd34d'; }
+                else if (aiDiagResult.confidence === 'low') { confColor = '#991b1b'; confBg = '#fee2e2'; confBorder = '#fecaca'; }
+                return `
+                  <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 14px 16px; margin-top: 8px;">
+                    <div style="font-size: 1.1rem; color: #0369a1; font-weight: 600;">Most Probable Cause: <span style="color: #0e7490;">${aiDiagResult.probableCause || aiDiagResult.cause || 'N/A'}</span></div>
+                    ${aiDiagResult.explanation ? `<div style="margin-top: 8px; color: #334155;">${aiDiagResult.explanation}</div>` : ''}
+                    ${aiDiagResult.whatToCheck ? `<div style="margin-top: 8px; color: #0e7490;"><strong>What to check:</strong> ${aiDiagResult.whatToCheck}</div>` : ''}
+                    ${aiDiagResult.confidence ? `<div style="margin-top: 8px;"><span style="font-size: 0.85rem; padding: 4px 12px; border-radius: 12px; background: ${confBg}; color: ${confColor}; font-weight: 600; border: 1px solid ${confBorder};">${(aiDiagResult.confidence || '').toUpperCase()} CONFIDENCE</span></div>` : ''}
+                  </div>
+                `;
+              })() : ''}
+            </div>
+          ` : ''}
+
           <!-- TRIAGE QUESTIONS (if available) -->
           ${triageHtml}
-          
           ${pb.likely_causes?.length ? `<h4 style="margin: 0 0 12px 0;">🎯 Likely Causes</h4><ol style="margin: 0 0 20px 0; padding-left: 20px;">${pb.likely_causes.map((c, i) => `<li style="margin-bottom: 8px; ${i === 0 ? 'color: #10b981; font-weight: 600;' : ''}"><strong>${c.name || c}</strong>${c.description ? `<br><span style="font-size: 0.9rem; color: var(--muted);">${c.description}</span>` : ''}</li>`).join('')}</ol>` : ''}
-          
           ${pb.diagnostic_steps?.length ? `<h4 style="margin: 0 0 12px 0;">🔍 Diagnostic Steps</h4><div style="border: 1px solid var(--line); border-radius: 8px; margin-bottom: 20px;">${pb.diagnostic_steps.map((s, i) => `<div style="padding: 12px 16px; ${i < pb.diagnostic_steps.length - 1 ? 'border-bottom: 1px solid var(--line);' : ''} display: flex; gap: 12px;"><span style="background: #3b82f6; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; flex-shrink: 0;">${i + 1}</span><div><strong>${s.title || s}</strong>${s.description ? `<p style="margin: 4px 0 0 0; font-size: 0.9rem; color: var(--muted);">${s.description}</p>` : ''}</div></div>`).join('')}</div>` : ''}
-          
           ${pb.what_results_mean?.length ? `
             <h4 style="margin: 0 0 12px 0;">📋 What Results Mean</h4>
             <div style="border: 1px solid var(--line); border-radius: 8px; margin-bottom: 20px; overflow: hidden;">
@@ -506,9 +650,7 @@ window.diagViewPlaybook = async function(id) {
               `).join('')}
             </div>
           ` : ''}
-          
           ${pb.safety_warnings?.length ? `<div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px 16px; margin-bottom: 20px;"><h4 style="margin: 0 0 8px 0; color: #991b1b;">⚠️ Safety Warnings</h4><ul style="margin: 0; padding-left: 20px; color: #991b1b;">${pb.safety_warnings.map(w => `<li>${w}</li>`).join('')}</ul></div>` : ''}
-          
           ${!currentIsStaff && pb.suggested_services?.length ? `<h4 style="margin: 0 0 12px 0;">🛠️ Suggested Services</h4><div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">${pb.suggested_services.map(svc => {
             const name = svc.name || svc, hrs = svc.labor_hours || 1, est = hrs * rate.rate;
             return `<div style="padding: 12px 16px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">

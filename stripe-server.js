@@ -1,3 +1,8 @@
+
+// ...existing code...
+
+
+
 /**
  * stripe-server.js
  * Stripe payment integration server
@@ -2518,7 +2523,154 @@ Respond with JSON:
   }
 });
 
+
+// ===========================
+// AI DIAGNOSTIC TRIAGE Route
+// ===========================
+
+app.post('/api/ai-diagnostic-triage', async (req, res) => {
+  console.log('[AI-Triage] Request received:', JSON.stringify(req.body, null, 2));
+  try {
+    const {
+      playbookId,
+      playbookTitle,
+      vehicleYear,
+      vehicleMake,
+      vehicleModel,
+      engineType,
+      triageAnswers = [],
+      likelyCauses = []
+    } = req.body;
+
+    // Validate required fields
+    if (!playbookTitle || !vehicleYear || !vehicleMake || !vehicleModel || !triageAnswers.length || !likelyCauses.length) {
+      return res.status(400).json({ 
+        status: 'error', 
+        error: 'Missing required fields',
+        fallback: true
+      });
+    }
+
+    // Check for OpenAI key
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (!openaiKey) {
+      console.error('[AI-Triage] OPENAI_API_KEY not configured');
+      return res.status(500).json({
+        status: 'error',
+        error: 'OpenAI API key not configured',
+        fallback: true
+      });
+    }
+
+    // Compose prompt for OpenAI
+    const triageText = triageAnswers.map((qa, i) => `${i+1}. Q: ${qa.question}\n   A: ${qa.answer}`).join('\n');
+    const causesText = likelyCauses.map((c, i) => `${i+1}. ${c}`).join('\n');
+    const searchPrompt = `You are an expert automotive diagnostician. Given the following vehicle and diagnosis context, analyze real-world web results and return the most probable cause (from the provided list), a vehicle-specific explanation, and what to check next.\n\nVEHICLE: ${vehicleYear} ${vehicleMake} ${vehicleModel}${engineType ? `\nENGINE: ${engineType}` : ''}\nDIAGNOSIS: ${playbookTitle}\nTRIAGE ANSWERS:\n${triageText}\nLIKELY CAUSES:\n${causesText}\n\nRespond with JSON:\n{\n  \'probableCause\': string,\n  \'explanation\': string,\n  \'whatToCheck\': string,\n  \'confidence\': 'high'|'medium'|'low',\n  \'sources\': [string]\n}`;
+
+    // Call OpenAI
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: 'You are an expert automotive diagnostician. Respond with ONLY valid JSON.' },
+          { role: 'user', content: searchPrompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 1200,
+        response_format: { type: 'json_object' }
+      })
+    });
+
+    if (!openaiResponse.ok) {
+      throw new Error(`OpenAI API error: ${openaiResponse.status}`);
+    }
+
+    const openaiData = await openaiResponse.json();
+    const aiResult = JSON.parse(openaiData.choices[0]?.message?.content || '{}');
+    console.log('[AI-Triage] OpenAI result:', JSON.stringify(aiResult, null, 2));
+
+    return res.json({
+      probableCause: aiResult.probableCause || aiResult.cause || 'Unknown',
+      explanation: aiResult.explanation || '',
+      whatToCheck: aiResult.whatToCheck || '',
+      confidence: aiResult.confidence || 'medium',
+      sources: aiResult.sources || []
+    });
+
+  } catch (e) {
+    console.error('[AI-Triage] Error:', e.message);
+    res.status(500).json({ error: e.message || 'Internal server error' });
+  }
+});
+
 console.log('✅ AI Labor Lookup route registered');
+console.log('✅ AI Diagnostic Triage route registered');
+
+// ===========================
+// AI DIAGNOSIS GENERAL Route
+// ===========================
+
+app.post('/api/ai-diagnosis-general', async (req, res) => {
+  console.log('[AI-GeneralDiagnosis] Request received:', JSON.stringify(req.body, null, 2));
+  try {
+    const { diagnosisTitle, vehicleYear, vehicleMake, vehicleModel } = req.body;
+
+    if (!diagnosisTitle || !vehicleYear || !vehicleMake || !vehicleModel) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (!openaiKey) {
+      console.error('[AI-GeneralDiagnosis] OPENAI_API_KEY not configured');
+      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    }
+
+    const searchPrompt = `You are an expert automotive diagnostician. Given the following vehicle and symptom/diagnosis, search real-world web results and return the single most common cause for this issue on this vehicle.\n\nVEHICLE: ${vehicleYear} ${vehicleMake} ${vehicleModel}\nSYMPTOM/DIAGNOSIS: ${diagnosisTitle}\n\nRespond with JSON:\n{\n  'probableCause': string,\n  'explanation': string,\n  'confidence': 'high'|'medium'|'low',\n  'sources': [string]\n}`;
+
+    const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: 'You are an expert automotive diagnostician. Respond with ONLY valid JSON.' },
+          { role: 'user', content: searchPrompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 800,
+        response_format: { type: 'json_object' }
+      })
+    });
+
+    if (!openaiResponse.ok) {
+      throw new Error(`OpenAI API error: ${openaiResponse.status}`);
+    }
+
+    const openaiData = await openaiResponse.json();
+    const aiResult = JSON.parse(openaiData.choices[0]?.message?.content || '{}');
+    console.log('[AI-GeneralDiagnosis] OpenAI result:', JSON.stringify(aiResult, null, 2));
+
+    return res.json({
+      probableCause: aiResult.probableCause || aiResult.cause || 'Unknown',
+      explanation: aiResult.explanation || '',
+      confidence: aiResult.confidence || 'medium',
+      sources: aiResult.sources || []
+    });
+
+  } catch (e) {
+    console.error('[AI-GeneralDiagnosis] Error:', e.message);
+    res.status(500).json({ error: e.message || 'Internal server error' });
+  }
+});
+
 
 // Twilio Messaging Routes
 // ===========================

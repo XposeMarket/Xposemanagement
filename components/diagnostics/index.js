@@ -1,6 +1,15 @@
 /**
  * components/diagnostics/index.js
- * Export all diagnostic components
+ * Module wrapper that exposes diagnostics modal functions from the global attach
+ * so ESM importers can use them even when the modal file is loaded as a non-module.
  */
 
-export { openDiagnosticsModal, closeDiagnosticsModal } from './DiagnosticsModal.js';
+export function openDiagnosticsModal(...args) {
+	return (typeof window !== 'undefined' && window.openDiagnosticsModal) ? window.openDiagnosticsModal(...args) : null;
+}
+
+export function closeDiagnosticsModal(...args) {
+	return (typeof window !== 'undefined' && window.closeDiagnosticsModal) ? window.closeDiagnosticsModal(...args) : null;
+}
+
+export default { openDiagnosticsModal, closeDiagnosticsModal };

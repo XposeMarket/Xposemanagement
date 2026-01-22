@@ -1,4 +1,82 @@
 /**
+ * Get vehicle-specific diagnostic analysis from AI based on triage answers
+ * Calls /api/ai-diagnostic-triage on backend
+ * @param {Object} params
+ * @param {string|number} params.playbookId - The playbook/diagnosis ID
+ * @param {string} params.playbookTitle - The diagnosis title
+ * @param {number|string} params.vehicleYear
+ * @param {string} params.vehicleMake
+ * @param {string} params.vehicleModel
+ * @param {string|null} [params.engineType]
+ * @param {Array<{question: string, answer: string}>} params.triageAnswers
+ * @param {Array<string>} params.likelyCauses - List of likely causes from playbook
+ * @returns {Promise<Object>} AI result: { probableCause, explanation, whatToCheck, confidence, ... }
+ */
+export async function getAiDiagnosticAnalysis({
+  playbookId,
+  playbookTitle,
+  vehicleYear,
+  vehicleMake,
+  vehicleModel,
+  engineType = null,
+  triageAnswers = [],
+  likelyCauses = []
+}) {
+  // If no vehicle info, skip AI lookup
+  if (!vehicleYear || !vehicleMake || !vehicleModel || !playbookTitle) {
+    console.log('[diagnostics-api] Missing info for AI diagnostic triage');
+    return { status: 'skipped', reason: 'Missing required info' };
+  }
+
+  try {
+    const isLocalHost = (typeof window !== 'undefined') && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const apiUrl = isLocalHost
+      ? 'http://127.0.0.1:4000/api/ai-diagnostic-triage'
+      : 'https://xpose-stripe-server.vercel.app/api/ai-diagnostic-triage';
+
+    console.log(`[diagnostics-api] Fetching AI diagnostic triage from: ${apiUrl}`);
+    console.log(`[diagnostics-api] Vehicle: ${vehicleYear} ${vehicleMake} ${vehicleModel} - ${playbookTitle}`);
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playbookId,
+        playbookTitle,
+        vehicleYear: parseInt(vehicleYear),
+        vehicleMake,
+        vehicleModel,
+        engineType,
+        triageAnswers,
+        likelyCauses
+      })
+    });
+
+    console.log('[diagnostics-api] AI triage HTTP status:', response.status);
+
+    if (!response.ok) {
+      const text = await response.text();
+      let parsed = null;
+      try { parsed = JSON.parse(text); } catch (e) {}
+      console.error('[diagnostics-api] AI triage lookup failed:', response.status, parsed || text);
+      return {
+        status: 'error',
+        error: parsed?.error || `HTTP ${response.status}`,
+        fallback: true,
+        httpStatus: response.status
+      };
+    }
+
+    const result = await response.json();
+    console.log('[diagnostics-api] AI triage result:', result);
+    return result;
+
+  } catch (e) {
+    console.error('[diagnostics-api] getAiDiagnosticAnalysis error:', e);
+    return { status: 'error', fallback: true, error: e.message };
+  }
+}
+/**
  * helpers/diagnostics-api.js
  * 
  * Unified API for diagnostic playbooks AND service operations
@@ -495,6 +573,49 @@ export async function getVehicleSpecificLabor({
 }
 
 /**
+ * Get general vehicle-specific probable cause for a diagnosis/symptom
+ */
+export async function getAiGeneralDiagnosis({ diagnosisTitle, vehicleYear, vehicleMake, vehicleModel }) {
+  if (!diagnosisTitle || !vehicleYear || !vehicleMake || !vehicleModel) {
+    console.log('[diagnostics-api] Missing info for AI general diagnosis');
+    return { status: 'skipped', reason: 'Missing required info' };
+  }
+
+  try {
+    const isLocalHost = (typeof window !== 'undefined') && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const apiUrl = isLocalHost
+      ? 'http://127.0.0.1:4000/api/ai-diagnosis-general'
+      : 'https://xpose-stripe-server.vercel.app/api/ai-diagnosis-general';
+
+    console.log(`[diagnostics-api] Fetching AI general diagnosis from: ${apiUrl}`);
+    console.log(`[diagnostics-api] Vehicle: ${vehicleYear} ${vehicleMake} ${vehicleModel} - ${diagnosisTitle}`);
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ diagnosisTitle, vehicleYear: parseInt(vehicleYear), vehicleMake, vehicleModel })
+    });
+
+    console.log('[diagnostics-api] AI general HTTP status:', response.status);
+
+    if (!response.ok) {
+      const text = await response.text();
+      let parsed = null;
+      try { parsed = JSON.parse(text); } catch (e) {}
+      console.error('[diagnostics-api] AI general lookup failed:', response.status, parsed || text);
+      return { status: 'error', error: parsed?.error || `HTTP ${response.status}`, fallback: true, httpStatus: response.status };
+    }
+
+    const result = await response.json();
+    console.log('[diagnostics-api] AI general result:', result);
+    return result;
+  } catch (e) {
+    console.error('[diagnostics-api] getAiGeneralDiagnosis error:', e);
+    return { status: 'error', fallback: true, error: e.message };
+  }
+}
+
+/**
  * Get cached labor entries for a vehicle (direct Supabase query)
  */
 export async function getCachedLaborForVehicle({ operationId, vehicle }) {
@@ -522,5 +643,5 @@ export default {
   unifiedSearch, searchPlaybooks, searchOperations, getPlaybookById, getOperationById,
   logSearchRequest, logDiagnosticRequest, recordFixOutcome, getFixStatistics,
   submitFeedback, submitPlaybookFeedback, getCommonDtcInfo, COMMON_MAKES, getYearOptions,
-  getModelsForMake, getVehicleSpecificLabor, getCachedLaborForVehicle
+  getModelsForMake, getVehicleSpecificLabor, getCachedLaborForVehicle, getAiDiagnosticAnalysis, getAiGeneralDiagnosis
 };
