@@ -643,7 +643,7 @@ window.diagViewPlaybook = async function(id) {
         <!-- Triage questions area: questions + recommendations + inline triage analysis -->
         ${(answeredAll && (aiDiagLoading || aiDiagResult)) ? `
           <div style="margin-top: 20px;">
-            <h4 style="margin: 0 0 8px 0; color: #0e7490; display: flex; align-items: center; gap: 8px;"><span>🤖</span> Cortex Triage Analysis</h4>
+            <h4 style="margin: 0 0 8px 0; color: #0e7490; display: flex; align-items: center; gap: 8px;"><img src="/assets/cortex-mark.png" alt="Cortex" style="width:22px;height:22px;object-fit:contain;display:block;"> Cortex Triage Analysis</h4>
             ${aiDiagLoading ? `
               <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 2px solid #f59e0b; border-radius: 8px; padding: 16px; margin-top: 8px; position: relative;">
                 <div style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px;">
@@ -710,7 +710,7 @@ window.diagViewPlaybook = async function(id) {
               if (hasVehicle) {
                 return `
                   <div style="background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%); border: 2px solid #a855f7; border-radius: 12px; padding: 20px; text-align: center;">
-                    <div style="font-size: 2rem; margin-bottom: 12px;">🤖</div>
+                    <div style="margin-bottom: 12px;"><img src="/assets/cortex-mark.png" alt="Cortex" style="width:40px;height:40px;object-fit:contain;display:block;margin:0 auto;"></div>
                     <h4 style="margin: 0 0 8px 0; color: #6d28d9;">Cortex-Powered Diagnosis</h4>
                     <p style="margin: 0 0 16px 0; color: #7c3aed; font-size: 0.9rem;">
                       Cortex will ask 3-5 smart questions to pinpoint the issue for your <strong>${vehicle.year} ${vehicle.make} ${vehicle.model}</strong>, then provide TSBs, recalls, and recommendations.
@@ -736,7 +736,7 @@ window.diagViewPlaybook = async function(id) {
 
           ${ (!hasTriageQ && (aiDiagLoading || aiDiagResult)) ? `
             <div style="margin-top: 20px;">
-              <h4 style="margin: 0 0 8px 0; color: #0e7490; display: flex; align-items: center; gap: 8px;"><span>🤖</span> Cortex Analysis</h4>
+              <h4 style="margin: 0 0 8px 0; color: #0e7490; display: flex; align-items: center; gap: 8px;"><img src="/assets/cortex-mark.png" alt="Cortex" style="width:22px;height:22px;object-fit:contain;display:block;"> Cortex Analysis</h4>
               ${aiDiagLoading ? `
                 <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 2px solid #f59e0b; border-radius: 8px; padding: 16px; margin-top: 8px; position: relative;">
                   <div style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px;">
@@ -1853,8 +1853,8 @@ function renderDynamicTriageUI(playbookId) {
     // Initial state - show start button
     html = `
       <div style="background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%); border: 2px solid #a855f7; border-radius: 12px; padding: 20px; text-align: center;">
-        <div style="font-size: 2rem; margin-bottom: 12px;">🤖</div>
-        <h4 style="margin: 0 0 8px 0; color: #6d28d9;">AI-Powered Diagnosis</h4>
+        <div style="margin-bottom: 12px;"><img src="/assets/cortex-mark.png" alt="Cortex" style="width:40px;height:40px;object-fit:contain;display:block;margin:0 auto;"></div>
+        <h4 style="margin: 0 0 8px 0; color: #6d28d9;">Cortex-Powered Diagnosis</h4>
         <p style="margin: 0 0 16px 0; color: #7c3aed; font-size: 0.9rem;">
           Cortex will ask 3-5 smart questions to pinpoint the issue, then provide TSBs, recalls, and recommendations.
         </p>
