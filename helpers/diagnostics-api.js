@@ -639,9 +639,90 @@ export async function getCachedLaborForVehicle({ operationId, vehicle }) {
   }
 }
 
+// ============================================
+// AI DYNAMIC TRIAGE (Conversational Diagnosis)
+// ============================================
+
+/**
+ * Start or continue an AI-powered diagnostic conversation
+ * AI asks 3-5 smart questions then provides diagnosis with TSBs/recalls
+ * 
+ * @param {Object} params
+ * @param {string} params.symptom - The symptom/issue being diagnosed
+ * @param {number|string} params.vehicleYear
+ * @param {string} params.vehicleMake  
+ * @param {string} params.vehicleModel
+ * @param {string} [params.engineType] - Optional engine type
+ * @param {Array<{role: string, content: string}>} [params.conversation] - Conversation history
+ * @param {number} [params.questionCount] - Number of questions asked so far
+ * @returns {Promise<Object>} Either a question or final diagnosis
+ */
+export async function getAiDynamicTriage({
+  symptom,
+  vehicleYear,
+  vehicleMake,
+  vehicleModel,
+  engineType = null,
+  conversation = [],
+  questionCount = 0
+}) {
+  if (!symptom || !vehicleYear || !vehicleMake || !vehicleModel) {
+    console.log('[diagnostics-api] Missing info for AI dynamic triage');
+    return { type: 'error', error: 'Missing required vehicle/symptom info' };
+  }
+
+  try {
+    const isLocalHost = (typeof window !== 'undefined') && 
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const apiUrl = isLocalHost
+      ? 'http://127.0.0.1:4000/api/ai-dynamic-triage'
+      : 'https://xpose-stripe-server.vercel.app/api/ai-dynamic-triage';
+
+    console.log(`[diagnostics-api] AI Dynamic Triage: ${vehicleYear} ${vehicleMake} ${vehicleModel} - ${symptom}`);
+    console.log(`[diagnostics-api] Question count: ${questionCount}, Conversation length: ${conversation.length}`);
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        symptom,
+        vehicleYear: parseInt(vehicleYear),
+        vehicleMake,
+        vehicleModel,
+        engineType,
+        conversation,
+        questionCount
+      })
+    });
+
+    console.log('[diagnostics-api] AI dynamic triage HTTP status:', response.status);
+
+    if (!response.ok) {
+      const text = await response.text();
+      let parsed = null;
+      try { parsed = JSON.parse(text); } catch (e) {}
+      console.error('[diagnostics-api] AI dynamic triage failed:', response.status, parsed || text);
+      return {
+        type: 'error',
+        error: parsed?.error || `HTTP ${response.status}`,
+        httpStatus: response.status
+      };
+    }
+
+    const result = await response.json();
+    console.log('[diagnostics-api] AI dynamic triage result:', result);
+    return result;
+
+  } catch (e) {
+    console.error('[diagnostics-api] getAiDynamicTriage error:', e);
+    return { type: 'error', error: e.message };
+  }
+}
+
 export default {
   unifiedSearch, searchPlaybooks, searchOperations, getPlaybookById, getOperationById,
   logSearchRequest, logDiagnosticRequest, recordFixOutcome, getFixStatistics,
   submitFeedback, submitPlaybookFeedback, getCommonDtcInfo, COMMON_MAKES, getYearOptions,
-  getModelsForMake, getVehicleSpecificLabor, getCachedLaborForVehicle, getAiDiagnosticAnalysis, getAiGeneralDiagnosis
+  getModelsForMake, getVehicleSpecificLabor, getCachedLaborForVehicle, getAiDiagnosticAnalysis, getAiGeneralDiagnosis,
+  getAiDynamicTriage
 };

@@ -175,6 +175,20 @@ app.get('/', (req, res) => {
   });
 });
 
+// Mount AI dynamic triage endpoint from server-endpoints if available
+try {
+  const aiDynamicHandler = require('./server-endpoints/ai-dynamic-triage');
+  if (typeof aiDynamicHandler === 'function') {
+    app.post('/api/ai-dynamic-triage', aiDynamicHandler);
+    app.options('/api/ai-dynamic-triage', (req, res) => res.sendStatus(200));
+    console.log('Mounted /api/ai-dynamic-triage handler from server-endpoints/ai-dynamic-triage.js');
+  } else {
+    console.warn('ai-dynamic-triage module does not export a function');
+  }
+} catch (err) {
+  console.warn('ai-dynamic-triage handler not mounted:', err && err.message);
+}
+
 // Terminal Price IDs
 const TERMINAL_PRICES = {
   'reader_m2': null, // Free - included

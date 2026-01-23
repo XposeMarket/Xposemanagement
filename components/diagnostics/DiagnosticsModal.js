@@ -6,7 +6,7 @@
 import { 
   unifiedSearch, getPlaybookById, getOperationById, logSearchRequest, recordFixOutcome,
   getFixStatistics, submitFeedback, getCommonDtcInfo, COMMON_MAKES, getYearOptions, getModelsForMake,
-  getVehicleSpecificLabor, getAiDiagnosticAnalysis
+  getVehicleSpecificLabor, getAiDiagnosticAnalysis, getAiDynamicTriage
 } from '../../helpers/diagnostics-api.js';
 import { getAiGeneralDiagnosis } from '../../helpers/diagnostics-api.js';
 import { getSupabaseClient } from '../../helpers/supabase.js';
@@ -31,6 +31,24 @@ let aiLaborState = {
 // AI Diagnostic cache to avoid re-requesting while modal re-renders
 let aiDiagCache = {}; // { [playbookId]: { requested: bool, loading: bool, result: object|null, error: string|null } }
 
+// Dynamic AI Triage State
+let dynamicTriageState = {
+  active: false,
+  loading: false,
+  conversation: [],    // Array of {role: 'assistant'|'user', content: string}
+  questionCount: 0,
+  currentQuestion: null,
+  diagnosis: null,
+  error: null,
+  playbookId: null,
+  symptom: null
+};
+
+// Search results state for client-side filtering
+let diagSearchState = { combined: [], query: '', filter: 'all' };
+
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
 let currentIsStaff = false;
 export function openDiagnosticsModal({ jobs = [], appointments = [], onClose, isStaff = false }) {
   availableJobs = jobs.filter(j => j.status !== 'completed');
@@ -39,6 +57,11 @@ export function openDiagnosticsModal({ jobs = [], appointments = [], onClose, is
   currentJob = currentAppt = currentVehicle = currentResult = null;
   selectedVehicle = { year: '', make: '', model: '' };
   triageAnswers = {};
+  // Reset dynamic triage state
+  dynamicTriageState = {
+    active: false, loading: false, conversation: [], questionCount: 0,
+    currentQuestion: null, diagnosis: null, error: null, playbookId: null, symptom: null
+  };
   loadShopData();
   currentIsStaff = !!isStaff;
   createModal();
@@ -234,7 +257,12 @@ window.diagUpdateVehicle = function() {
 
   updateVehicleDisplay();
 };
-window.diagQuickSearch = function(q) { document.getElementById('diagSearchInput').value = q; window.diagDoSearch(); };
+window.diagQuickSearch = function(q) {
+  const mi = document.getElementById('diagSearchInput');
+  if (mi) mi.value = q;
+  diagSearchState.query = q;
+  window.diagDoSearch();
+};
 
 function showQuickInfo() {
   const input = document.getElementById('diagSearchInput'), container = document.getElementById('diagQuickInfo');
@@ -256,7 +284,7 @@ function showQuickInfo() {
 
 // Search Execution
 window.diagDoSearch = async function() {
-  const query = document.getElementById('diagSearchInput')?.value?.trim() || '';
+  const query = (document.getElementById('diagSearchInput')?.value?.trim()) || (diagSearchState.query || '').trim();
   if (!query) { alert('Please enter a search term'); return; }
 
   const body = document.getElementById('diagModalBody');
@@ -268,6 +296,10 @@ window.diagDoSearch = async function() {
 
   try {
     const results = await unifiedSearch({ query, dtcCodes, symptoms: dtcCodes.length ? [] : [query], vehicleTags });
+    // Cache combined results for client-side filtering
+    diagSearchState.combined = results.combined || [];
+    diagSearchState.query = query;
+    diagSearchState.filter = 'all';
     await logSearchRequest({ searchQuery: query, searchType: dtcCodes.length > 0 ? 'dtc' : 'general', inputData: { query, dtcCodes, vehicleTags },
       resultType: results.combined.length > 0 ? 'found' : 'none', matchedPlaybookId: results.playbooks[0]?.id, matchedOperationId: results.operations[0]?.id,
       jobId: currentJob?.id, vehicleYear: vehicle?.year ? parseInt(vehicle.year) : null, vehicleMake: vehicle?.make, vehicleModel: vehicle?.model });
@@ -281,18 +313,49 @@ function showResultsView(results, query) {
   const { playbooks, operations, combined } = results;
   const rate = getDefaultLaborRate();
 
-  // Build results HTML, hiding service entries for staff users
-  const resultsToShow = combined.slice(0, 10).filter(item => !(currentIsStaff && item.resultType !== 'playbook'));
-  const resultsHtml = resultsToShow.map(item => {
-            const isPB = item.resultType === 'playbook';
-            const icon = isPB ? '🩺' : '🔧', typeLabel = isPB ? 'Diagnostic' : 'Service', color = isPB ? '#8b5cf6' : '#10b981';
-            if (isPB) {
-              const pb = item.playbook || {};
-              // Check if this playbook has triage questions
-              const hasTriageQ = pb.triage_questions && pb.triage_questions.length > 0;
-              const triageIndicator = hasTriageQ ? `<span style="font-size: 0.7rem; padding: 2px 6px; border-radius: 8px; background: #fef3c7; color: #92400e; margin-left: 8px;">🎯 Quick Questions</span>` : '';
-              
-              return `<div style="border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; padding: 16px; cursor: pointer;" onclick="window.diagViewPlaybook('${item.id}')">
+  // Build results HTML - staff can see all results but won't have "Add to Invoice" buttons
+  // We'll render a search input + filter buttons on the results page and allow client-side filtering
+  // The actual list is rendered below by renderResultsList()
+
+  body.innerHTML = `
+    <div style="max-width: 800px; margin: 0 auto;">
+      <button onclick="window.diagShowSearch()" class="btn small" style="margin-bottom: 16px;">← New Search</button>
+      <div id="diagResultsControls" style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+        <div id="diagResultsSearchRow" style="display:flex;gap:8px;align-items:center;flex:1;min-width:0;">
+          <input id="diagResultsSearchInput" type="text" placeholder="Search again (press Enter)" value="${escapeHtml(query)}" style="flex:1;padding:10px;border:1px solid var(--line);border-radius:8px;min-width:0;" onkeypress="if(event.key==='Enter') { const v=this.value; const mi=document.getElementById('diagSearchInput'); if(mi) mi.value=v; diagSearchState.query=v; window.diagDoSearch(); }" />
+          <button id="diagResultsSearchBtn" class="btn info small" style="margin-left:8px;padding:10px 12px;">Search</button>
+        </div>
+        <div id="diagFilters" style="display:flex;gap:8px;margin-left:8px;">
+          <button id="diagFilterAll" class="btn small" style="border-radius:20px;">All</button>
+          <button id="diagFilterServices" class="btn small" style="border-radius:20px;">Services</button>
+          <button id="diagFilterDiagnosis" class="btn small" style="border-radius:20px;">Diagnostics</button>
+        </div>
+      </div>
+      <style>
+        @media (max-width: 600px) {
+          #diagResultsControls { flex-direction: column; align-items: stretch; }
+          #diagResultsSearchRow { width: 100%; }
+          #diagFilters { margin-left: 0; justify-content: flex-start; flex-wrap: wrap; }
+          #diagFilters .btn { margin-top: 6px; }
+        }
+      </style>
+      <div style="background: var(--bg); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px;">
+        <p style="margin: 0; font-size: 0.9rem; color: var(--muted);"><strong>Searched:</strong> "${query}" | Found: ${playbooks.length} diagnostics, ${operations.length} services</p>
+      </div>
+      <div id="diagResultsContainer"></div>
+    </div>`;
+  window._diagResults = results;
+  // Build item HTML (copied from previous rendering logic)
+  function buildItemHtml(item) {
+    const isPB = item.resultType === 'playbook';
+    const icon = isPB ? '🩺' : '🔧';
+    const typeLabel = isPB ? 'Diagnostic' : 'Service';
+    const color = isPB ? '#8b5cf6' : '#10b981';
+    if (isPB) {
+      const pb = item.playbook || {};
+      const hasTriageQ = pb.triage_questions && pb.triage_questions.length > 0;
+      const triageIndicator = hasTriageQ ? `<span style="font-size: 0.7rem; padding: 2px 6px; border-radius: 8px; background: #fef3c7; color: #92400e; margin-left: 8px;">🎯 Quick Questions</span>` : '';
+      return `<div style="border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; padding: 16px; cursor: pointer;" onclick="window.diagViewPlaybook('${item.id}')">
               <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
                 <span style="font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; background: ${color}20; color: ${color};">${icon} ${typeLabel}</span>
                 ${triageIndicator}
@@ -301,9 +364,9 @@ function showResultsView(results, query) {
               <p style="margin: 0; font-size: 0.9rem; color: var(--muted);">${(pb.summary || '').slice(0, 120)}...</p>
               ${(item.dtc_codes || []).length ? `<div style="margin-top: 8px;">${item.dtc_codes.slice(0, 4).map(c => `<span style="font-family: monospace; background: var(--bg); padding: 2px 6px; border-radius: 4px; margin-right: 4px; font-size: 0.8rem;">${c}</span>`).join('')}</div>` : ''}
             </div>`;
-            } else {
-              const hrs = item.labor_hours_typical || 1;
-              return `<div style="border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; padding: 16px; cursor: pointer;" onclick="window.diagViewOperation('${item.id}')">
+    } else {
+      const hrs = item.labor_hours_typical || 1;
+      return `<div style="border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; padding: 16px; cursor: pointer;" onclick="window.diagViewOperation('${item.id}')">
               <div style="display: flex; justify-content: space-between;"><div>
                 <span style="font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; background: ${color}20; color: ${color};">${icon} ${typeLabel}</span>
                 <h4 style="margin: 8px 0 4px 0;">${item.name}</h4>
@@ -313,20 +376,42 @@ function showResultsView(results, query) {
                 <div style="font-size: 0.85rem; color: var(--muted);">~$${(hrs * rate.rate).toFixed(0)} labor</div>
               </div></div>
             </div>`;
-            }
-          }).join('');
+    }
+  }
 
-  body.innerHTML = `
-    <div style="max-width: 800px; margin: 0 auto;">
-      <button onclick="window.diagShowSearch()" class="btn small" style="margin-bottom: 16px;">← New Search</button>
-      <div style="background: var(--bg); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px;">
-        <p style="margin: 0; font-size: 0.9rem; color: var(--muted);"><strong>Searched:</strong> "${query}" | Found: ${playbooks.length} diagnostics, ${operations.length} services</p>
-      </div>
-      <div id="diagResultsContainer">
-        ${resultsHtml}
-      </div>
-    </div>`;
-  window._diagResults = results;
+  function renderResultsList() {
+    const listEl = document.getElementById('diagResultsContainer');
+    const textFilter = (document.getElementById('diagResultsSearchInput')?.value || '').trim().toLowerCase();
+    let items = diagSearchState.combined || results.combined || [];
+    if (diagSearchState.filter === 'services') items = items.filter(i => i.resultType === 'operation');
+    else if (diagSearchState.filter === 'diagnosis') items = items.filter(i => i.resultType === 'playbook');
+    if (textFilter) {
+      items = items.filter(i => (((i.title||i.name||'') + ' ' + (i.playbook?.summary||i.summary||i.description||'')).toLowerCase().includes(textFilter)));
+    }
+    listEl.innerHTML = items.map(buildItemHtml).join('') || `<p class="notice">No results match your filters.</p>`;
+    const countEl = document.getElementById('diagResultsContainer')?.previousElementSibling?.querySelector('p');
+    if (countEl) countEl.innerHTML = `<strong>Searched:</strong> "${escapeHtml(diagSearchState.query||query)}" | Found: ${items.filter(i=>i.resultType==='playbook').length} diagnostics, ${items.filter(i=>i.resultType==='operation').length} services`;
+  }
+
+  // Wire up filters
+  document.getElementById('diagFilterAll')?.addEventListener('click', () => { diagSearchState.filter='all'; renderResultsList(); });
+  document.getElementById('diagFilterServices')?.addEventListener('click', () => { diagSearchState.filter='services'; renderResultsList(); });
+  document.getElementById('diagFilterDiagnosis')?.addEventListener('click', () => { diagSearchState.filter='diagnosis'; renderResultsList(); });
+  // Search button triggers a new full search (same as main search input)
+  document.getElementById('diagResultsSearchBtn')?.addEventListener('click', () => {
+    const q = (document.getElementById('diagResultsSearchInput')?.value || '').trim();
+    if (!q) return alert('Please enter a search term');
+    const mi = document.getElementById('diagSearchInput');
+    if (mi) mi.value = q;
+    diagSearchState.query = q;
+    window.diagDoSearch();
+  });
+
+  // Initialize and render
+  diagSearchState.combined = combined;
+  diagSearchState.query = query;
+  diagSearchState.filter = 'all';
+  renderResultsList();
 }
 
 function showNoResultsView(query) {
@@ -569,7 +654,18 @@ window.diagViewPlaybook = async function(id) {
                 </div>
               </div>
             ` : ''}
-            ${aiDiagError ? `<div style="color: #991b1b;">Analysis failed: ${aiDiagError}</div>` : ''}
+            ${aiDiagError ? `
+              <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px 16px; margin-top: 8px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="font-size: 1.5rem;">⚠️</span>
+                  <div style="flex: 1;">
+                    <div style="font-weight: 600; color: #991b1b;">Cortex Unavailable</div>
+                    <div style="font-size: 0.85rem; color: #7f1d1d; margin-top: 2px;">${aiDiagError}</div>
+                  </div>
+                  <button onclick="window.diagRetryAiAnalysis('${id}', 'triage')" class="btn small" style="background: #ef4444; color: white; border-color: #ef4444;">🔄 Try Again</button>
+                </div>
+              </div>
+            ` : ''}
             ${aiDiagResult && aiDiagResult.status !== 'error' ? (() => {
               let confColor = '#64748b', confBg = '#f1f5f9', confBorder = '#cbd5e1';
               if (aiDiagResult.confidence === 'high') { confColor = '#166534'; confBg = '#dcfce7'; confBorder = '#86efac'; }
@@ -601,6 +697,43 @@ window.diagViewPlaybook = async function(id) {
         <div style="padding: 20px;">
           ${pb.summary ? `<p style="margin: 0 0 20px 0; line-height: 1.6;">${pb.summary}</p>` : ''}
 
+          <!-- AI Dynamic Triage Section -->
+          <div id="dynamicTriageContainer" style="margin-bottom: 20px;">
+            ${(() => {
+              const vehicle = currentVehicle || selectedVehicle;
+              const hasVehicle = vehicle?.year && vehicle?.make && vehicle?.model;
+              // Initialize state for this playbook
+              if (!dynamicTriageState.playbookId) {
+                dynamicTriageState.symptom = playbook.title;
+                dynamicTriageState.playbookId = id;
+              }
+              if (hasVehicle) {
+                return `
+                  <div style="background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%); border: 2px solid #a855f7; border-radius: 12px; padding: 20px; text-align: center;">
+                    <div style="font-size: 2rem; margin-bottom: 12px;">🤖</div>
+                    <h4 style="margin: 0 0 8px 0; color: #6d28d9;">Cortex-Powered Diagnosis</h4>
+                    <p style="margin: 0 0 16px 0; color: #7c3aed; font-size: 0.9rem;">
+                      Cortex will ask 3-5 smart questions to pinpoint the issue for your <strong>${vehicle.year} ${vehicle.make} ${vehicle.model}</strong>, then provide TSBs, recalls, and recommendations.
+                    </p>
+                    <button onclick="window.diagStartDynamicTriage('${id}', '${playbook.title.replace(/'/g, "\\'")}')" 
+                      class="btn" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: white; border: none; padding: 12px 32px; font-size: 1rem;">
+                      🚀 Start Cortex Diagnosis
+                    </button>
+                  </div>
+                `;
+              } else {
+                return `
+                  <div style="background: #f1f5f9; border: 2px dashed #94a3b8; border-radius: 12px; padding: 20px; text-align: center;">
+                    <div style="font-size: 1.5rem; margin-bottom: 8px;">🚗</div>
+                    <p style="margin: 0; color: #64748b; font-size: 0.9rem;">
+                      <strong>Select a vehicle</strong> to unlock Cortex-powered diagnosis with TSBs, recalls, and personalized recommendations.
+                    </p>
+                  </div>
+                `;
+              }
+            })()}
+          </div>
+
           ${ (!hasTriageQ && (aiDiagLoading || aiDiagResult)) ? `
             <div style="margin-top: 20px;">
               <h4 style="margin: 0 0 8px 0; color: #0e7490; display: flex; align-items: center; gap: 8px;"><span>🤖</span> Cortex Analysis</h4>
@@ -615,7 +748,18 @@ window.diagViewPlaybook = async function(id) {
                   </div>
                 </div>
               ` : ''}
-              ${aiDiagError ? `<div style="color: #991b1b;">Analysis failed: ${aiDiagError}</div>` : ''}
+              ${aiDiagError ? `
+                <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px 16px; margin-top: 8px;">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.5rem;">⚠️</span>
+                    <div style="flex: 1;">
+                      <div style="font-weight: 600; color: #991b1b;">Cortex Unavailable</div>
+                      <div style="font-size: 0.85rem; color: #7f1d1d; margin-top: 2px;">${aiDiagError}</div>
+                    </div>
+                    <button onclick="window.diagRetryAiAnalysis('${id}', 'general')" class="btn small" style="background: #ef4444; color: white; border-color: #ef4444;">🔄 Try Again</button>
+                  </div>
+                </div>
+              ` : ''}
               ${aiDiagResult && aiDiagResult.status !== 'error' ? (() => {
                 let confColor = '#64748b', confBg = '#f1f5f9', confBorder = '#cbd5e1';
                 if (aiDiagResult.confidence === 'high') { confColor = '#166534'; confBg = '#dcfce7'; confBorder = '#86efac'; }
@@ -655,7 +799,7 @@ window.diagViewPlaybook = async function(id) {
             const name = svc.name || svc, hrs = svc.labor_hours || 1, est = hrs * rate.rate;
             return `<div style="padding: 12px 16px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
               <div><strong>${name}</strong><div style="font-size: 0.85rem; color: var(--muted);">${hrs} hr × $${rate.rate}/hr = <strong>$${est.toFixed(2)}</strong></div></div>
-              ${canAdd ? `<button class="btn small info" onclick="event.stopPropagation(); window.diagAddToInvoice('${name.replace(/'/g, "\\'")}', ${hrs}, 'playbook', '${id}')">+ Add $${est.toFixed(0)}</button>` : noJobMsg}
+              ${canAdd ? `<button class="btn small info" onclick="event.stopPropagation(); window.diagAddToInvoice('${name.replace(/'/g, "\\'")}', ${hrs}, 'playbook', '${id}')">+ Add ${est.toFixed(2)}</button>` : noJobMsg}
             </div>`;
           }).join('')}</div>` : ''}
         </div>
@@ -675,6 +819,31 @@ window.diagAnswerTriage = function(playbookId, questionIdx, answer) {
   
   // Re-render the playbook view to update UI
   window.diagViewPlaybook(playbookId);
+};
+
+// Retry AI analysis (for playbook diagnostics)
+window.diagRetryAiAnalysis = function(playbookId, type) {
+  // Clear the cache entry to force a new request
+  if (aiDiagCache[playbookId]) {
+    aiDiagCache[playbookId] = { requested: false, loading: false, result: null, error: null };
+  }
+  // Re-render the playbook view which will trigger a new AI request
+  window.diagViewPlaybook(playbookId);
+};
+
+// Retry AI labor lookup (for service operations)
+window.diagRetryAiLabor = function(operationId) {
+  // Reset AI labor state and re-fetch
+  aiLaborState = {
+    loading: false,
+    result: null,
+    needsEngineSelection: false,
+    engineVariants: [],
+    selectedEngine: null,
+    error: null
+  };
+  // Re-load the operation view with fresh AI lookup
+  window.diagViewOperation(operationId, false);
 };
 
 // View Operation Detail - WITH AI LABOR LOOKUP!
@@ -915,12 +1084,29 @@ function renderOperationView(op, rate, hrs, vehicle) {
         </div>`;
         
     } else if (aiLaborState.error) {
-      // Error state
+      // Error state with retry button
+      const defaultPrice = (hrs * rate.rate).toFixed(2);
       aiLaborHtml = `
-        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; margin-top: 16px;">
-          <div style="color: #991b1b; font-size: 0.9rem;">⚠️ Couldn't get vehicle-specific estimate. Using database defaults.</div>
-          <div style="margin-top:8px; font-size:0.85rem; color:#7f1d1d;">Error: ${aiLaborState.error}</div>
-          ${aiLaborState.debug ? `<pre style="margin-top:8px; max-height:120px; overflow:auto; background:#fff; padding:8px; border-radius:6px;">${String(aiLaborState.debug).substring(0,2000)}</pre>` : ''}
+        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 14px 16px; margin-top: 16px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 1.5rem;">⚠️</span>
+            <div style="flex: 1;">
+              <div style="font-weight: 600; color: #991b1b;">Cortex Unavailable</div>
+              <div style="font-size: 0.85rem; color: #7f1d1d; margin-top: 2px;">Couldn't get vehicle-specific labor time</div>
+              <div style="font-size: 0.8rem; color: #9f1239; margin-top: 4px;">${aiLaborState.error}</div>
+            </div>
+            <button onclick="window.diagRetryAiLabor('${op.id}')" class="btn small" style="background: #ef4444; color: white; border-color: #ef4444;">🔄 Try Again</button>
+          </div>
+          <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #fecaca; text-align: center;">
+            <span style="font-size: 0.85rem; color: #7f1d1d;">Using database defaults instead</span>
+            ${canAdd ? `
+              <div style="margin-top: 8px;">
+                <button class="btn small info" onclick="window.diagAddToInvoice('${esc(op.name)}', ${hrs}, 'operation', '${op.id}')">
+                  + Add with Default (${hrs} hrs = ${defaultPrice})
+                </button>
+              </div>
+            ` : ''}
+          </div>
         </div>`;
     }
   }
@@ -979,7 +1165,7 @@ function renderOperationView(op, rate, hrs, vehicle) {
                       ${v.note ? ` — <span style="font-style: italic;">${v.note}</span>` : ''}
                     </div>
                   </div>
-                  ${canAdd ? `<button class="btn small info" onclick="event.stopPropagation(); window.diagAddToInvoice('${esc(vName)}', ${vHrs}, 'operation', '${op.id}')">+ Add ${vEst.toFixed(0)}</button>` : noJobMsg}
+                  ${canAdd ? `<button class="btn small info" onclick="event.stopPropagation(); window.diagAddToInvoice('${esc(vName)}', ${vHrs}, 'operation', '${op.id}')">+ Add ${vEst.toFixed(2)}</button>` : noJobMsg}
                 </div>`;
               }).join('')}
             </div>
@@ -1009,7 +1195,7 @@ function renderOperationView(op, rate, hrs, vehicle) {
                     ${a.reason ? ` — <span style="font-size: 0.9rem; color: #92400e;">${a.reason}</span>` : ''}
                     <div style="font-size: 0.85rem; color: var(--muted); margin-top: 2px;">Est: ${aHrs} hr = <strong>${aEst.toFixed(2)}</strong></div>
                   </div>
-                  ${canAdd ? `<button class="btn small" style="background: #f59e0b; color: white; border-color: #f59e0b;" onclick="event.stopPropagation(); window.diagAddToInvoice('${esc(a.name)}', ${aHrs}, 'addon', '${op.id}')">+ Add ${aEst.toFixed(0)}</button>` : noJobMsg}
+                  ${canAdd ? `<button class="btn small" style="background: #f59e0b; color: white; border-color: #f59e0b;" onclick="event.stopPropagation(); window.diagAddToInvoice('${esc(a.name)}', ${aHrs}, 'addon', '${op.id}')">+ Add ${aEst.toFixed(2)}</button>` : noJobMsg}
                 </div>`;
               }).join('')}
             </div>
@@ -1091,9 +1277,610 @@ window.diagAddToInvoice = async function(serviceName, laborHours, type, itemId) 
   } catch (e) { console.error('Add to invoice failed:', e); showNotification('Failed: ' + e.message, 'error'); }
 };
 
-// Record Outcome & Feedback (placeholders)
-window.diagRecordOutcome = function(type, id) { showNotification('Record outcome - coming soon!', 'success'); };
-window.diagShowFeedback = function(type, id) { showNotification('Feedback - coming soon!', 'success'); };
+// ============================================
+// RECORD OUTCOME MODAL
+// ============================================
+window.diagRecordOutcome = function(type, id) {
+  const vehicle = currentVehicle || selectedVehicle;
+  const result = currentResult;
+  const title = result?.title || result?.name || 'This Issue';
+  
+  // Create modal overlay
+  const overlay = document.createElement('div');
+  overlay.id = 'diagOutcomeModal';
+  overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 10200; display: flex; align-items: center; justify-content: center;';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  
+  overlay.innerHTML = `
+    <div style="background: var(--card-bg, white); border-radius: 12px; max-width: 500px; width: 95%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,0.3);" onclick="event.stopPropagation()">
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0;">✅ Record What Fixed It</h3>
+        <button onclick="document.getElementById('diagOutcomeModal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--muted);">&times;</button>
+      </div>
+      <div style="padding: 20px;">
+        <p style="margin: 0 0 16px 0; color: var(--muted);">What service/repair resolved <strong>${title}</strong>?</p>
+        
+        <div style="margin-bottom: 16px;">
+          <label style="font-weight: 600; display: block; margin-bottom: 8px;">Service/Repair Name *</label>
+          <input type="text" id="outcomeServiceName" placeholder="e.g., Replaced Spark Plugs, New Battery" 
+            style="width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px;">
+        </div>
+        
+        <div style="margin-bottom: 16px;">
+          <label style="font-weight: 600; display: block; margin-bottom: 8px;">Did it resolve the issue?</label>
+          <div style="display: flex; gap: 12px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="radio" name="outcomeResolved" value="yes" checked> Yes, fixed it
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="radio" name="outcomeResolved" value="no"> No, issue persists
+            </label>
+          </div>
+        </div>
+        
+        ${vehicle?.year ? `
+          <div style="background: var(--bg); padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+            <div style="font-size: 0.85rem; color: var(--muted);">Vehicle</div>
+            <div style="font-weight: 600;">${vehicle.year} ${vehicle.make} ${vehicle.model}</div>
+          </div>
+        ` : ''}
+        
+        <div style="margin-bottom: 20px;">
+          <label style="font-weight: 600; display: block; margin-bottom: 8px;">Notes (optional)</label>
+          <textarea id="outcomeNotes" rows="3" placeholder="Any additional details about the fix..." 
+            style="width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; resize: vertical;"></textarea>
+        </div>
+        
+        <div style="display: flex; gap: 12px;">
+          <button onclick="document.getElementById('diagOutcomeModal').remove()" class="btn" style="flex: 1;">Cancel</button>
+          <button onclick="window.diagSubmitOutcome('${type}', '${id}')" class="btn info" style="flex: 1;">✅ Save Outcome</button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+  document.getElementById('outcomeServiceName')?.focus();
+};
+
+window.diagSubmitOutcome = async function(type, id) {
+  const serviceName = document.getElementById('outcomeServiceName')?.value?.trim();
+  const resolved = document.querySelector('input[name="outcomeResolved"]:checked')?.value === 'yes';
+  const notes = document.getElementById('outcomeNotes')?.value?.trim() || '';
+  
+  if (!serviceName) {
+    showNotification('Please enter the service/repair name', 'error');
+    return;
+  }
+  
+  const vehicle = currentVehicle || selectedVehicle;
+  
+  try {
+    const result = await recordFixOutcome({
+      playbookId: type === 'playbook' ? id : null,
+      operationId: type === 'operation' ? id : null,
+      jobId: currentJob?.id || null,
+      serviceName,
+      resolved,
+      vehicleYear: vehicle?.year ? parseInt(vehicle.year) : null,
+      vehicleMake: vehicle?.make || null,
+      vehicleModel: vehicle?.model || null,
+      mileage: vehicle?.mileage ? parseInt(vehicle.mileage) : null,
+      notes
+    });
+    
+    if (result) {
+      showNotification('✅ Outcome recorded - thanks for helping improve diagnostics!', 'success');
+      document.getElementById('diagOutcomeModal')?.remove();
+    } else {
+      throw new Error('Failed to save');
+    }
+  } catch (e) {
+    console.error('[DiagnosticsModal] recordFixOutcome error:', e);
+    showNotification('Failed to save outcome: ' + e.message, 'error');
+  }
+};
+
+// ============================================
+// FEEDBACK MODAL
+// ============================================
+window.diagShowFeedback = function(type, id) {
+  const result = currentResult;
+  const title = result?.title || result?.name || 'This Item';
+  const isOperation = type === 'operation';
+  
+  // Define verdict options based on type
+  const verdictOptions = isOperation ? [
+    { value: 'worked', label: '✅ Labor time was accurate', color: '#10b981' },
+    { value: 'inaccurate_time', label: '⏱️ Labor time was inaccurate', color: '#f59e0b' },
+    { value: 'partially_worked', label: '⚠️ Partially accurate', color: '#f59e0b' },
+    { value: 'needs_oem', label: '📋 Needs OEM data', color: '#3b82f6' }
+  ] : [
+    { value: 'worked', label: '✅ Guide was helpful', color: '#10b981' },
+    { value: 'partially_worked', label: '⚠️ Partially helpful', color: '#f59e0b' },
+    { value: 'did_not_work', label: '❌ Did not help', color: '#ef4444' },
+    { value: 'needs_oem', label: '📋 Needs OEM reference', color: '#3b82f6' },
+    { value: 'unsafe', label: '🚨 Safety concern', color: '#ef4444' }
+  ];
+  
+  const overlay = document.createElement('div');
+  overlay.id = 'diagFeedbackModal';
+  overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 10200; display: flex; align-items: center; justify-content: center;';
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  
+  overlay.innerHTML = `
+    <div style="background: var(--card-bg, white); border-radius: 12px; max-width: 500px; width: 95%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 50px rgba(0,0,0,0.3);" onclick="event.stopPropagation()">
+      <div style="padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0;">📝 ${isOperation ? 'Feedback on Labor Time' : 'Give Feedback'}</h3>
+        <button onclick="document.getElementById('diagFeedbackModal').remove()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--muted);">&times;</button>
+      </div>
+      <div style="padding: 20px;">
+        <p style="margin: 0 0 16px 0; color: var(--muted);">How was <strong>${title}</strong>?</p>
+        
+        <div style="margin-bottom: 20px;">
+          <label style="font-weight: 600; display: block; margin-bottom: 12px;">Your Rating *</label>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            ${verdictOptions.map((opt, i) => `
+              <label style="display: flex; align-items: center; gap: 10px; padding: 12px; border: 2px solid var(--line); border-radius: 8px; cursor: pointer; transition: all 0.2s;" 
+                onmouseover="this.style.borderColor='${opt.color}'" onmouseout="this.style.borderColor=document.querySelector('input[name=feedbackVerdict][value=${opt.value}]')?.checked ? '${opt.color}' : 'var(--line)'">
+                <input type="radio" name="feedbackVerdict" value="${opt.value}" ${i === 0 ? 'checked' : ''} 
+                  onchange="this.closest('label').style.borderColor='${opt.color}'; document.querySelectorAll('input[name=feedbackVerdict]').forEach(r => { if(r!==this) r.closest('label').style.borderColor='var(--line)'; });">
+                <span>${opt.label}</span>
+              </label>
+            `).join('')}
+          </div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+          <label style="font-weight: 600; display: block; margin-bottom: 8px;">Additional Comments (optional)</label>
+          <textarea id="feedbackNotes" rows="3" placeholder="${isOperation ? 'What was the actual time? Any issues?' : 'What could be improved?'}" 
+            style="width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; resize: vertical;"></textarea>
+        </div>
+        
+        <div style="display: flex; gap: 12px;">
+          <button onclick="document.getElementById('diagFeedbackModal').remove()" class="btn" style="flex: 1;">Cancel</button>
+          <button onclick="window.diagSubmitFeedback('${type}', '${id}')" class="btn info" style="flex: 1;">📝 Submit Feedback</button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+};
+
+window.diagSubmitFeedback = async function(type, id) {
+  const verdict = document.querySelector('input[name="feedbackVerdict"]:checked')?.value;
+  const notes = document.getElementById('feedbackNotes')?.value?.trim() || '';
+  
+  if (!verdict) {
+    showNotification('Please select a rating', 'error');
+    return;
+  }
+  
+  try {
+    const result = await submitFeedback({
+      playbookId: type === 'playbook' ? id : null,
+      operationId: type === 'operation' ? id : null,
+      verdict,
+      notes
+    });
+    
+    if (result) {
+      showNotification('📝 Feedback submitted - thank you!', 'success');
+      document.getElementById('diagFeedbackModal')?.remove();
+    } else {
+      throw new Error('Failed to save');
+    }
+  } catch (e) {
+    console.error('[DiagnosticsModal] submitFeedback error:', e);
+    showNotification('Failed to submit feedback: ' + e.message, 'error');
+  }
+};
+
+// ============================================
+// AI DYNAMIC TRIAGE (Conversational Diagnosis)
+// ============================================
+
+/**
+ * Start a dynamic AI triage conversation for a playbook
+ */
+window.diagStartDynamicTriage = async function(playbookId, symptom) {
+  const vehicle = currentVehicle || selectedVehicle;
+  
+  // Check if vehicle is selected
+  if (!vehicle?.year || !vehicle?.make || !vehicle?.model) {
+    showNotification('Please select a vehicle first for AI-powered diagnosis', 'error');
+    return;
+  }
+  
+  // Reset and initialize dynamic triage state
+  dynamicTriageState = {
+    active: true,
+    loading: true,
+    conversation: [],
+    questionCount: 0,
+    currentQuestion: null,
+    diagnosis: null,
+    error: null,
+    playbookId: playbookId,
+    symptom: symptom
+  };
+  
+  // Render initial loading state
+  renderDynamicTriageUI(playbookId);
+  
+  // Start the conversation - AI asks first question
+  try {
+    const response = await getAiDynamicTriage({
+      symptom,
+      vehicleYear: vehicle.year,
+      vehicleMake: vehicle.make,
+      vehicleModel: vehicle.model,
+      engineType: vehicle.engine || null,
+      conversation: [],
+      questionCount: 0
+    });
+    
+    dynamicTriageState.loading = false;
+    
+    if (response.type === 'error') {
+      dynamicTriageState.error = response.error;
+    } else if (response.type === 'question') {
+      dynamicTriageState.currentQuestion = response;
+      dynamicTriageState.questionCount = response.questionCount || 1;
+      // Add AI's question to conversation
+      dynamicTriageState.conversation.push({
+        role: 'assistant',
+        content: response.question
+      });
+    } else if (response.type === 'diagnosis') {
+      dynamicTriageState.diagnosis = response;
+    }
+    
+    renderDynamicTriageUI(playbookId);
+    
+  } catch (e) {
+    console.error('[DiagnosticsModal] Dynamic triage start error:', e);
+    dynamicTriageState.loading = false;
+    dynamicTriageState.error = e.message;
+    renderDynamicTriageUI(playbookId);
+  }
+};
+
+/**
+ * Handle user's answer to a triage question
+ */
+window.diagAnswerDynamicTriage = async function(playbookId, answer) {
+  const vehicle = currentVehicle || selectedVehicle;
+  
+  // Add user's answer to conversation
+  dynamicTriageState.conversation.push({
+    role: 'user',
+    content: answer
+  });
+  
+  dynamicTriageState.loading = true;
+  dynamicTriageState.currentQuestion = null;
+  
+  renderDynamicTriageUI(playbookId);
+  
+  try {
+    const response = await getAiDynamicTriage({
+      symptom: dynamicTriageState.symptom,
+      vehicleYear: vehicle.year,
+      vehicleMake: vehicle.make,
+      vehicleModel: vehicle.model,
+      engineType: vehicle.engine || null,
+      conversation: dynamicTriageState.conversation,
+      questionCount: dynamicTriageState.questionCount
+    });
+    
+    dynamicTriageState.loading = false;
+    
+    if (response.type === 'error') {
+      dynamicTriageState.error = response.error;
+    } else if (response.type === 'question') {
+      dynamicTriageState.currentQuestion = response;
+      dynamicTriageState.questionCount = response.questionCount || (dynamicTriageState.questionCount + 1);
+      // Add AI's question to conversation
+      dynamicTriageState.conversation.push({
+        role: 'assistant',
+        content: response.question
+      });
+    } else if (response.type === 'diagnosis') {
+      dynamicTriageState.diagnosis = response;
+    }
+    
+    renderDynamicTriageUI(playbookId);
+    
+  } catch (e) {
+    console.error('[DiagnosticsModal] Dynamic triage answer error:', e);
+    dynamicTriageState.loading = false;
+    dynamicTriageState.error = e.message;
+    renderDynamicTriageUI(playbookId);
+  }
+};
+
+/**
+ * Render the dynamic triage UI section
+ */
+function renderDynamicTriageUI(playbookId) {
+  const container = document.getElementById('dynamicTriageContainer');
+  if (!container) return;
+  
+  const vehicle = currentVehicle || selectedVehicle;
+  const state = dynamicTriageState;
+  const rate = getDefaultLaborRate();
+  const canAdd = !!currentJob && !currentIsStaff;
+  
+  // Build conversation history HTML
+  let conversationHtml = '';
+  if (state.conversation.length > 0) {
+    conversationHtml = `
+      <div style="margin-bottom: 16px; max-height: 200px; overflow-y: auto;">
+        ${state.conversation.map((msg, idx) => {
+          const isAi = msg.role === 'assistant';
+          return `
+            <div style="display: flex; gap: 8px; margin-bottom: 8px; ${isAi ? '' : 'flex-direction: row-reverse;'}">
+              <div style="width: 28px; height: 28px; border-radius: 50%; overflow: hidden; display:flex;align-items:center;justify-content:center;flex-shrink:0; background: ${isAi ? 'transparent' : '#e5e7eb'};">
+                ${isAi ? `<img src="/assets/cortex-mark.png" alt="Cortex" style="width:28px;height:28px;object-fit:contain;display:block;">` : (shopData && shopData.logo ? `<img src="${shopData.logo}" alt="Shop" style="width:28px;height:28px;object-fit:cover;display:block;">` : '<span style="font-size:12px;">👤</span>')}
+              </div>
+              <div style="background: ${isAi ? 'var(--bg)' : '#3b82f6'}; color: ${isAi ? 'inherit' : 'white'}; padding: 8px 12px; border-radius: 12px; max-width: 80%; font-size: 0.9rem;">
+                ${msg.content}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+  
+  let html = '';
+  
+  if (state.loading) {
+    // Loading state
+    html = `
+      ${conversationHtml}
+      <div style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--bg); border-radius: 8px;">
+        <div style="width: 24px; height: 24px; border: 3px solid #8b5cf6; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+        <div>
+          <div style="font-weight: 600; color: #6d28d9;">Cortex is thinking...</div>
+          <div style="font-size: 0.85rem; color: var(--muted);">Analyzing ${vehicle.year} ${vehicle.make} ${vehicle.model}</div>
+        </div>
+      </div>
+    `;
+    
+  } else if (state.error) {
+    // Error state
+    html = `
+      ${conversationHtml}
+      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 1.5rem;">⚠️</span>
+          <div style="flex: 1;">
+            <div style="font-weight: 600; color: #991b1b;">Cortex Unavailable</div>
+            <div style="font-size: 0.85rem; color: #7f1d1d;">${state.error}</div>
+          </div>
+          <button onclick="window.diagStartDynamicTriage('${playbookId}', '${state.symptom?.replace(/'/g, "\\'") || ''}')" class="btn small" style="background: #ef4444; color: white;">🔄 Retry</button>
+        </div>
+      </div>
+    `;
+    
+  } else if (state.currentQuestion) {
+    // Question state
+    const q = state.currentQuestion;
+    html = `
+      ${conversationHtml}
+      <div style="background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%); border: 2px solid #a855f7; border-radius: 12px; padding: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <span style="font-size: 0.8rem; color: #7c3aed; font-weight: 600;">Question ${state.questionCount} of ~3</span>
+          <span style="font-size: 0.75rem; color: #9333ea; background: white; padding: 2px 8px; border-radius: 12px;">
+            ${state.questionCount >= 3 ? '🎯 Almost there!' : '🤔 Narrowing down...'}
+          </span>
+        </div>
+        <p style="margin: 0 0 16px 0; font-weight: 600; color: #581c87; font-size: 1.05rem;">${q.question}</p>
+        ${q.reasoning ? `<p style="margin: 0 0 12px 0; font-size: 0.85rem; color: #7c3aed; font-style: italic;">💡 ${q.reasoning}</p>` : ''}
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+          ${(q.options && q.options.length > 0) ? 
+            q.options.map(opt => `
+              <button onclick="window.diagAnswerDynamicTriage('${playbookId}', '${opt.replace(/'/g, "\\'")}')" 
+                class="btn" style="background: white; border: 2px solid #a855f7; color: #7c3aed; padding: 10px 20px; border-radius: 20px; font-weight: 500; transition: all 0.2s;"
+                onmouseover="this.style.background='#a855f7';this.style.color='white';" 
+                onmouseout="this.style.background='white';this.style.color='#7c3aed';">
+                ${opt}
+              </button>
+            `).join('') :
+            `<div style="width: 100%;">
+              <input type="text" id="triageCustomAnswer" placeholder="Type your answer..." 
+                style="width: 100%; padding: 12px; border: 2px solid #a855f7; border-radius: 8px; font-size: 14px;"
+                onkeypress="if(event.key==='Enter') window.diagSubmitCustomAnswer('${playbookId}')">
+              <button onclick="window.diagSubmitCustomAnswer('${playbookId}')" class="btn" style="margin-top: 8px; background: #a855f7; color: white;">Submit Answer</button>
+            </div>`
+          }
+        </div>
+      </div>
+    `;
+    
+  } else if (state.diagnosis) {
+    // Final diagnosis state
+    const d = state.diagnosis;
+    const confColors = {
+      high: { bg: '#dcfce7', text: '#166534', border: '#86efac' },
+      medium: { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+      low: { bg: '#fee2e2', text: '#991b1b', border: '#fecaca' }
+    };
+    const conf = confColors[d.confidence] || confColors.medium;
+    
+    html = `
+      ${conversationHtml}
+      <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 2px solid #22c55e; border-radius: 12px; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+          <div>
+            <div style="font-size: 0.8rem; color: #16a34a; font-weight: 600; margin-bottom: 4px;">🎯 DIAGNOSIS COMPLETE</div>
+            <div style="font-size: 1.3rem; font-weight: 700; color: #166534;">${d.probableCause}</div>
+          </div>
+          <span style="font-size: 0.8rem; padding: 6px 14px; border-radius: 20px; background: ${conf.bg}; color: ${conf.text}; font-weight: 600; border: 1px solid ${conf.border};">
+            ${(d.confidence || 'medium').toUpperCase()} CONFIDENCE
+          </span>
+        </div>
+        
+        ${d.explanation ? `<p style="margin: 0 0 16px 0; color: #166534; line-height: 1.5;">${d.explanation}</p>` : ''}
+        
+        ${d.whatToCheck ? `
+          <div style="background: white; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+            <strong style="color: #166534;">🔍 What to Check:</strong>
+            <p style="margin: 4px 0 0 0; color: #15803d;">${d.whatToCheck}</p>
+          </div>
+        ` : ''}
+        
+        ${d.recommendedService ? `
+          <div style="background: white; border-radius: 8px; padding: 12px; margin-bottom: 16px; border-left: 4px solid #22c55e;">
+            <strong style="color: #166534;">🛠️ Recommended Service:</strong>
+            <div style="font-size: 1.1rem; font-weight: 600; color: #166534; margin-top: 4px;">${d.recommendedService}</div>
+            ${d.estimatedRepairComplexity ? `<span style="font-size: 0.8rem; color: #16a34a;">Complexity: ${d.estimatedRepairComplexity}</span>` : ''}
+          </div>
+        ` : ''}
+        
+        ${d.additionalPossibilities?.length ? `
+          <div style="margin-bottom: 16px;">
+            <strong style="color: #166534; font-size: 0.9rem;">Other Possibilities:</strong>
+            <ul style="margin: 4px 0 0 0; padding-left: 20px; color: #15803d;">
+              ${d.additionalPossibilities.map(p => `<li>${p}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
+        
+        <!-- TSBs Section -->
+        ${(() => {
+          const tsbs = d.tsbs || [];
+          const validTsbs = tsbs.filter(t => {
+            const src = (t.source || t.url || '').toString().toLowerCase();
+            const title = (t.title || t.description || '').toString().toLowerCase();
+            const num = (t.number || t.id || '').toString().toLowerCase();
+
+            // Require an explicit source/url that looks credible (nhtsa, .gov, manufacturer, or an http(s) link)
+            if (src && (src.includes('nhtsa') || src.includes('.gov') || src.includes('service bulletin') || src.includes('technical service bulletin') || /https?:\/\//.test(src))) return true;
+
+            // Fallback: require a plausible TSB number pattern AND a sufficiently descriptive title
+            const plausibleNumber = /[a-zA-Z]{1,}|\d{2,}-\d{2,}|tsb[-_\s]?\d{2,}/i.test(num) || (num.length >= 4 && !/^0+$/.test(num));
+            const descriptiveTitle = title.split(/\s+/).filter(Boolean).length >= 6;
+            return plausibleNumber && descriptiveTitle;
+          });
+
+          if (!validTsbs.length) return '';
+
+          return `
+            <div style="background: #fef3c7; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+              <strong style="color: #92400e;">📋 Technical Service Bulletins:</strong>
+              ${validTsbs.map(t => `
+                <div style="margin-top: 8px; padding: 8px; background: white; border-radius: 6px;">
+                  <div style="font-weight: 600; color: #78350f;">${t.number || 'TSB'}: ${t.title || 'Related Bulletin'}</div>
+                  ${t.relevance ? `<div style="font-size: 0.85rem; color: #92400e;">${t.relevance}</div>` : ''}
+                  ${t.source || t.url ? `<div style="margin-top:6px;font-size:0.85rem;color:#334155;">Source: ${t.url ? `<a href="${t.url}" target="_blank" rel="noopener noreferrer">${t.url}</a>` : `${t.source}`}</div>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          `;
+        })()}
+
+        <!-- Recalls Section -->
+        ${(() => {
+          const recalls = d.recalls || [];
+          const validRecalls = recalls.filter(r => {
+            const src = (r.source || r.url || r.campaign || r.description || '').toString().toLowerCase();
+            if (!src) return false;
+            // Require explicit campaign number or credible URL/domain
+            if ((r.campaign && r.campaign.toString().trim().length > 2) || /https?:\/\//.test(r.url || '')) return true;
+            if (src.includes('nhtsa') || src.includes('.gov') || src.includes('recall')) return true;
+            return false;
+          });
+
+          if (!validRecalls.length) return '';
+
+          return `
+            <div style="background: #fee2e2; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+              <strong style="color: #991b1b;">⚠️ Recalls:</strong>
+              ${validRecalls.map(r => `
+                <div style="margin-top: 8px; padding: 8px; background: white; border-radius: 6px;">
+                  <div style="font-weight: 600; color: #7f1d1d;">${r.campaign || 'Campaign'}: ${r.description || 'Related Recall'}</div>
+                  ${r.relevance ? `<div style="font-size: 0.85rem; color: #991b1b;">${r.relevance}</div>` : ''}
+                  ${r.url ? `<div style="margin-top:6px;font-size:0.85rem;color:#334155;">Source: <a href="${r.url}" target="_blank" rel="noopener noreferrer">${r.url}</a></div>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          `;
+        })()}
+        
+        <!-- Known Issues Section -->
+        ${d.knownIssues?.length ? `
+          <div style="background: #e0f2fe; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+            <strong style="color: #0369a1;">💡 Known Issues for This Vehicle:</strong>
+            ${d.knownIssues.map(k => `
+              <div style="margin-top: 8px; padding: 8px; background: white; border-radius: 6px;">
+                <div style="color: #0c4a6e;">${k.description}</div>
+                ${k.frequency ? `<span style="font-size: 0.75rem; padding: 2px 8px; background: #bae6fd; color: #0369a1; border-radius: 10px;">${k.frequency}</span>` : ''}
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+        
+        <!-- Safety Warnings -->
+        ${d.warningsSafety?.length ? `
+          <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+            <strong style="color: #991b1b;">🚨 Safety Warnings:</strong>
+            <ul style="margin: 4px 0 0 0; padding-left: 20px; color: #991b1b;">
+              ${d.warningsSafety.map(w => `<li>${w}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
+        
+        <!-- Actions -->
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid #86efac;">
+          ${canAdd && d.recommendedService ? `
+            <button onclick="window.diagAddToInvoice('${d.recommendedService.replace(/'/g, "\\'") || ''}', 1, 'ai-diagnosis', '${playbookId}')" 
+              class="btn" style="background: #22c55e; color: white; border-color: #22c55e; flex: 1;">
+              + Add "${d.recommendedService}" to Invoice
+            </button>
+          ` : ''}
+          <button onclick="window.diagStartDynamicTriage('${playbookId}', '${state.symptom?.replace(/'/g, "\\'") || ''}')" 
+            class="btn small" style="border-color: #22c55e; color: #22c55e;">
+            🔄 Start Over
+          </button>
+        </div>
+      </div>
+    `;
+  } else {
+    // Initial state - show start button
+    html = `
+      <div style="background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%); border: 2px solid #a855f7; border-radius: 12px; padding: 20px; text-align: center;">
+        <div style="font-size: 2rem; margin-bottom: 12px;">🤖</div>
+        <h4 style="margin: 0 0 8px 0; color: #6d28d9;">AI-Powered Diagnosis</h4>
+        <p style="margin: 0 0 16px 0; color: #7c3aed; font-size: 0.9rem;">
+          Cortex will ask 3-5 smart questions to pinpoint the issue, then provide TSBs, recalls, and recommendations.
+        </p>
+        <button onclick="window.diagStartDynamicTriage('${playbookId}', '${state.symptom?.replace(/'/g, "\\'") || ''}')" 
+          class="btn" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: white; border: none; padding: 12px 32px; font-size: 1rem;">
+          🚀 Start Cortex Diagnosis
+        </button>
+      </div>
+    `;
+  }
+  
+  container.innerHTML = html;
+}
+
+/**
+ * Submit custom text answer for triage
+ */
+window.diagSubmitCustomAnswer = function(playbookId) {
+  const input = document.getElementById('triageCustomAnswer');
+  const answer = input?.value?.trim();
+  if (!answer) {
+    showNotification('Please enter an answer', 'error');
+    return;
+  }
+  window.diagAnswerDynamicTriage(playbookId, answer);
+};
 
 function showNotification(msg, type) {
   document.getElementById('diagNotification')?.remove();
