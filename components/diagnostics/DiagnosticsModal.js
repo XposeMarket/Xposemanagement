@@ -195,6 +195,7 @@ function showSearchView() {
   body.innerHTML = `
     <div style="max-width: 700px; margin: 0 auto;">
       ${backBtn}${ymmHtml}
+      ${currentJob ? `<div style="margin-bottom:12px;"><button id="diagAddServiceBtn" class="btn" onclick="window.dispatchEvent(new CustomEvent('openServiceFromDiagnostics',{detail:{jobId:'${currentJob.id}'}}))" style="background: linear-gradient(135deg, #06b6d4, #0ea5a4); color: white; padding: 10px 16px; font-weight:600;">➕ Add Service to Job</button></div>` : ''}
       <div style="margin-bottom: 24px;">
         <label style="font-weight: 600; display: block; margin-bottom: 8px;">🔍 Search anything...</label>
         <div style="display: flex; gap: 8px;">
@@ -253,6 +254,19 @@ window.diagUpdateVehicle = function() {
       // make didn't change — simply read the current model value
       selectedVehicle.model = modelSel.value || '';
     }
+  }
+
+  // Wire Add Service button in modal to parts/service flows
+  const diagAddBtn = document.getElementById('diagAddServiceBtn');
+  if (diagAddBtn) {
+    diagAddBtn.addEventListener('click', () => {
+      try {
+        console.log('[DiagnosticsModal] dispatching openServiceFromDiagnostics', currentJob);
+        // Dispatch an app-level event so the Jobs page (which owns the service flow)
+        // can open the service modal without creating a circular import.
+        window.dispatchEvent(new CustomEvent('openServiceFromDiagnostics', { detail: { job: currentJob } }));
+      } catch (e) { console.error('Failed to dispatch openServiceFromDiagnostics:', e); alert('Unable to open Add Service.'); }
+    });
   }
 
   updateVehicleDisplay();
@@ -1098,7 +1112,7 @@ function renderOperationView(op, rate, hrs, vehicle) {
             <button onclick="window.diagRetryAiLabor('${op.id}')" class="btn small" style="background: #ef4444; color: white; border-color: #ef4444;">🔄 Try Again</button>
           </div>
           <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #fecaca; text-align: center;">
-            <span style="font-size: 0.85rem; color: #7f1d1d;">Using database defaults instead</span>
+            <span style="font-size: 0.85rem; color: #7f1d1d;">Using Cortex database defaults instead</span>
             ${canAdd ? `
               <div style="margin-top: 8px;">
                 <button class="btn small info" onclick="window.diagAddToInvoice('${esc(op.name)}', ${hrs}, 'operation', '${op.id}')">
@@ -1129,7 +1143,7 @@ function renderOperationView(op, rate, hrs, vehicle) {
             
             <!-- DB Baseline -->
             <div style="background: white; border-radius: 6px; padding: 12px;">
-              <div style="font-size: 0.8rem; color: var(--muted); margin-bottom: 4px;">📊 Database Estimate (Generic)</div>
+              <div style="font-size: 0.8rem; color: var(--muted); margin-bottom: 4px;">📊 Cortex Labor Intelligence™ (OEM + Field Data)</div>
               <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                 <div><span style="color: var(--muted);">Range:</span> <strong>${op.labor_hours_low || hrs} – ${op.labor_hours_high || hrs} hrs</strong></div>
                 <div><span style="color: var(--muted);">Typical:</span> <strong>${hrs} hrs</strong></div>

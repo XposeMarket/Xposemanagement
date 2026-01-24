@@ -4776,6 +4776,29 @@ async function setupJobs() {
     });
   }
 
+  // Handle Add Service requests originating from the Diagnostics modal
+  window.addEventListener('openServiceFromDiagnostics', (e) => {
+    try {
+      const jobId = e?.detail?.jobId || null;
+      let job = e?.detail?.job || null;
+      if (!job && jobId) job = allJobs.find(j => j.id === jobId) || null;
+      console.log('[jobs] openServiceFromDiagnostics received', { jobId, job });
+      if (!job) return;
+      if (window.partsModalHandler) window.partsModalHandler.currentJob = job;
+      else window.partsModalHandler = { currentJob: job };
+      if (typeof openServiceModal === 'function') {
+        openServiceModal();
+      } else if (typeof window.openServiceModal === 'function') {
+        window.openServiceModal();
+      } else {
+        console.warn('[jobs] openServiceModal not available');
+      }
+    } catch (ex) { console.error('[jobs] openServiceFromDiagnostics handler failed:', ex); }
+  });
+
+  // Expose openServiceModal globally for compatibility with event-based callers
+  try { if (typeof openServiceModal === 'function') window.openServiceModal = openServiceModal; } catch(e) {}
+
   console.log('✅ Jobs page setup complete');
 }
 

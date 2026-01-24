@@ -180,10 +180,9 @@
   </div>
 
   <!-- Manual Entry Fallback -->
-  <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); display:flex; gap:8px;">
+    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); display:flex; gap:8px;">
     <button id="openAddPartsFromFinder" class="btn" style="flex:1;">Add Parts Manually</button>
     <button id="openInventoryPartsFromFinder" class="btn" style="flex:1;">Add Part from Inventory</button>
-    <button id="openAddServiceFromFinder" class="btn" style="flex:1;">Add Service</button>
   </div>
 </div>
 
@@ -303,7 +302,7 @@
 <div id="partPricingModalContainer"></div>
 
 <!-- Service Selection Modal -->
-<div id="serviceModal" class="modal-overlay hidden" onclick="closeServiceModal()" style="z-index: 10040;">
+<div id="serviceModal" class="modal-overlay hidden" onclick="closeServiceModal()" style="z-index: 200010;">
   <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px;">
     <div class="modal-head">
       <h3>Add Additional Service</h3>
@@ -330,7 +329,7 @@
 </div>
 
 <!-- New Service Modal: enter name & rate -->
-<div id="newServiceModal" class="modal-overlay hidden" onclick="document.getElementById('newServiceModal').classList.add('hidden')">
+<div id="newServiceModal" class="modal-overlay hidden" onclick="document.getElementById('newServiceModal').classList.add('hidden')" style="z-index: 200011;">
   <div class="modal-content" onclick="event.stopPropagation()" style="max-width:420px;">
     <div class="modal-head">
       <h3>Add New Service</h3>
@@ -352,7 +351,7 @@
 </div>
 
 <!-- Service Add Flow Modal: choose next step -->
-<div id="serviceAddFlowModal" class="modal-overlay hidden" onclick="document.getElementById('serviceAddFlowModal').classList.add('hidden')">
+<div id="serviceAddFlowModal" class="modal-overlay hidden" onclick="document.getElementById('serviceAddFlowModal').classList.add('hidden')" style="z-index: 200012;">
   <div class="modal-content" onclick="event.stopPropagation()" style="max-width:480px;">
     <div class="modal-head">
       <h3>Customize Service</h3>
@@ -370,7 +369,7 @@
 </div>
 
 <!-- Save Service Confirm Modal -->
-<div id="saveServiceConfirmModal" class="modal-overlay hidden" onclick="document.getElementById('saveServiceConfirmModal').classList.add('hidden')" style="z-index:100050;">
+<div id="saveServiceConfirmModal" class="modal-overlay hidden" onclick="document.getElementById('saveServiceConfirmModal').classList.add('hidden')" style="z-index:200013;">
   <div class="modal-content" onclick="event.stopPropagation()" style="max-width:360px;">
     <div class="modal-head">
       <h3>Save Service?</h3>
