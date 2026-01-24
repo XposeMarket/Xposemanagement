@@ -802,6 +802,14 @@ label{font-size:13px;color:var(--muted)} input,select,textarea{width:100%;paddin
 .table{width:100%;border-collapse:collapse}.table th,.table td{border-bottom:1px solid var(--line);padding:10px 8px;text-align:left}
 
 /* Staff Table Mobile Responsiveness */
+# Dark theme fix for select dropdowns
+@media (prefers-color-scheme: dark) {
+  select, select option {
+    background: var(--card) !important;
+    color: var(--text) !important;
+    border-color: var(--line) !important;
+  }
+}
 #staffTable {
   width: 100%;
   border-collapse: collapse;

@@ -62,6 +62,166 @@
     .btn-close { background: none; border: none; font-size: 24px; cursor: pointer; color: inherit; }
     .notification { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: #10b981; color: white; padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 500; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
     .hidden { display:none; }
+    
+    /* VIN input styling for auto-decode feedback */
+    #naVin, #apptVin {
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    #naVin.vin-valid, #apptVin.vin-valid {
+      border-color: #10b981;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+    }
+    #naVin.vin-decoding, #apptVin.vin-decoding {
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' stroke='%233b82f6' stroke-width='2' fill='none' stroke-dasharray='32' stroke-linecap='round'%3E%3CanimateTransform attributeName='transform' type='rotate' from='0 12 12' to='360 12 12' dur='1s' repeatCount='indefinite'/%3E%3C/circle%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      background-size: 18px;
+      padding-right: 36px;
+    }
+    
+    /* VIN input with camera button container */
+    .vin-input-container {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .vin-input-container input {
+      flex: 1;
+    }
+    .vin-scan-btn {
+      display: none; /* Hidden by default, shown on mobile */
+      padding: 10px 12px;
+      background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1.1rem;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .vin-scan-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+    }
+    .vin-scan-btn:active {
+      transform: scale(0.98);
+    }
+    
+    /* Show camera button on mobile/tablet */
+    @media (max-width: 1024px) {
+      .vin-scan-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+    }
+    
+    /* VIN Scanner Modal styles */
+    #vinScannerModal {
+      padding: 0 !important;
+      align-items: stretch !important;
+    }
+    #vinScannerModal .modal-card {
+      max-width: 100%;
+      width: 100%;
+      height: 100vh;
+      height: 100dvh; /* Dynamic viewport height for mobile */
+      max-height: 100vh;
+      max-height: 100dvh;
+      margin: 0;
+      border-radius: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    #vinScannerModal .modal-head {
+      flex-shrink: 0;
+      background: var(--card, #fff);
+      z-index: 10;
+    }
+    #vinScannerModal .modal-body {
+      flex: 1;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      max-height: none !important;
+      min-height: 0;
+    }
+    #vinScannerModal .modal-foot {
+      flex-shrink: 0;
+      background: var(--card, #fff);
+      z-index: 10;
+      border-top: 1px solid var(--border, #e5e5e5);
+    }
+    #vinScannerPreview {
+      flex: 1;
+      background: #000;
+      position: relative;
+      overflow: hidden;
+      min-height: 200px;
+    }
+    #vinScannerPreview video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .scanner-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .scanner-frame {
+      width: 90%;
+      max-width: 350px;
+      height: 80px;
+      border: 3px solid #10b981;
+      border-radius: 12px;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
+      position: relative;
+    }
+    .scanner-frame::before {
+      content: 'Align barcode here';
+      position: absolute;
+      bottom: -30px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      font-size: 0.875rem;
+      white-space: nowrap;
+    }
+    .scanner-line {
+      position: absolute;
+      top: 50%;
+      left: 5%;
+      right: 5%;
+      height: 2px;
+      background: #10b981;
+      animation: scanLine 2s ease-in-out infinite;
+    }
+    @keyframes scanLine {
+      0%, 100% { transform: translateY(-20px); opacity: 0.5; }
+      50% { transform: translateY(20px); opacity: 1; }
+    }
+    .scanner-status {
+      padding: 12px 16px;
+      background: var(--card, #fff);
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+    .scanner-status.success {
+      background: #10b981;
+      color: white;
+    }
+    .scanner-status.error {
+      background: #ef4444;
+      color: white;
+    }
   </style>
 </head>
 <body>
@@ -144,6 +304,12 @@
       <label>Email (optional)</label><input id="naEmail" type="email">
       <label>Phone</label><input id="naPhone">
 
+      <label>VIN <span style="font-size:0.75rem;color:var(--muted);font-weight:normal">- Auto-fills Year/Make/Model</span></label>
+      <div class="vin-input-container">
+        <input id="naVin" maxlength="17" placeholder="Enter 17-character VIN">
+        <button type="button" class="vin-scan-btn" id="naVinScanBtn" title="Scan VIN barcode">📷</button>
+      </div>
+
       <div class="grid cols-3">
         <div>
           <label>Year</label>
@@ -165,10 +331,6 @@
         </div>
       </div>
       <div class="grid cols-2">
-        <div style="margin-top:8px">
-          <label>VIN (optional)</label>
-          <input id="naVin" maxlength="17" placeholder="17 characters">
-        </div>
         <div>
           <label>Service</label>
           <input id="naService" list="svcOptions" autocomplete="off">
@@ -251,6 +413,8 @@
 </div>
 
 <script src="vendor/supabase.umd.js"></script>
+<!-- Barcode scanner library for VIN scanning -->
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script type="module">
   // Import and set up UUID generator globally
   import { getUUID } from './helpers/uuid.js';
@@ -287,6 +451,13 @@
             <label>Email</label>
             <input name="email" type="email" placeholder="email@example.com">
           </div>
+          <div style="grid-column: 1 / -1;">
+            <label>VIN <span style="font-size:0.75rem;color:var(--muted);font-weight:normal">- Auto-fills Year/Make/Model</span></label>
+            <div class="vin-input-container">
+              <input id="apptVin" name="vin" maxlength="17" placeholder="Enter 17-character VIN">
+              <button type="button" class="vin-scan-btn" id="apptVinScanBtn" title="Scan VIN barcode">📷</button>
+            </div>
+          </div>
           <div class="grid cols-3" style="grid-column: 1 / -1;">
             <div>
               <label>Year</label>
@@ -306,10 +477,6 @@
                 <option value="">Select Model</option>
               </select>
             </div>
-          </div>
-          <div>
-            <label>VIN (optional)</label>
-            <input id="apptVin" name="vin" maxlength="17" placeholder="17 characters">
           </div>
           <div>
             <label>Service</label>
@@ -731,6 +898,63 @@ import { upsertCustomerToSupabase } from './pages/appointments.js?v=1767390869';
           Claim Job
         </button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- VIN Barcode Scanner Modal -->
+<div id="vinScannerModal" class="modal-backdrop hidden" style="z-index: 10100; padding: 0;">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>📷 Scan VIN Barcode</h3>
+      <button type="button" class="btn-close" id="closeVinScannerModal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="vinScannerPreview">
+        <video id="vinScannerVideo" playsinline autoplay muted></video>
+        <div class="scanner-overlay">
+          <div class="scanner-frame">
+            <div class="scanner-line"></div>
+          </div>
+        </div>
+      </div>
+      <div id="vinScannerStatus" class="scanner-status">
+        Position the VIN barcode within the frame
+      </div>
+    </div>
+    <div class="modal-foot" style="justify-content: center; gap: 12px;">
+      <button type="button" class="btn" id="cancelVinScanner">Cancel</button>
+      <button type="button" class="btn" id="switchCameraBtn" style="background: #6b7280; color: white;">🔄 Switch Camera</button>
+    </div>
+  </div>
+</div>
+
+<!-- VIN Decoder Confirmation Modal -->
+<div id="vinDecoderModal" class="modal-backdrop hidden">
+  <div class="modal-card" style="max-width: 420px;">
+    <div class="modal-head">
+      <h3>🔍 VIN Decoder Result</h3>
+      <button type="button" class="btn-close" id="closeVinDecoderModal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="vinDecoderLoading" style="text-align:center;padding:20px;display:none;">
+        <div style="font-size:2rem;margin-bottom:10px">⏳</div>
+        <p>Decoding VIN...</p>
+      </div>
+      <div id="vinDecoderError" style="background:#fee2e2;color:#991b1b;padding:12px;border-radius:8px;display:none;"></div>
+      <div id="vinDecoderResult" style="display:none;">
+        <div style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:white;padding:16px;border-radius:8px;margin-bottom:16px;">
+          <div style="font-size:0.75rem;text-transform:uppercase;opacity:0.8;margin-bottom:4px;">Decoded Vehicle</div>
+          <div id="vinVehicleName" style="font-size:1.25rem;font-weight:700;"></div>
+        </div>
+        <div id="vinVehicleDetails" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;"></div>
+        <div id="vinWarning" style="background:#fef3c7;color:#92400e;padding:10px;border-radius:6px;font-size:0.875rem;display:none;"></div>
+        <p style="font-size:0.875rem;color:var(--muted);margin-top:12px;">Is this the correct vehicle? Click "Use This Vehicle" to auto-fill the Year/Make/Model fields.</p>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" id="cancelVinDecoder">Cancel</button>
+      <button type="button" class="btn info" id="confirmVinDecoder" style="display:none;">✅ Use This Vehicle</button>
     </div>
   </div>
 </div>

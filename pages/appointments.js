@@ -16,6 +16,7 @@ import { currentUsesVehicles } from '../helpers/shop-config-loader.js';
 import { createShopNotification } from '../helpers/shop-notifications.js';
 import { getInspectionSummary } from '../helpers/inspection-api.js';
 import { inspectionForm } from '../components/inspectionFormModal.js';
+import { decodeVIN, isValidVIN, formatVehicleDisplay, getVehicleDetails } from '../helpers/vin-decoder.js';
 
 // Current appointment being edited
 let currentApptId = null;
@@ -1248,6 +1249,743 @@ function populateVehicleModels(makeSelect, modelSelect, yearSelect = null) {
       modelSelect.appendChild(option);
     });
   }
+}
+
+// ========== VIN Decoder Functions ==========
+let vinDecoderTargetModal = null; // 'new' or 'edit'
+let vinDecodedData = null;
+
+// Track which VINs we've already decoded to avoid duplicate decodes
+let lastDecodedVin = { new: '', edit: '' };
+
+// VIN Barcode Scanner state
+let vinScanner = null;
+let vinScannerTargetModal = null; // 'new' or 'edit'
+let availableCameras = [];
+let currentCameraIndex = 0;
+
+/**
+ * Initialize VIN decoder functionality
+ * Auto-fires when user enters a valid 17-character VIN
+ */
+function initVinDecoder() {
+  // VIN Decoder Modal buttons
+  const closeVinBtn = document.getElementById('closeVinDecoderModal');
+  const cancelVinBtn = document.getElementById('cancelVinDecoder');
+  const confirmVinBtn = document.getElementById('confirmVinDecoder');
+  const vinModal = document.getElementById('vinDecoderModal');
+  
+  if (closeVinBtn) closeVinBtn.addEventListener('click', closeVinDecoderModal);
+  if (cancelVinBtn) cancelVinBtn.addEventListener('click', closeVinDecoderModal);
+  if (confirmVinBtn) confirmVinBtn.addEventListener('click', confirmVinDecoder);
+  if (vinModal) {
+    vinModal.addEventListener('click', (e) => {
+      if (e.target === vinModal) closeVinDecoderModal();
+    });
+  }
+  
+  // Auto-decode on VIN input (when 17 valid characters entered)
+  const naVinInput = document.getElementById('naVin');
+  const apptVinInput = document.getElementById('apptVin');
+  
+  if (naVinInput) {
+    naVinInput.addEventListener('input', (e) => {
+      const vin = e.target.value.trim().toUpperCase();
+      naVinInput.classList.remove('vin-valid', 'vin-decoding');
+      
+      if (vin.length === 17 && isValidVIN(vin)) {
+        // Only decode if this is a new VIN (not one we just decoded)
+        if (vin !== lastDecodedVin.new) {
+          naVinInput.classList.add('vin-valid');
+          // Small delay to let user finish typing/pasting
+          setTimeout(() => {
+            if (naVinInput.value.trim().toUpperCase() === vin) {
+              handleVinDecode('new');
+            }
+          }, 300);
+        }
+      }
+    });
+    
+    // Also handle paste events for instant decode
+    naVinInput.addEventListener('paste', (e) => {
+      setTimeout(() => {
+        const vin = naVinInput.value.trim().toUpperCase();
+        if (vin.length === 17 && isValidVIN(vin) && vin !== lastDecodedVin.new) {
+          naVinInput.classList.add('vin-valid');
+          handleVinDecode('new');
+        }
+      }, 50);
+    });
+  }
+  
+  if (apptVinInput) {
+    apptVinInput.addEventListener('input', (e) => {
+      const vin = e.target.value.trim().toUpperCase();
+      apptVinInput.classList.remove('vin-valid', 'vin-decoding');
+      
+      if (vin.length === 17 && isValidVIN(vin)) {
+        if (vin !== lastDecodedVin.edit) {
+          apptVinInput.classList.add('vin-valid');
+          setTimeout(() => {
+            if (apptVinInput.value.trim().toUpperCase() === vin) {
+              handleVinDecode('edit');
+            }
+          }, 300);
+        }
+      }
+    });
+    
+    apptVinInput.addEventListener('paste', (e) => {
+      setTimeout(() => {
+        const vin = apptVinInput.value.trim().toUpperCase();
+        if (vin.length === 17 && isValidVIN(vin) && vin !== lastDecodedVin.edit) {
+          apptVinInput.classList.add('vin-valid');
+          handleVinDecode('edit');
+        }
+      }, 50);
+    });
+  }
+  
+  console.log('🔍 VIN Decoder initialized (auto-fire mode)');
+  
+  // Initialize VIN barcode scanner buttons
+  initVinScanner();
+}
+
+/**
+ * Handle VIN decode - auto-triggered when valid 17-char VIN is entered
+ * @param {string} modalType - 'new' or 'edit'
+ */
+async function handleVinDecode(modalType) {
+  vinDecoderTargetModal = modalType;
+  
+  // Get VIN from the appropriate input
+  const vinInput = modalType === 'new' 
+    ? document.getElementById('naVin')
+    : document.getElementById('apptVin');
+  
+  const vin = vinInput?.value?.trim().toUpperCase() || '';
+  
+  if (!vin || !isValidVIN(vin)) {
+    return; // Silent return for auto-fire mode
+  }
+  
+  // Check if we already decoded this VIN
+  if (vin === lastDecodedVin[modalType]) {
+    return;
+  }
+  
+  // Show loading state on the input
+  vinInput.classList.remove('vin-valid');
+  vinInput.classList.add('vin-decoding');
+  
+  // Open modal and show loading state
+  const modal = document.getElementById('vinDecoderModal');
+  const loadingEl = document.getElementById('vinDecoderLoading');
+  const errorEl = document.getElementById('vinDecoderError');
+  const resultEl = document.getElementById('vinDecoderResult');
+  const confirmBtn = document.getElementById('confirmVinDecoder');
+  
+  if (modal) modal.classList.remove('hidden');
+  if (loadingEl) loadingEl.style.display = 'block';
+  if (errorEl) errorEl.style.display = 'none';
+  if (resultEl) resultEl.style.display = 'none';
+  if (confirmBtn) confirmBtn.style.display = 'none';
+  
+  try {
+    const result = await decodeVIN(vin);
+    
+    if (loadingEl) loadingEl.style.display = 'none';
+    
+    if (!result.success && !result.partial) {
+      if (errorEl) {
+        errorEl.textContent = result.error || 'Failed to decode VIN';
+        errorEl.style.display = 'block';
+      }
+      return;
+    }
+    
+    vinDecodedData = result.data;
+    
+    // Display result
+    const vehicleNameEl = document.getElementById('vinVehicleName');
+    const vehicleDetailsEl = document.getElementById('vinVehicleDetails');
+    const warningEl = document.getElementById('vinWarning');
+    
+    if (vehicleNameEl) {
+      vehicleNameEl.textContent = formatVehicleDisplay(result.data);
+    }
+    
+    if (vehicleDetailsEl) {
+      const details = getVehicleDetails(result.data);
+      vehicleDetailsEl.innerHTML = details.map(d => `
+        <div style="background:var(--bg,#f9fafb);padding:8px;border-radius:6px;">
+          <div style="font-size:0.7rem;color:var(--muted);text-transform:uppercase;">${d.label}</div>
+          <div style="font-weight:500;">${d.value}</div>
+        </div>
+      `).join('');
+    }
+    
+    if (warningEl) {
+      if (result.warning || result.partial) {
+        warningEl.textContent = '⚠️ ' + (result.warning || 'Some information may be incomplete. Please verify.');
+        warningEl.style.display = 'block';
+      } else {
+        warningEl.style.display = 'none';
+      }
+    }
+    
+    if (resultEl) resultEl.style.display = 'block';
+    if (confirmBtn) confirmBtn.style.display = 'block';
+    
+    // Clear loading state from input
+    vinInput.classList.remove('vin-decoding');
+    
+  } catch (error) {
+    console.error('[VIN Decoder] Error:', error);
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (errorEl) {
+      errorEl.textContent = 'Failed to decode VIN. Please try again.';
+      errorEl.style.display = 'block';
+    }
+    // Clear loading state from input on error
+    vinInput.classList.remove('vin-decoding');
+  }
+}
+
+/**
+ * Close VIN decoder modal
+ */
+function closeVinDecoderModal() {
+  const modal = document.getElementById('vinDecoderModal');
+  if (modal) modal.classList.add('hidden');
+  vinDecodedData = null;
+  
+  // Clear any loading/valid styling from VIN inputs
+  const naVinInput = document.getElementById('naVin');
+  const apptVinInput = document.getElementById('apptVin');
+  if (naVinInput) naVinInput.classList.remove('vin-valid', 'vin-decoding');
+  if (apptVinInput) apptVinInput.classList.remove('vin-valid', 'vin-decoding');
+}
+
+/**
+ * Confirm VIN decode and populate YMM fields
+ */
+function confirmVinDecoder() {
+  if (!vinDecodedData) {
+    closeVinDecoderModal();
+    return;
+  }
+  
+  const { year, make, model, vin } = vinDecodedData;
+  
+  // Get the VIN input element
+  const vinInput = vinDecoderTargetModal === 'new'
+    ? document.getElementById('naVin')
+    : document.getElementById('apptVin');
+  
+  // Track this VIN as decoded to prevent re-decode
+  if (vin) {
+    lastDecodedVin[vinDecoderTargetModal] = vin;
+  }
+  
+  if (vinDecoderTargetModal === 'new') {
+    // Populate New Appointment modal
+    setYMMDropdowns('naVehicleYear', 'naVehicleMake', 'naVehicleModel', year, make, model);
+  } else {
+    // Populate Edit Appointment modal
+    setYMMDropdowns('vehicleYear', 'vehicleMake', 'vehicleModel', year, make, model);
+  }
+  
+  // Clear any styling from VIN input
+  if (vinInput) {
+    vinInput.classList.remove('vin-valid', 'vin-decoding');
+  }
+  
+  closeVinDecoderModal();
+  showNotification(`✅ Vehicle set to ${year} ${make} ${model}`);
+}
+
+/**
+ * Set Year/Make/Model dropdown values and their corresponding text inputs
+ * @param {string} yearId - Year select element ID
+ * @param {string} makeId - Make select element ID
+ * @param {string} modelId - Model select element ID
+ * @param {string} year - Year value
+ * @param {string} make - Make value
+ * @param {string} model - Model value
+ */
+function setYMMDropdowns(yearId, makeId, modelId, year, make, model) {
+  const yearSelect = document.getElementById(yearId);
+  const makeSelect = document.getElementById(makeId);
+  const modelSelect = document.getElementById(modelId);
+  
+  // Also get the floating input elements (if they exist)
+  const yearInput = document.getElementById(yearId + 'Input');
+  const makeInput = document.getElementById(makeId + 'Input');
+  const modelInput = document.getElementById(modelId + 'Input');
+  
+  // Set Year
+  if (yearSelect && year) {
+    // Ensure the year option exists
+    let yearOption = Array.from(yearSelect.options).find(o => o.value === year.toString());
+    if (!yearOption) {
+      yearOption = new Option(year.toString(), year.toString());
+      yearSelect.add(yearOption);
+    }
+    yearSelect.value = year.toString();
+    yearSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    
+    // Update floating input if it exists
+    if (yearInput) {
+      yearInput.value = year.toString();
+      yearInput.placeholder = '';
+    }
+  }
+  
+  // Trigger make population based on year, then set make
+  if (makeSelect && make) {
+    // Repopulate makes with the selected year
+    populateVehicleMakes(makeSelect, yearSelect);
+    
+    // Try to find matching make (case-insensitive)
+    let makeOption = Array.from(makeSelect.options).find(
+      o => o.value.toLowerCase() === make.toLowerCase() || o.text.toLowerCase() === make.toLowerCase()
+    );
+    
+    // If not found, add it
+    if (!makeOption) {
+      makeOption = new Option(make, make);
+      makeSelect.add(makeOption);
+    }
+    
+    makeSelect.value = makeOption.value;
+    makeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    
+    // Update floating input if it exists
+    if (makeInput) {
+      makeInput.value = makeOption.text || make;
+      makeInput.placeholder = '';
+    }
+  }
+  
+  // Trigger model population, then set model
+  if (modelSelect && model) {
+    // Repopulate models based on make and year
+    populateVehicleModels(makeSelect, modelSelect, yearSelect);
+    
+    // Try to find matching model
+    let modelOption = Array.from(modelSelect.options).find(
+      o => o.value.toLowerCase() === model.toLowerCase() || o.text.toLowerCase() === model.toLowerCase()
+    );
+    
+    // If not found, add it
+    if (!modelOption) {
+      modelOption = new Option(model, model);
+      modelSelect.add(modelOption);
+    }
+    
+    modelSelect.value = modelOption.value;
+    modelSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    
+    // Update floating input if it exists
+    if (modelInput) {
+      modelInput.value = modelOption.text || model;
+      modelInput.placeholder = '';
+    }
+  }
+}
+
+// ========== VIN Barcode Scanner Functions ==========
+
+/**
+ * Initialize VIN barcode scanner
+ * Sets up camera scan buttons and modal controls
+ */
+function initVinScanner() {
+  // Camera scan buttons
+  const naVinScanBtn = document.getElementById('naVinScanBtn');
+  const apptVinScanBtn = document.getElementById('apptVinScanBtn');
+  
+  if (naVinScanBtn) {
+    naVinScanBtn.addEventListener('click', () => openVinScanner('new'));
+  }
+  if (apptVinScanBtn) {
+    apptVinScanBtn.addEventListener('click', () => openVinScanner('edit'));
+  }
+  
+  // Scanner modal controls
+  const closeBtn = document.getElementById('closeVinScannerModal');
+  const cancelBtn = document.getElementById('cancelVinScanner');
+  const switchCameraBtn = document.getElementById('switchCameraBtn');
+  const scannerModal = document.getElementById('vinScannerModal');
+  
+  if (closeBtn) closeBtn.addEventListener('click', closeVinScanner);
+  if (cancelBtn) cancelBtn.addEventListener('click', closeVinScanner);
+  if (switchCameraBtn) switchCameraBtn.addEventListener('click', switchCamera);
+  if (scannerModal) {
+    scannerModal.addEventListener('click', (e) => {
+      if (e.target === scannerModal) closeVinScanner();
+    });
+  }
+  
+  console.log('📷 VIN Barcode Scanner initialized');
+}
+
+/**
+ * Open VIN barcode scanner modal
+ * @param {string} modalType - 'new' or 'edit'
+ */
+async function openVinScanner(modalType) {
+  vinScannerTargetModal = modalType;
+  
+  const modal = document.getElementById('vinScannerModal');
+  const statusEl = document.getElementById('vinScannerStatus');
+  const video = document.getElementById('vinScannerVideo');
+  
+  if (!modal) return;
+  
+  // Reset status
+  if (statusEl) {
+    statusEl.textContent = 'Requesting camera access...';
+    statusEl.className = 'scanner-status';
+  }
+  
+  modal.classList.remove('hidden');
+  
+  try {
+    // Check if browser supports camera
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Camera not supported in this browser');
+    }
+    
+    // Request camera permission first with basic constraints
+    // This is needed before enumerateDevices will show all cameras
+    if (statusEl) {
+      statusEl.textContent = 'Initializing camera...';
+    }
+    
+    // Start with a basic stream to get permission
+    const initialStream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: { ideal: 'environment' } } 
+    });
+    
+    // Now enumerate devices (will have labels after permission granted)
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    availableCameras = devices.filter(d => d.kind === 'videoinput');
+    
+    console.log('[VIN Scanner] Available cameras:', availableCameras.map(c => c.label || c.deviceId));
+    
+    if (availableCameras.length === 0) {
+      throw new Error('No camera found on this device');
+    }
+    
+    // Stop initial stream
+    initialStream.getTracks().forEach(track => track.stop());
+    
+    // Find back camera if available
+    currentCameraIndex = availableCameras.findIndex(cam => {
+      const label = (cam.label || '').toLowerCase();
+      return label.includes('back') || 
+             label.includes('rear') ||
+             label.includes('environment') ||
+             label.includes('0, facing back');
+    });
+    if (currentCameraIndex === -1) currentCameraIndex = 0;
+    
+    // Start camera with selected device
+    await startCameraStream();
+    
+    // Update status
+    if (statusEl) {
+      statusEl.textContent = 'Position the VIN barcode within the frame';
+      statusEl.className = 'scanner-status';
+    }
+    
+    // Start barcode scanning
+    startBarcodeScanning();
+    
+  } catch (error) {
+    console.error('[VIN Scanner] Error:', error);
+    if (statusEl) {
+      let errorMsg = error.message || 'Camera access failed';
+      if (error.name === 'NotAllowedError') {
+        errorMsg = 'Camera permission denied. Please allow camera access.';
+      } else if (error.name === 'NotFoundError') {
+        errorMsg = 'No camera found on this device.';
+      } else if (error.name === 'NotReadableError') {
+        errorMsg = 'Camera is in use by another app.';
+      }
+      statusEl.textContent = `❌ ${errorMsg}`;
+      statusEl.className = 'scanner-status error';
+    }
+  }
+}
+
+/**
+ * Start camera video stream
+ */
+async function startCameraStream() {
+  const video = document.getElementById('vinScannerVideo');
+  if (!video) return;
+  
+  // Stop any existing stream
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(track => track.stop());
+  }
+  
+  const selectedCamera = availableCameras[currentCameraIndex];
+  
+  // Use less strict constraints to avoid OverconstrainedError
+  let constraints = {
+    video: {
+      width: { ideal: 1280 },
+      height: { ideal: 720 }
+    }
+  };
+  
+  // If we have a specific camera selected, use it
+  if (selectedCamera && selectedCamera.deviceId) {
+    constraints.video.deviceId = { ideal: selectedCamera.deviceId };
+  } else {
+    // Otherwise prefer back camera
+    constraints.video.facingMode = { ideal: 'environment' };
+  }
+  
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    await video.play();
+  } catch (error) {
+    console.warn('[VIN Scanner] First attempt failed, trying basic constraints:', error);
+    
+    // Fallback to very basic constraints
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = stream;
+      await video.play();
+    } catch (fallbackError) {
+      console.error('[VIN Scanner] Camera access failed:', fallbackError);
+      throw fallbackError;
+    }
+  }
+}
+
+/**
+ * Switch between available cameras
+ */
+async function switchCamera() {
+  if (availableCameras.length < 2) {
+    showNotification('Only one camera available', 'error');
+    return;
+  }
+  
+  currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
+  
+  const statusEl = document.getElementById('vinScannerStatus');
+  if (statusEl) {
+    statusEl.textContent = 'Switching camera...';
+    statusEl.className = 'scanner-status';
+  }
+  
+  try {
+    // Stop current scanning
+    if (vinScanner) {
+      vinScanner.stop();
+      vinScanner = null;
+    }
+    
+    await startCameraStream();
+    startBarcodeScanning();
+    
+    if (statusEl) {
+      statusEl.textContent = 'Position the VIN barcode within the frame';
+      statusEl.className = 'scanner-status';
+    }
+  } catch (error) {
+    console.error('[VIN Scanner] Camera switch error:', error);
+    if (statusEl) {
+      statusEl.textContent = `❌ Failed to switch camera`;
+      statusEl.className = 'scanner-status error';
+    }
+  }
+}
+
+/**
+ * Start barcode scanning using BarcodeDetector API (native) or html5-qrcode fallback
+ */
+function startBarcodeScanning() {
+  const video = document.getElementById('vinScannerVideo');
+  if (!video || !video.srcObject) return;
+  
+  // Create canvas for frame capture
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Scan interval
+  let scanInterval = null;
+  let isScanning = true;
+  
+  // Check for native BarcodeDetector API (Chrome 83+, Edge 83+)
+  const useNativeDetector = 'BarcodeDetector' in window;
+  let barcodeDetector = null;
+  
+  if (useNativeDetector) {
+    try {
+      // CODE_39 and CODE_128 are common VIN barcode formats
+      barcodeDetector = new BarcodeDetector({ 
+        formats: ['code_39', 'code_128', 'code_93', 'codabar', 'ean_13', 'ean_8', 'upc_a', 'upc_e'] 
+      });
+      console.log('[VIN Scanner] Using native BarcodeDetector API');
+    } catch (e) {
+      console.log('[VIN Scanner] BarcodeDetector not fully supported, using fallback');
+    }
+  }
+  
+  const performScan = async () => {
+    if (!isScanning || !video.srcObject || video.readyState !== 4) return;
+    
+    try {
+      // Capture frame from video
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      if (canvas.width === 0 || canvas.height === 0) return;
+      
+      ctx.drawImage(video, 0, 0);
+      
+      let foundVin = null;
+      
+      // Try native BarcodeDetector first
+      if (barcodeDetector) {
+        try {
+          const barcodes = await barcodeDetector.detect(canvas);
+          for (const barcode of barcodes) {
+            const cleanResult = barcode.rawValue.trim().toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '');
+            if (cleanResult.length === 17 && isValidVIN(cleanResult)) {
+              foundVin = cleanResult;
+              break;
+            }
+          }
+        } catch (e) {
+          // Native detector failed, continue
+        }
+      }
+      
+      // Fallback to html5-qrcode if no native result
+      if (!foundVin && typeof Html5Qrcode !== 'undefined') {
+        try {
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+          if (blob) {
+            const file = new File([blob], 'frame.jpg', { type: 'image/jpeg' });
+            const html5QrCode = new Html5Qrcode('vinScannerPreview', { verbose: false });
+            
+            try {
+              const result = await html5QrCode.scanFile(file, false);
+              const cleanResult = result.trim().toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '');
+              if (cleanResult.length === 17 && isValidVIN(cleanResult)) {
+                foundVin = cleanResult;
+              }
+            } catch (scanErr) {
+              // No barcode found
+            }
+            
+            try { html5QrCode.clear(); } catch (e) {}
+          }
+        } catch (e) {
+          // Fallback also failed
+        }
+      }
+      
+      // Handle found VIN
+      if (foundVin) {
+        console.log('[VIN Scanner] Found VIN:', foundVin);
+        isScanning = false;
+        if (scanInterval) clearInterval(scanInterval);
+        handleScannedVin(foundVin);
+      }
+      
+    } catch (error) {
+      // Frame capture error, continue
+      console.warn('[VIN Scanner] Scan error:', error);
+    }
+  };
+  
+  // Store scanner reference for cleanup
+  vinScanner = {
+    stop: () => {
+      isScanning = false;
+      if (scanInterval) clearInterval(scanInterval);
+    }
+  };
+  
+  // Scan every 150ms for better responsiveness
+  scanInterval = setInterval(performScan, 150);
+  
+  // Wait for video to be ready before first scan
+  if (video.readyState === 4) {
+    performScan();
+  } else {
+    video.addEventListener('loadeddata', performScan, { once: true });
+  }
+}
+
+/**
+ * Handle successfully scanned VIN
+ * @param {string} vin - The scanned VIN
+ */
+function handleScannedVin(vin) {
+  const statusEl = document.getElementById('vinScannerStatus');
+  
+  // Show success state
+  if (statusEl) {
+    statusEl.textContent = `✅ VIN Found: ${vin}`;
+    statusEl.className = 'scanner-status success';
+  }
+  
+  // Populate VIN input
+  const vinInput = vinScannerTargetModal === 'new'
+    ? document.getElementById('naVin')
+    : document.getElementById('apptVin');
+  
+  if (vinInput) {
+    vinInput.value = vin;
+    // Trigger input event to start auto-decode
+    vinInput.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  
+  // Close scanner after short delay
+  setTimeout(() => {
+    closeVinScanner();
+  }, 800);
+}
+
+/**
+ * Close VIN scanner modal and cleanup
+ */
+function closeVinScanner() {
+  const modal = document.getElementById('vinScannerModal');
+  const video = document.getElementById('vinScannerVideo');
+  
+  // Stop scanner
+  if (vinScanner) {
+    vinScanner.stop();
+    vinScanner = null;
+  }
+  
+  // Stop camera stream
+  if (video && video.srcObject) {
+    video.srcObject.getTracks().forEach(track => track.stop());
+    video.srcObject = null;
+  }
+  
+  // Hide modal
+  if (modal) {
+    modal.classList.add('hidden');
+  }
+  
+  // Reset state
+  vinScannerTargetModal = null;
 }
 
 /**
@@ -5220,6 +5958,9 @@ async function setupAppointments() {
 
   // Initialize floating selects for appointment Y/M/M and new-appointment (na) Y/M/M
   ['vehicleYear','vehicleMake','vehicleModel','naVehicleYear','naVehicleMake','naVehicleModel'].forEach(id => initFloatingSelect(id));
+  
+  // ========== VIN Decoder Setup ==========
+  initVinDecoder();
   
   // Start polling for notes updates
   startNotesPolling();
