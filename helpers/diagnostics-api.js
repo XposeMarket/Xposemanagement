@@ -719,10 +719,179 @@ export async function getAiDynamicTriage({
   }
 }
 
+// ============================================
+// VIN DECODE (for fuel type, engine info)
+// ============================================
+
+/**
+ * Decode a VIN using NHTSA API to get vehicle details including fuel type
+ * @param {string} vin - The VIN to decode
+ * @returns {Promise<Object>} Decoded vehicle info with fuelType, engineType, etc.
+ */
+export async function decodeVinForCortex(vin) {
+  if (!vin || vin.length !== 17) {
+    return { success: false, error: 'Invalid VIN' };
+  }
+
+  try {
+    const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${vin}?format=json`);
+    if (!response.ok) throw new Error(`NHTSA API error: ${response.status}`);
+    
+    const data = await response.json();
+    const results = data.Results?.[0];
+    
+    if (!results || results.ErrorCode !== '0') {
+      return { success: false, error: results?.ErrorText || 'Failed to decode VIN' };
+    }
+
+    // Extract relevant fields
+    const decoded = {
+      success: true,
+      year: results.ModelYear || null,
+      make: results.Make || null,
+      model: results.Model || null,
+      trim: results.Trim || null,
+      engineSize: results.DisplacementL || results.DisplacementCC || null,
+      engineCylinders: results.EngineCylinders || null,
+      engineConfig: results.EngineConfiguration || null,
+      fuelType: results.FuelTypePrimary || null,  // e.g., "Gasoline", "Diesel", "Electric"
+      fuelTypeSecondary: results.FuelTypeSecondary || null,
+      driveType: results.DriveType || null,
+      transmissionType: results.TransmissionStyle || null,
+      bodyClass: results.BodyClass || null,
+      vehicleType: results.VehicleType || null,
+      // Derived helper flags
+      isDiesel: (results.FuelTypePrimary || '').toLowerCase().includes('diesel'),
+      isElectric: (results.FuelTypePrimary || '').toLowerCase().includes('electric'),
+      isHybrid: (results.FuelTypePrimary || '').toLowerCase().includes('hybrid') || 
+                (results.FuelTypeSecondary || '').toLowerCase().includes('electric'),
+      isGasoline: (results.FuelTypePrimary || '').toLowerCase().includes('gasoline') ||
+                  (results.FuelTypePrimary || '').toLowerCase().includes('gas')
+    };
+
+    console.log('[diagnostics-api] VIN decoded:', decoded);
+    return decoded;
+
+  } catch (e) {
+    console.error('[diagnostics-api] decodeVinForCortex error:', e);
+    return { success: false, error: e.message };
+  }
+}
+
+// ============================================
+// VEHICLE COMPATIBILITY CHECK
+// ============================================
+
+// Common codes/services that are powertrain-specific
+const DIESEL_ONLY_PATTERNS = [
+  /glow\s*plug/i,
+  /P06[67]\d/i,        // P0670-P0679 Glow Plug codes
+  /P0380/i,            // Glow Plug Heater Circuit
+  /diesel\s*particulate/i,
+  /DPF/i,
+  /DEF/i,
+  /urea/i,
+  /injector\s*pump/i,
+  /injection\s*pump/i,
+  /turbo.*diesel/i
+];
+
+const GASOLINE_ONLY_PATTERNS = [
+  /spark\s*plug/i,
+  /ignition\s*coil/i,
+  /P030[0-9]/i,        // P0300-P0309 Misfire codes (gas engines)
+  /P035[0-9]/i,        // P0350-P0359 Ignition Coil codes
+  /catalytic\s*converter/i,
+  /O2\s*sensor/i,
+  /oxygen\s*sensor/i,
+  /MAF.*sensor/i,
+  /throttle\s*body/i
+];
+
+const ELECTRIC_INCOMPATIBLE_PATTERNS = [
+  /oil\s*change/i,
+  /spark\s*plug/i,
+  /glow\s*plug/i,
+  /fuel\s*filter/i,
+  /fuel\s*pump/i,
+  /exhaust/i,
+  /catalytic/i,
+  /transmission\s*fluid/i,
+  /radiator/i,
+  /coolant/i  // EVs have coolant but different system
+];
+
+/**
+ * Check if a diagnostic code or service is compatible with vehicle powertrain
+ * @param {string} codeOrService - The DTC code or service name
+ * @param {Object} vehicleInfo - Vehicle info including fuelType, isDiesel, isElectric, isGasoline
+ * @returns {Object|null} Compatibility warning or null if compatible
+ */
+export function checkVehicleCompatibility(codeOrService, vehicleInfo) {
+  if (!codeOrService || !vehicleInfo) return null;
+  
+  const { fuelType, isDiesel, isElectric, isGasoline, year, make, model } = vehicleInfo;
+  const searchTerm = codeOrService.toString();
+  const vehicleDesc = `${year || ''} ${make || ''} ${model || ''}`.trim();
+
+  // Check diesel-only patterns on non-diesel vehicle
+  if (!isDiesel) {
+    for (const pattern of DIESEL_ONLY_PATTERNS) {
+      if (pattern.test(searchTerm)) {
+        return {
+          type: 'incompatible',
+          severity: 'warning',
+          title: 'Vehicle Compatibility Notice',
+          message: `This diagnostic code/service (${searchTerm}) is typically associated with **diesel engines**. The vehicle on this job is a **${vehicleDesc}** which has a **${fuelType || 'gasoline'}** powertrain.`,
+          suggestion: 'Please verify this code was read correctly, or confirm if the vehicle information needs to be updated.',
+          expectedPowertrain: 'diesel',
+          actualPowertrain: fuelType || 'gasoline'
+        };
+      }
+    }
+  }
+
+  // Check gasoline-only patterns on diesel vehicle
+  if (isDiesel) {
+    for (const pattern of GASOLINE_ONLY_PATTERNS) {
+      if (pattern.test(searchTerm)) {
+        return {
+          type: 'incompatible',
+          severity: 'warning',
+          title: 'Vehicle Compatibility Notice',
+          message: `This diagnostic code/service (${searchTerm}) is typically associated with **gasoline engines**. The vehicle on this job is a **${vehicleDesc}** which has a **diesel** powertrain.`,
+          suggestion: 'Please verify this code was read correctly, or confirm if the vehicle information needs to be updated.',
+          expectedPowertrain: 'gasoline',
+          actualPowertrain: 'diesel'
+        };
+      }
+    }
+  }
+
+  // Check ICE patterns on electric vehicle
+  if (isElectric) {
+    for (const pattern of ELECTRIC_INCOMPATIBLE_PATTERNS) {
+      if (pattern.test(searchTerm)) {
+        return {
+          type: 'incompatible',
+          severity: 'warning',
+          title: 'Vehicle Compatibility Notice',
+          message: `This service (${searchTerm}) is typically associated with **internal combustion engines**. The vehicle on this job is a **${vehicleDesc}** which is **electric**.`,
+          suggestion: 'Electric vehicles have different maintenance requirements. Please verify this service applies to this vehicle.',
+          expectedPowertrain: 'ICE',
+          actualPowertrain: 'electric'
+        };
+      }
+    }
+  }
+
+  return null; // Compatible or no issues detected
+}
+
 export default {
   unifiedSearch, searchPlaybooks, searchOperations, getPlaybookById, getOperationById,
   logSearchRequest, logDiagnosticRequest, recordFixOutcome, getFixStatistics,
   submitFeedback, submitPlaybookFeedback, getCommonDtcInfo, COMMON_MAKES, getYearOptions,
   getModelsForMake, getVehicleSpecificLabor, getCachedLaborForVehicle, getAiDiagnosticAnalysis, getAiGeneralDiagnosis,
-  getAiDynamicTriage
+  getAiDynamicTriage, decodeVinForCortex, checkVehicleCompatibility
 };

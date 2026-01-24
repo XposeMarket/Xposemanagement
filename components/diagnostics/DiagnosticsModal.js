@@ -6,7 +6,8 @@
 import { 
   unifiedSearch, getPlaybookById, getOperationById, logSearchRequest, recordFixOutcome,
   getFixStatistics, submitFeedback, getCommonDtcInfo, COMMON_MAKES, getYearOptions, getModelsForMake,
-  getVehicleSpecificLabor, getAiDiagnosticAnalysis, getAiDynamicTriage
+  getVehicleSpecificLabor, getAiDiagnosticAnalysis, getAiDynamicTriage,
+  decodeVinForCortex, checkVehicleCompatibility
 } from '../../helpers/diagnostics-api.js';
 import { getAiGeneralDiagnosis } from '../../helpers/diagnostics-api.js';
 import { getSupabaseClient } from '../../helpers/supabase.js';
@@ -17,6 +18,7 @@ let onCloseCallback = null, availableJobs = [], availableAppointments = [];
 let shopSettings = null, shopData = null;
 let selectedVehicle = { year: '', make: '', model: '' };
 let triageAnswers = {}; // Store triage question answers
+let vinDecodedInfo = null; // Decoded VIN info (fuel type, engine, etc.)
 
 // AI Labor State
 let aiLaborState = {
@@ -49,6 +51,38 @@ let diagSearchState = { combined: [], query: '', filter: 'all' };
 
 function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 
+/**
+ * Render vehicle compatibility warning banner if there's a mismatch
+ * @param {string} codeOrService - The code or service name being viewed
+ * @returns {string} HTML for the warning banner, or empty string if compatible
+ */
+function renderCompatibilityWarning(codeOrService) {
+  if (!vinDecodedInfo || !codeOrService) return '';
+  
+  const warning = checkVehicleCompatibility(codeOrService, vinDecodedInfo);
+  if (!warning) return '';
+  
+  // Convert markdown-style **bold** to HTML
+  const formatMessage = (msg) => msg.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  
+  return `
+    <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 2px solid #f59e0b; border-radius: 10px; padding: 16px; margin-bottom: 20px;">
+      <div style="display: flex; gap: 12px; align-items: flex-start;">
+        <span style="font-size: 1.5rem; flex-shrink: 0;">⚠️</span>
+        <div style="flex: 1;">
+          <h4 style="margin: 0 0 8px 0; color: #92400e; font-size: 1rem;">${warning.title}</h4>
+          <p style="margin: 0 0 8px 0; color: #78350f; font-size: 0.95rem; line-height: 1.5;">
+            ${formatMessage(warning.message)}
+          </p>
+          <p style="margin: 0; color: #92400e; font-size: 0.85rem; font-style: italic;">
+            ${warning.suggestion}
+          </p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 let currentIsStaff = false;
 export function openDiagnosticsModal({ jobs = [], appointments = [], onClose, isStaff = false }) {
   availableJobs = jobs.filter(j => j.status !== 'completed');
@@ -57,6 +91,7 @@ export function openDiagnosticsModal({ jobs = [], appointments = [], onClose, is
   currentJob = currentAppt = currentVehicle = currentResult = null;
   selectedVehicle = { year: '', make: '', model: '' };
   triageAnswers = {};
+  vinDecodedInfo = null; // Reset VIN decoded info
   // Reset dynamic triage state
   dynamicTriageState = {
     active: false, loading: false, conversation: [], questionCount: 0,
@@ -156,16 +191,29 @@ function showJobSelectionView() {
     </div>`;
 }
 
-window.diagSelectJob = function(jobId) {
+window.diagSelectJob = async function(jobId) {
   const j = availableJobs.find(x => x.id === jobId);
   if (!j) return;
   currentJob = j;
   currentAppt = availableAppointments.find(x => x.id === j.appointment_id) || null;
   currentVehicle = parseVehicleFromAppt(currentAppt);
+  
+  // Decode VIN if available to get fuel type info
+  vinDecodedInfo = null;
+  const vin = currentAppt?.vin || currentAppt?.vehicle_vin || null;
+  if (vin && vin.length === 17) {
+    console.log('[DiagnosticsModal] Decoding VIN for compatibility check:', vin);
+    const decoded = await decodeVinForCortex(vin);
+    if (decoded.success) {
+      vinDecodedInfo = decoded;
+      console.log('[DiagnosticsModal] VIN decoded - Fuel type:', decoded.fuelType, 'isDiesel:', decoded.isDiesel);
+    }
+  }
+  
   showSearchView();
 };
-window.diagSkipJobSelection = function() { currentJob = currentAppt = currentVehicle = null; showSearchView(); };
-window.diagChangeJob = function() { currentJob = currentAppt = currentVehicle = null; selectedVehicle = { year: '', make: '', model: '' }; triageAnswers = {}; showJobSelectionView(); };
+window.diagSkipJobSelection = function() { currentJob = currentAppt = currentVehicle = null; vinDecodedInfo = null; showSearchView(); };
+window.diagChangeJob = function() { currentJob = currentAppt = currentVehicle = null; vinDecodedInfo = null; selectedVehicle = { year: '', make: '', model: '' }; triageAnswers = {}; showJobSelectionView(); };
 
 // Main Search View
 function showSearchView() {
@@ -710,6 +758,10 @@ window.diagViewPlaybook = async function(id) {
         </div>
         <div style="padding: 20px;">
           ${pb.summary ? `<p style="margin: 0 0 20px 0; line-height: 1.6;">${pb.summary}</p>` : ''}
+          
+          <!-- Vehicle Compatibility Warning -->
+          ${renderCompatibilityWarning(playbook.title)}
+          ${(playbook.dtc_codes || []).map(code => renderCompatibilityWarning(code)).filter(w => w).join('')}
 
           <!-- AI Dynamic Triage Section -->
           <div id="dynamicTriageContainer" style="margin-bottom: 20px;">
@@ -775,6 +827,27 @@ window.diagViewPlaybook = async function(id) {
                 </div>
               ` : ''}
               ${aiDiagResult && aiDiagResult.status !== 'error' ? (() => {
+                // Check for compatibility warning from AI
+                const compWarn = aiDiagResult.compatibilityWarning;
+                if (compWarn && compWarn.hasWarning) {
+                  return `
+                    <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 2px solid #f59e0b; border-radius: 10px; padding: 16px; margin-top: 8px;">
+                      <div style="display: flex; gap: 12px; align-items: flex-start;">
+                        <span style="font-size: 1.5rem; flex-shrink: 0;">⚠️</span>
+                        <div style="flex: 1;">
+                          <h4 style="margin: 0 0 8px 0; color: #92400e; font-size: 1rem;">${compWarn.title || 'Vehicle Compatibility Notice'}</h4>
+                          <p style="margin: 0 0 8px 0; color: #78350f; font-size: 0.95rem; line-height: 1.5;">
+                            ${compWarn.message}
+                          </p>
+                          <p style="margin: 0; color: #92400e; font-size: 0.85rem; font-style: italic;">
+                            Please verify this code was read correctly, or confirm if the vehicle information needs to be updated.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                }
+                
                 let confColor = '#64748b', confBg = '#f1f5f9', confBorder = '#cbd5e1';
                 if (aiDiagResult.confidence === 'high') { confColor = '#166534'; confBg = '#dcfce7'; confBorder = '#86efac'; }
                 else if (aiDiagResult.confidence === 'medium') { confColor = '#92400e'; confBg = '#fef3c7'; confBorder = '#fcd34d'; }
@@ -813,7 +886,7 @@ window.diagViewPlaybook = async function(id) {
             const name = svc.name || svc, hrs = svc.labor_hours || 1, est = hrs * rate.rate;
             return `<div style="padding: 12px 16px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
               <div><strong>${name}</strong><div style="font-size: 0.85rem; color: var(--muted);">${hrs} hr × $${rate.rate}/hr = <strong>$${est.toFixed(2)}</strong></div></div>
-              ${canAdd ? `<button class="btn small info" onclick="event.stopPropagation(); window.diagAddToInvoice('${name.replace(/'/g, "\\'")}', ${hrs}, 'playbook', '${id}')">+ Add ${est.toFixed(2)}</button>` : noJobMsg}
+              ${canAdd ? `<button class="btn small info" onclick="event.stopPropagation(); window.diagAddToInvoice('${name.replace(/'/g, "\\'")}', ${hrs}, 'playbook', '${id}')">+ Add $${est.toFixed(2)}</button>` : noJobMsg}
             </div>`;
           }).join('')}</div>` : ''}
         </div>
@@ -1010,21 +1083,23 @@ function renderOperationView(op, rate, hrs, vehicle) {
           <p style="margin: 0 0 12px 0; font-size: 0.9rem; color: #78350f;">
             ${vehicle.year} ${vehicle.make} ${vehicle.model} has multiple engine options with different labor times:
           </p>
-          <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; flex-direction: column; gap: 10px;">
             ${aiLaborState.engineVariants.map(v => {
               const isCommon = v.is_most_common;
               return `
                 <button onclick="window.diagSelectEngine('${op.id}', '${esc(v.engine_type)}')"
-                  class="btn" style="text-align: left; padding: 12px 16px; background: white; border: 2px solid ${isCommon ? '#10b981' : '#e5e7eb'}; border-radius: 8px;">
-                  <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                      <strong>${v.engine_type}</strong>
-                      ${isCommon ? '<span style="font-size: 0.7rem; background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 12px; margin-left: 8px;">Most Common</span>' : ''}
-                      ${v.notes ? `<p style="margin: 4px 0 0 0; font-size: 0.85rem; color: var(--muted);">${v.notes}</p>` : ''}
+                  class="btn" style="text-align: left; padding: 14px 16px; background: white; border: 2px solid ${isCommon ? '#10b981' : '#e5e7eb'}; border-radius: 10px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                    <div style="flex: 1;">
+                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <strong style="font-size: 1.05rem;">${v.engine_type}</strong>
+                        ${isCommon ? '<span style="font-size: 0.7rem; background: #dcfce7; color: #166534; padding: 3px 10px; border-radius: 12px; font-weight: 600;">Most Common</span>' : ''}
+                      </div>
+                      ${v.notes ? `<p style="margin: 6px 0 0 0; font-size: 0.85rem; color: #78350f;">${v.notes}</p>` : ''}
                     </div>
-                    <div style="text-align: right;">
-                      <strong style="color: #10b981;">${v.labor_hours_typical} hrs</strong>
-                      <div style="font-size: 0.8rem; color: var(--muted);">${v.labor_hours_low}-${v.labor_hours_high}</div>
+                    <div style="text-align: right; flex-shrink: 0;">
+                      <span style="font-size: 1rem; font-weight: 700; color: #10b981;">${v.labor_hours_typical} hrs</span>
+                      <span style="font-size: 0.8rem; color: #92400e; margin-left: 6px;">(${v.labor_hours_low}–${v.labor_hours_high})</span>
                     </div>
                   </div>
                 </button>`;
@@ -1090,7 +1165,7 @@ function renderOperationView(op, rate, hrs, vehicle) {
             ${canAdd ? `
               <button class="btn" style="background: #f59e0b; color: white; border-color: #f59e0b; font-weight: 600;" 
                 onclick="window.diagAddToInvoice('${esc(op.name)}', ${aiHrs}, 'operation', '${op.id}')">
-                + Add to Invoice (${aiHrs} hrs = ${(aiHrs * rate.rate).toFixed(2)})
+                + Add to Invoice (${aiHrs} hrs = $${(aiHrs * rate.rate).toFixed(2)})
               </button>
               <div style="font-size: 0.75rem; color: #92400e; margin-top: 6px;">Using vehicle-specific labor time</div>
             ` : noJobMsg}
@@ -1137,6 +1212,9 @@ function renderOperationView(op, rate, hrs, vehicle) {
         <div style="padding: 20px;">
           ${op.summary ? `<p style="margin: 0 0 20px 0; line-height: 1.6;">${op.summary}</p>` : ''}
           
+          <!-- Vehicle Compatibility Warning -->
+          ${renderCompatibilityWarning(op.name)}
+          
           <!-- Labor Time Section -->
           <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 16px;">
             <h4 style="margin: 0 0 12px 0; color: #166534;">⏱️ Labor Time</h4>
@@ -1147,11 +1225,11 @@ function renderOperationView(op, rate, hrs, vehicle) {
               <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                 <div><span style="color: var(--muted);">Range:</span> <strong>${op.labor_hours_low || hrs} – ${op.labor_hours_high || hrs} hrs</strong></div>
                 <div><span style="color: var(--muted);">Typical:</span> <strong>${hrs} hrs</strong></div>
-                <div><span style="color: var(--muted);">Est. Labor:</span> <strong>${(hrs * rate.rate).toFixed(2)}</strong></div>
+                <div><span style="color: var(--muted);">Est. Labor:</span> <strong>$${(hrs * rate.rate).toFixed(2)}</strong></div>
               </div>
               ${!hasVehicle ? `
                 <div style="margin-top: 12px; text-align: center; padding-top: 12px; border-top: 1px solid #86efac;">
-                  ${canAdd ? `<button class="btn info" onclick="window.diagAddToInvoice('${esc(op.name)}', ${hrs}, 'operation', '${op.id}')">+ Add to Invoice (${(hrs * rate.rate).toFixed(2)})</button>` : noJobMsg}
+                  ${canAdd ? `<button class="btn info" onclick="window.diagAddToInvoice('${esc(op.name)}', ${hrs}, 'operation', '${op.id}')">+ Add to Invoice ($${(hrs * rate.rate).toFixed(2)})</button>` : noJobMsg}
                 </div>
                 <div style="margin-top: 8px; text-align: center; font-size: 0.8rem; color: var(--muted);">
                   💡 Select a vehicle for more accurate estimates
@@ -1175,11 +1253,11 @@ function renderOperationView(op, rate, hrs, vehicle) {
                   <div>
                     <strong>${v.name}</strong>
                     <div style="font-size: 0.85rem; color: var(--muted);">
-                      <strong>${vHrs} hrs</strong> × ${rate.rate}/hr = <strong>${vEst.toFixed(2)}</strong>
+                      <strong>${vHrs} hrs</strong> × ${rate.rate}/hr = <strong>$${vEst.toFixed(2)}</strong>
                       ${v.note ? ` — <span style="font-style: italic;">${v.note}</span>` : ''}
                     </div>
                   </div>
-                  ${canAdd ? `<button class="btn small info" onclick="event.stopPropagation(); window.diagAddToInvoice('${esc(vName)}', ${vHrs}, 'operation', '${op.id}')">+ Add ${vEst.toFixed(2)}</button>` : noJobMsg}
+                  ${canAdd ? `<button class="btn small info" onclick="event.stopPropagation(); window.diagAddToInvoice('${esc(vName)}', ${vHrs}, 'operation', '${op.id}')">+ Add $${vEst.toFixed(2)}</button>` : noJobMsg}
                 </div>`;
               }).join('')}
             </div>
@@ -1207,9 +1285,9 @@ function renderOperationView(op, rate, hrs, vehicle) {
                   <div>
                     <strong>${a.name}</strong>
                     ${a.reason ? ` — <span style="font-size: 0.9rem; color: #92400e;">${a.reason}</span>` : ''}
-                    <div style="font-size: 0.85rem; color: var(--muted); margin-top: 2px;">Est: ${aHrs} hr = <strong>${aEst.toFixed(2)}</strong></div>
+                    <div style="font-size: 0.85rem; color: var(--muted); margin-top: 2px;">Est: ${aHrs} hr = <strong>$${aEst.toFixed(2)}</strong></div>
                   </div>
-                  ${canAdd ? `<button class="btn small" style="background: #f59e0b; color: white; border-color: #f59e0b;" onclick="event.stopPropagation(); window.diagAddToInvoice('${esc(a.name)}', ${aHrs}, 'addon', '${op.id}')">+ Add ${aEst.toFixed(2)}</button>` : noJobMsg}
+                  ${canAdd ? `<button class="btn small" style="background: #f59e0b; color: white; border-color: #f59e0b;" onclick="event.stopPropagation(); window.diagAddToInvoice('${esc(a.name)}', ${aHrs}, 'addon', '${op.id}')">+ Add $${aEst.toFixed(2)}</button>` : noJobMsg}
                 </div>`;
               }).join('')}
             </div>

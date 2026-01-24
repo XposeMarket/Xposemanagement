@@ -2466,8 +2466,22 @@ VEHICLE: ${vehicleYear} ${vehicleMake} ${vehicleModel}
 ${engineType ? `ENGINE: ${engineType}` : ''}
 ${dbLaborHours ? `DB ESTIMATE: ${dbLaborHours.low}-${dbLaborHours.high} hrs` : ''}
 
+IMPORTANT: First, check if this service is COMPATIBLE with this specific vehicle:
+- Glow plug services are ONLY for diesel engines (gas engines don't have glow plugs)
+- Spark plug services are ONLY for gasoline engines (diesels don't have spark plugs)  
+- Some services don't apply to electric vehicles (oil changes, exhaust, fuel system, etc.)
+
+If there's a compatibility mismatch, set "compatibilityWarning" with hasWarning: true.
+
 Respond with JSON:
 {
+  "compatibilityWarning": {
+    "hasWarning": boolean,
+    "title": "Vehicle Compatibility Notice" (if warning),
+    "message": "Explanation of why this service doesn't apply to this vehicle" (if warning),
+    "expectedPowertrain": "diesel"|"gasoline"|"ICE" (if warning),
+    "actualPowertrain": "the vehicle's actual powertrain" (if warning)
+  },
   "needs_engine_selection": boolean,
   "engine_variants": [{"engine_type": "2.5L", "is_most_common": true, "labor_hours_low": 0.8, "labor_hours_typical": 1.0, "labor_hours_high": 1.2, "confidence": "high", "notes": "..."}],
   "single_result": {"engine_type": "All", "labor_hours_low": number, "labor_hours_typical": number, "labor_hours_high": number, "confidence": "high"|"medium"|"low", "labor_notes": "...", "sources": [], "required_tools": [], "vehicle_specific_tips": []}
@@ -2499,11 +2513,35 @@ Respond with JSON:
     const aiResult = JSON.parse(openaiData.choices[0]?.message?.content || '{}');
     console.log('[AI-Labor] OpenAI result:', JSON.stringify(aiResult, null, 2));
 
+    // Check for compatibility warning first
+    const compatibilityWarning = aiResult.compatibilityWarning || { hasWarning: false };
+    
+    // If there's a compatibility warning, return it prominently
+    if (compatibilityWarning.hasWarning) {
+      return res.json({
+        status: 'complete',
+        source: 'ai',
+        compatibilityWarning: compatibilityWarning,
+        data: aiResult.single_result ? {
+          engine_type: aiResult.single_result.engine_type || 'N/A',
+          labor_hours_low: aiResult.single_result.labor_hours_low || 0,
+          labor_hours_typical: aiResult.single_result.labor_hours_typical || 0,
+          labor_hours_high: aiResult.single_result.labor_hours_high || 0,
+          confidence: 'low',
+          labor_notes: compatibilityWarning.message,
+          sources: [],
+          required_tools: [],
+          vehicle_specific_tips: []
+        } : null
+      });
+    }
+
     // Handle multiple engine variants
     if (aiResult.needs_engine_selection && !engineType && aiResult.engine_variants?.length > 1) {
       return res.json({
         status: 'needs_engine_selection',
         source: 'ai',
+        compatibilityWarning: compatibilityWarning,
         variants: aiResult.engine_variants
       });
     }
@@ -2514,6 +2552,7 @@ Respond with JSON:
     return res.json({
       status: 'complete',
       source: 'ai',
+      compatibilityWarning: compatibilityWarning,
       data: {
         engine_type: result.engine_type || engineType || 'all',
         labor_hours_low: result.labor_hours_low,
@@ -2644,7 +2683,33 @@ app.post('/api/ai-diagnosis-general', async (req, res) => {
       return res.status(500).json({ error: 'OpenAI API key not configured' });
     }
 
-    const searchPrompt = `You are an expert automotive diagnostician. Given the following vehicle and symptom/diagnosis, search real-world web results and return the single most common cause for this issue on this vehicle.\n\nVEHICLE: ${vehicleYear} ${vehicleMake} ${vehicleModel}\nSYMPTOM/DIAGNOSIS: ${diagnosisTitle}\n\nRespond with JSON:\n{\n  'probableCause': string,\n  'explanation': string,\n  'confidence': 'high'|'medium'|'low',\n  'sources': [string]\n}`;
+    const searchPrompt = `You are an expert automotive diagnostician. Given the following vehicle and symptom/diagnosis, analyze and respond.
+
+VEHICLE: ${vehicleYear} ${vehicleMake} ${vehicleModel}
+SYMPTOM/DIAGNOSIS: ${diagnosisTitle}
+
+IMPORTANT: First, check if this diagnosis/service is COMPATIBLE with this specific vehicle:
+- Glow plug issues are ONLY for diesel engines (gas engines don't have glow plugs)
+- Spark plug issues are ONLY for gasoline engines (diesels don't have spark plugs)
+- Some services don't apply to electric vehicles (oil changes, exhaust, fuel system, etc.)
+
+If there's a compatibility mismatch, set "compatibilityWarning" with details.
+
+Respond with JSON:
+{
+  "compatibilityWarning": {
+    "hasWarning": boolean,
+    "title": "Vehicle Compatibility Notice" (if warning),
+    "message": "Explanation of why this doesn't apply to this vehicle" (if warning),
+    "expectedPowertrain": "diesel"|"gasoline"|"ICE" (if warning),
+    "actualPowertrain": "the vehicle's actual powertrain" (if warning)
+  },
+  "probableCause": string (the most common cause if compatible, or "N/A - See compatibility warning" if not),
+  "explanation": string,
+  "confidence": "high"|"medium"|"low",
+  "whatToCheck": string (optional diagnostic steps),
+  "sources": [string]
+}`;
 
     const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -2655,11 +2720,11 @@ app.post('/api/ai-diagnosis-general', async (req, res) => {
       body: JSON.stringify({
         model: 'gpt-4o',
         messages: [
-          { role: 'system', content: 'You are an expert automotive diagnostician. Respond with ONLY valid JSON.' },
+          { role: 'system', content: 'You are an expert automotive diagnostician. Check vehicle compatibility first, then provide diagnosis. Respond with ONLY valid JSON.' },
           { role: 'user', content: searchPrompt }
         ],
         temperature: 0.3,
-        max_tokens: 800,
+        max_tokens: 1000,
         response_format: { type: 'json_object' }
       })
     });
@@ -2673,8 +2738,10 @@ app.post('/api/ai-diagnosis-general', async (req, res) => {
     console.log('[AI-GeneralDiagnosis] OpenAI result:', JSON.stringify(aiResult, null, 2));
 
     return res.json({
+      compatibilityWarning: aiResult.compatibilityWarning || { hasWarning: false },
       probableCause: aiResult.probableCause || aiResult.cause || 'Unknown',
       explanation: aiResult.explanation || '',
+      whatToCheck: aiResult.whatToCheck || '',
       confidence: aiResult.confidence || 'medium',
       sources: aiResult.sources || []
     });
