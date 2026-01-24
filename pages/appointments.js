@@ -3568,18 +3568,70 @@ async function openEditModal(appt) {
     }
   }
   
-  form.elements['vehicle_year'].value = vehicle_year;
-  form.elements['vehicle_make'].value = vehicle_make;
-  form.elements['vehicle_model'].value = vehicle_model;
-  
-  // Populate model dropdown based on selected make
+  // Step 1: Set year first
+  const yearSelect = form.elements['vehicle_year'];
+  yearSelect.value = vehicle_year;
+  yearSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+  // Step 2: Populate makes for selected year, then set make (with delay)
   const makeSelect = form.elements['vehicle_make'];
   const modelSelect = form.elements['vehicle_model'];
-  const yearSelect = form.elements['vehicle_year'];
-  if (makeSelect.value) {
-    populateVehicleModels(makeSelect, modelSelect, yearSelect);
-    modelSelect.value = vehicle_model;
-  }
+  setTimeout(() => {
+    populateVehicleMakes(makeSelect, yearSelect);
+    makeSelect.value = vehicle_make;
+    makeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Step 3: Populate models for selected make/year, then set model (with another delay)
+    setTimeout(() => {
+      populateVehicleModels(makeSelect, modelSelect, yearSelect);
+      modelSelect.value = vehicle_model;
+      modelSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+      // Step 4: Fallback for missing VEHICLE_DATA (legacy/custom makes/models)
+      try {
+        let vehicleDataOk = typeof VEHICLE_DATA === 'object' && Object.keys(VEHICLE_DATA).length > 0;
+        if (!vehicleDataOk) {
+          // Add current make/model as options if not present
+          if (![...makeSelect.options].some(o => o.value === vehicle_make) && vehicle_make) {
+            makeSelect.appendChild(new Option(vehicle_make, vehicle_make));
+            makeSelect.value = vehicle_make;
+          }
+          if (![...modelSelect.options].some(o => o.value === vehicle_model) && vehicle_model) {
+            modelSelect.appendChild(new Option(vehicle_model, vehicle_model));
+            modelSelect.value = vehicle_model;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed fallback for make/model in edit modal', e);
+      }
+    }, 50); // Delay for model population
+  }, 50); // Delay for make population
+
+  // Dispatch change events so floating inputs (if initialized) stay in sync
+  try {
+    if (yearSelect) yearSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    if (makeSelect) makeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    if (modelSelect) modelSelect.dispatchEvent(new Event('change', { bubbles: true }));
+  } catch (e) {}
+
+  // Fallback: if custom input elements exist, update their values/placeholders
+  try {
+    const yi = document.getElementById('vehicleYearInput');
+    const mi = document.getElementById('vehicleMakeInput');
+    const mo = document.getElementById('vehicleModelInput');
+    if (yi) {
+      const so = yearSelect?.options[yearSelect.selectedIndex];
+      if (so && !so.value) { yi.value = ''; yi.placeholder = so.text || '-- Select --'; } else { yi.value = so?.text || yearSelect?.value || ''; yi.placeholder = ''; }
+    }
+    if (mi) {
+      const so = makeSelect?.options[makeSelect.selectedIndex];
+      if (so && !so.value) { mi.value = ''; mi.placeholder = so.text || '-- Select --'; } else { mi.value = so?.text || makeSelect?.value || ''; mi.placeholder = ''; }
+    }
+    if (mo) {
+      const so = modelSelect?.options[modelSelect.selectedIndex];
+      if (so && !so.value) { mo.value = ''; mo.placeholder = so.text || '-- Select --'; } else { mo.value = so?.text || modelSelect?.value || ''; mo.placeholder = ''; }
+    }
+  } catch (e) {}
   
   form.elements['vin'].value = appt.vin || '';
   form.elements['service'].value = appt.service || '';
@@ -5014,6 +5066,160 @@ async function setupAppointments() {
       populateVehicleModels(naVehicleMakeSelect, naVehicleModelSelect, naVehicleYearSelect);
     });
   }
+
+  // Create themed floating dropdowns for Y/M/M selects so they always open downward
+  function initFloatingSelect(selectId) {
+    const sel = document.getElementById(selectId);
+    if (!sel) return;
+
+    // Hide native select but keep it in the form for submission and for existing populate functions
+    sel.style.display = 'none';
+
+    // Create text input trigger so users can type or pick from list
+    const inputEl = document.createElement('input');
+    inputEl.type = 'text';
+    inputEl.className = 'custom-select-input';
+    inputEl.id = selectId + 'Input';
+    inputEl.autocomplete = 'off';
+    inputEl.style.cssText = 'width:100%;padding:10px;border:1px solid var(--line);border-radius:6px;background:white;';
+    const selectedOpt = sel.options[sel.selectedIndex];
+    if (selectedOpt && !selectedOpt.value) {
+      inputEl.value = '';
+      inputEl.placeholder = selectedOpt.text || '-- Select --';
+    } else {
+      inputEl.value = selectedOpt?.text || '';
+      inputEl.placeholder = '';
+    }
+
+    // Insert the input before the hidden select
+    sel.parentNode.insertBefore(inputEl, sel);
+
+    // Create floating list container appended to body
+    const floatingId = 'floating-' + selectId;
+    let floating = document.getElementById(floatingId);
+    if (!floating) {
+      floating = document.createElement('div');
+      floating.id = floatingId;
+      floating.className = 'custom-select-list floating';
+      floating.style.cssText = 'position:fixed;left:0;top:0;background:white;border:1px solid #e6e6e6;border-radius:6px;box-shadow:0 8px 24px rgba(13,38,59,0.08);max-height:260px;overflow:auto;display:none;z-index:200020;';
+      document.body.appendChild(floating);
+    }
+
+    const closeList = () => { floating.style.display = 'none'; };
+    const openList = (filter = '') => {
+      // Build items from current select options each time (keeps in sync with populateX functions)
+      floating.innerHTML = '';
+      const q = (filter || '').trim().toLowerCase();
+      Array.from(sel.options).forEach(opt => {
+        const text = opt.text || opt.value || '';
+        if (q && !text.toLowerCase().includes(q)) return;
+        const it = document.createElement('div');
+        it.className = 'custom-select-item';
+        it.dataset.value = opt.value;
+        it.style.cssText = 'padding:10px;border-bottom:1px solid #f3f4f6;cursor:pointer;';
+        it.textContent = text;
+        if (!opt.value) it.style.opacity = '0.6';
+        floating.appendChild(it);
+      });
+
+      const rect = inputEl.getBoundingClientRect();
+      floating.style.minWidth = rect.width + 'px';
+      floating.style.left = rect.left + 'px';
+      floating.style.top = (rect.bottom + 6) + 'px';
+      floating.style.display = 'block';
+
+      // Wire item clicks
+      floating.querySelectorAll('.custom-select-item').forEach(it => {
+        it.onclick = (ev) => {
+          const v = ev.currentTarget.dataset.value;
+          const label = ev.currentTarget.textContent || v;
+          if (v === '') {
+            // User picked the ghost prompt - clear value and show placeholder
+            sel.value = '';
+            inputEl.value = '';
+            inputEl.placeholder = label || '-- Select --';
+          } else {
+            // Ensure option exists and select it
+            if (![...sel.options].some(o => o.value === v)) {
+              sel.appendChild(new Option(label, v));
+            }
+            sel.value = v;
+            inputEl.value = label;
+            inputEl.placeholder = '';
+          }
+          // Notify any listeners (populateVehicleModels/listeners rely on change events)
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          closeList();
+        };
+      });
+    };
+
+    // Keep input in sync when select changes programmatically
+    sel.addEventListener('change', () => {
+      const so = sel.options[sel.selectedIndex];
+      if (so && !so.value) {
+        inputEl.value = '';
+        inputEl.placeholder = so.text || '-- Select --';
+      } else {
+        inputEl.value = so?.text || sel.value || '';
+        inputEl.placeholder = '';
+      }
+    });
+
+    // Typing behavior: filter list and allow creating new option on Enter
+    let ignoreBlur = false;
+    inputEl.addEventListener('input', (e) => {
+      openList(e.target.value);
+    });
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const v = inputEl.value.trim();
+        if (!v) return;
+        // Try to find matching option
+        const match = [...sel.options].find(o => (o.text || '').toLowerCase() === v.toLowerCase() || o.value === v);
+        if (match) {
+          sel.value = match.value;
+        } else {
+          // Add new option and select it
+          sel.appendChild(new Option(v, v));
+          sel.value = v;
+        }
+        // Update input/placeholder
+        inputEl.value = sel.value === '' ? '' : inputEl.value;
+        inputEl.placeholder = sel.value === '' ? (sel.options[sel.selectedIndex]?.text || '') : '';
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        closeList();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        // Focus first item if present
+        const first = floating.querySelector('.custom-select-item');
+        if (first) first.focus();
+      }
+    });
+
+    // Open list on focus
+    inputEl.addEventListener('focus', (e) => { openList(e.target.value); });
+
+    // Improved: Only close if click is outside both input and floating list
+    function handleDocClick(e) {
+      if (e.target === inputEl || floating.contains(e.target)) return;
+      closeList();
+    }
+    document.addEventListener('mousedown', handleDocClick);
+
+    // Clean up event on removal
+    inputEl.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (document.activeElement !== inputEl && !floating.contains(document.activeElement)) {
+          closeList();
+        }
+      }, 150);
+    });
+  }
+
+  // Initialize floating selects for appointment Y/M/M and new-appointment (na) Y/M/M
+  ['vehicleYear','vehicleMake','vehicleModel','naVehicleYear','naVehicleMake','naVehicleModel'].forEach(id => initFloatingSelect(id));
   
   // Start polling for notes updates
   startNotesPolling();

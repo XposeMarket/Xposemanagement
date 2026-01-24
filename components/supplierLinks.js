@@ -489,10 +489,12 @@ function showAddDealerModal() {
         
         <div style="margin-bottom:20px;">
           <label style="display:block;margin-bottom:8px;font-weight:600;">Select Manufacturer:</label>
-          <select id="dealerManufacturer" class="form-control" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;">
-            <option value="">-- Select Brand --</option>
-            ${Object.keys(MANUFACTURERS).sort().map(m => `<option value="${m}">${m}</option>`).join('')}
-          </select>
+          <div id="dealerManufacturer" class="custom-select" style="position:relative;width:100%;">
+            <button id="dealerManufacturerBtn" class="btn" style="width:100%;display:flex;justify-content:space-between;align-items:center;padding:10px;border:1px solid #ddd;border-radius:6px;background:white;">-- Select Brand -- <span style="opacity:0.7">▾</span></button>
+            <div id="dealerManufacturerList" class="custom-select-list" style="position:absolute;left:0;right:0;top:calc(100% + 6px);background:white;border:1px solid #e6e6e6;border-radius:6px;box-shadow:0 8px 24px rgba(13,38,59,0.08);max-height:220px;overflow:auto;display:none;z-index:200020;">
+              ${Object.keys(MANUFACTURERS).sort().map(m => `<div class="custom-select-item" data-value="${m}" style="padding:10px;border-bottom:1px solid #f3f4f6;cursor:pointer;">${m}</div>`).join('')}
+            </div>
+          </div>
         </div>
         
         <div style="margin-bottom:20px;">
@@ -511,13 +513,47 @@ function showAddDealerModal() {
   document.body.insertAdjacentHTML('beforeend', modalHTML);
   
   // Enable search button when manufacturer is selected
-  document.getElementById('dealerManufacturer').onchange = (e) => {
-    document.getElementById('searchDealerBtn').disabled = !e.target.value;
+  // Wire custom select (themed) behavior
+  const dmBtn = document.getElementById('dealerManufacturerBtn');
+  const dmList = document.getElementById('dealerManufacturerList');
+  const dmItems = dmList?.querySelectorAll('.custom-select-item') || [];
+  let selectedManufacturer = '';
+  const searchBtnEl = document.getElementById('searchDealerBtn');
+
+  // Create a floating list appended to body to avoid clipping inside modal scroll containers
+  const floatingList = document.createElement('div');
+  floatingList.className = 'custom-select-list floating';
+  floatingList.style.cssText = 'position:fixed;left:0;top:0;background:white;border:1px solid #e6e6e6;border-radius:6px;box-shadow:0 8px 24px rgba(13,38,59,0.08);max-height:220px;overflow:auto;display:none;z-index:200020;';
+  floatingList.innerHTML = dmList.innerHTML;
+  document.body.appendChild(floatingList);
+
+  const closeList = () => { floatingList.style.display = 'none'; };
+  const openList = () => {
+    const rect = dmBtn.getBoundingClientRect();
+    floatingList.style.minWidth = rect.width + 'px';
+    floatingList.style.left = rect.left + 'px';
+    // Always position below the button
+    floatingList.style.top = (rect.bottom + 6) + 'px';
+    floatingList.style.display = 'block';
   };
+
+  dmBtn?.addEventListener('click', (e) => { e.stopPropagation(); if (floatingList.style.display === 'block') closeList(); else openList(); });
+  // Wire item clicks from floating list
+  floatingList.querySelectorAll('.custom-select-item').forEach(it => {
+    it.addEventListener('click', (ev) => {
+      const v = ev.currentTarget.dataset.value;
+      selectedManufacturer = v;
+      dmBtn.innerHTML = `${v} <span style="opacity:0.7">▾</span>`;
+      searchBtnEl.disabled = !v;
+      closeList();
+    });
+  });
+  // Close on outside click
+  setTimeout(() => { document.addEventListener('click', () => closeList()); }, 0);
   
   // Handle search
   document.getElementById('searchDealerBtn').onclick = async () => {
-    const manufacturer = document.getElementById('dealerManufacturer').value;
+    const manufacturer = selectedManufacturer || (document.getElementById('dealerManufacturer')?.value || '');
     if (!manufacturer) return;
     
     await searchDealerships(manufacturer, `${city}, ${state}`);
