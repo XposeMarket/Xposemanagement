@@ -195,7 +195,7 @@ function showSearchView() {
   body.innerHTML = `
     <div style="max-width: 700px; margin: 0 auto;">
       ${backBtn}${ymmHtml}
-      ${currentJob ? `<div style="margin-bottom:12px;"><button id="diagAddServiceBtn" class="btn" onclick="window.dispatchEvent(new CustomEvent('openServiceFromDiagnostics',{detail:{jobId:'${currentJob.id}'}}))" style="background: linear-gradient(135deg, #06b6d4, #0ea5a4); color: white; padding: 10px 16px; font-weight:600;">➕ Add Service to Job</button></div>` : ''}
+      ${(currentJob && !currentIsStaff) ? `<div style="margin-bottom:12px;"><button id="diagAddServiceBtn" class="btn" onclick="window.dispatchEvent(new CustomEvent('openServiceFromDiagnostics',{detail:{jobId:'${currentJob.id}'}}))" style="background: linear-gradient(135deg, #06b6d4, #0ea5a4); color: white; padding: 10px 16px; font-weight:600;">➕ Add Service to Job</button></div>` : ''}
       <div style="margin-bottom: 24px;">
         <label style="font-weight: 600; display: block; margin-bottom: 8px;">🔍 Search anything...</label>
         <div style="display: flex; gap: 8px;">
