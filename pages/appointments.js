@@ -1644,7 +1644,11 @@ async function openVinScanner(modalType) {
   const statusEl = document.getElementById('vinScannerStatus');
   const video = document.getElementById('vinScannerVideo');
   
-  if (!modal) return;
+  if (!modal || !video) return;
+  
+  // Reset camera state
+  availableCameras = [];
+  currentCameraIndex = 0;
   
   // Reset status
   if (statusEl) {
@@ -1660,42 +1664,91 @@ async function openVinScanner(modalType) {
       throw new Error('Camera not supported in this browser');
     }
     
-    // Request camera permission first with basic constraints
-    // This is needed before enumerateDevices will show all cameras
     if (statusEl) {
       statusEl.textContent = 'Initializing camera...';
     }
     
-    // Start with a basic stream to get permission
-    const initialStream = await navigator.mediaDevices.getUserMedia({ 
-      video: { facingMode: { ideal: 'environment' } } 
-    });
+    // First get permission and enumerate devices
+    // Request any camera first to get permission
+    const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
     
-    // Now enumerate devices (will have labels after permission granted)
+    // Now enumerate devices (will have labels after permission)
     const devices = await navigator.mediaDevices.enumerateDevices();
     availableCameras = devices.filter(d => d.kind === 'videoinput');
     
-    console.log('[VIN Scanner] Available cameras:', availableCameras.map(c => c.label || c.deviceId));
+    console.log('[VIN Scanner] Available cameras:', availableCameras.map((c, i) => ({
+      index: i,
+      label: c.label || `Camera ${i + 1}`,
+      deviceId: c.deviceId.substring(0, 10) + '...'
+    })));
+    
+    // Stop temp stream
+    tempStream.getTracks().forEach(track => track.stop());
     
     if (availableCameras.length === 0) {
-      throw new Error('No camera found on this device');
+      throw new Error('No camera found');
     }
     
-    // Stop initial stream
-    initialStream.getTracks().forEach(track => track.stop());
-    
-    // Find back camera if available
-    currentCameraIndex = availableCameras.findIndex(cam => {
+    // Find back camera - look for keywords in label
+    let backCamIndex = availableCameras.findIndex(cam => {
       const label = (cam.label || '').toLowerCase();
       return label.includes('back') || 
-             label.includes('rear') ||
+             label.includes('rear') || 
              label.includes('environment') ||
-             label.includes('0, facing back');
+             label.includes('facing back');
     });
-    if (currentCameraIndex === -1) currentCameraIndex = 0;
     
-    // Start camera with selected device
-    await startCameraStream();
+    // On mobile, if we have 2 cameras and no label match, back is usually index 0 or last
+    // Try the last one first (common on iOS/Android)
+    if (backCamIndex === -1 && availableCameras.length >= 2) {
+      backCamIndex = availableCameras.length - 1;
+    }
+    
+    currentCameraIndex = backCamIndex >= 0 ? backCamIndex : 0;
+    
+    console.log('[VIN Scanner] Using camera index:', currentCameraIndex, 
+                'Label:', availableCameras[currentCameraIndex]?.label || 'Unknown');
+    
+    // Start the selected camera
+    const selectedCamera = availableCameras[currentCameraIndex];
+    let stream;
+    
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          deviceId: selectedCamera.deviceId ? { exact: selectedCamera.deviceId } : undefined,
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      });
+    } catch (e) {
+      console.warn('[VIN Scanner] Specific camera failed, trying facingMode:', e);
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      });
+    }
+    
+    // Attach stream to video element
+    video.srcObject = stream;
+    
+    // Wait for video to be ready
+    await new Promise((resolve, reject) => {
+      video.onloadedmetadata = () => {
+        video.play()
+          .then(resolve)
+          .catch(reject);
+      };
+      video.onerror = reject;
+      setTimeout(() => reject(new Error('Video load timeout')), 5000);
+    });
+    
+    console.log('[VIN Scanner] Camera started, video dimensions:', video.videoWidth, 'x', video.videoHeight);
     
     // Update status
     if (statusEl) {
@@ -1781,9 +1834,9 @@ async function switchCamera() {
     return;
   }
   
-  currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
-  
+  const video = document.getElementById('vinScannerVideo');
   const statusEl = document.getElementById('vinScannerStatus');
+  
   if (statusEl) {
     statusEl.textContent = 'Switching camera...';
     statusEl.className = 'scanner-status';
@@ -1796,7 +1849,57 @@ async function switchCamera() {
       vinScanner = null;
     }
     
-    await startCameraStream();
+    // Stop current stream
+    if (video && video.srcObject) {
+      video.srcObject.getTracks().forEach(track => track.stop());
+      video.srcObject = null;
+    }
+    
+    // Move to next camera
+    currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
+    const selectedCamera = availableCameras[currentCameraIndex];
+    
+    console.log('[VIN Scanner] Switching to camera index:', currentCameraIndex, 
+                'Label:', selectedCamera.label || 'Unknown',
+                'DeviceId:', selectedCamera.deviceId?.substring(0, 10) + '...');
+    
+    // Get new stream with specific device - use ideal to avoid OverconstrainedError
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          deviceId: { exact: selectedCamera.deviceId },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      });
+    } catch (e) {
+      console.warn('[VIN Scanner] Exact deviceId failed, trying ideal:', e);
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          deviceId: { ideal: selectedCamera.deviceId },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      });
+    }
+    
+    video.srcObject = stream;
+    
+    // Wait for video to be ready
+    await new Promise((resolve, reject) => {
+      video.onloadedmetadata = () => {
+        video.play().then(resolve).catch(reject);
+      };
+      video.onerror = reject;
+      setTimeout(() => reject(new Error('Video load timeout')), 5000);
+    });
+    
+    console.log('[VIN Scanner] Camera switched, dimensions:', video.videoWidth, 'x', video.videoHeight);
+    
+    // Restart scanning
     startBarcodeScanning();
     
     if (statusEl) {
@@ -1817,9 +1920,12 @@ async function switchCamera() {
  */
 function startBarcodeScanning() {
   const video = document.getElementById('vinScannerVideo');
-  if (!video || !video.srcObject) return;
+  if (!video || !video.srcObject) {
+    console.error('[VIN Scanner] No video stream available');
+    return;
+  }
   
-  // Create canvas for frame capture
+  // Create canvas for frame capture (not attached to DOM)
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   
@@ -1828,35 +1934,44 @@ function startBarcodeScanning() {
   let isScanning = true;
   
   // Check for native BarcodeDetector API (Chrome 83+, Edge 83+)
-  const useNativeDetector = 'BarcodeDetector' in window;
   let barcodeDetector = null;
   
-  if (useNativeDetector) {
+  if ('BarcodeDetector' in window) {
     try {
       // CODE_39 and CODE_128 are common VIN barcode formats
       barcodeDetector = new BarcodeDetector({ 
-        formats: ['code_39', 'code_128', 'code_93', 'codabar', 'ean_13', 'ean_8', 'upc_a', 'upc_e'] 
+        formats: ['code_39', 'code_128', 'code_93', 'codabar'] 
       });
       console.log('[VIN Scanner] Using native BarcodeDetector API');
     } catch (e) {
-      console.log('[VIN Scanner] BarcodeDetector not fully supported, using fallback');
+      console.log('[VIN Scanner] BarcodeDetector not fully supported');
     }
   }
   
   const performScan = async () => {
-    if (!isScanning || !video.srcObject || video.readyState !== 4) return;
+    if (!isScanning) return;
+    
+    // Make sure video is still playing
+    if (!video.srcObject || video.readyState < 2) {
+      return;
+    }
     
     try {
-      // Capture frame from video
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      if (canvas.width === 0 || canvas.height === 0) return;
+      // Set canvas size to match video
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
       
-      ctx.drawImage(video, 0, 0);
+      if (vw === 0 || vh === 0) return;
+      
+      canvas.width = vw;
+      canvas.height = vh;
+      
+      // Draw current video frame to canvas
+      ctx.drawImage(video, 0, 0, vw, vh);
       
       let foundVin = null;
       
-      // Try native BarcodeDetector first
+      // Try native BarcodeDetector first (faster)
       if (barcodeDetector) {
         try {
           const barcodes = await barcodeDetector.detect(canvas);
@@ -1864,50 +1979,66 @@ function startBarcodeScanning() {
             const cleanResult = barcode.rawValue.trim().toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '');
             if (cleanResult.length === 17 && isValidVIN(cleanResult)) {
               foundVin = cleanResult;
+              console.log('[VIN Scanner] Native detector found VIN:', foundVin);
               break;
             }
           }
         } catch (e) {
-          // Native detector failed, continue
+          // Native detector failed on this frame, continue
         }
       }
       
-      // Fallback to html5-qrcode if no native result
-      if (!foundVin && typeof Html5Qrcode !== 'undefined') {
+      // Fallback to html5-qrcode if no native result (slower, do less frequently)
+      if (!foundVin && typeof Html5Qrcode !== 'undefined' && Math.random() < 0.3) {
         try {
-          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
-          if (blob) {
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+          if (blob && blob.size > 0) {
             const file = new File([blob], 'frame.jpg', { type: 'image/jpeg' });
-            const html5QrCode = new Html5Qrcode('vinScannerPreview', { verbose: false });
+            
+            // Create a temporary hidden div for html5-qrcode (it needs a DOM element)
+            let tempDiv = document.getElementById('vinScannerTemp');
+            if (!tempDiv) {
+              tempDiv = document.createElement('div');
+              tempDiv.id = 'vinScannerTemp';
+              tempDiv.style.cssText = 'position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden;';
+              document.body.appendChild(tempDiv);
+            }
+            
+            const html5QrCode = new Html5Qrcode('vinScannerTemp', { verbose: false });
             
             try {
               const result = await html5QrCode.scanFile(file, false);
               const cleanResult = result.trim().toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, '');
               if (cleanResult.length === 17 && isValidVIN(cleanResult)) {
                 foundVin = cleanResult;
+                console.log('[VIN Scanner] Html5Qrcode found VIN:', foundVin);
               }
             } catch (scanErr) {
-              // No barcode found
+              // No barcode found in this frame
             }
             
-            try { html5QrCode.clear(); } catch (e) {}
+            try { 
+              await html5QrCode.clear(); 
+            } catch (e) {}
           }
         } catch (e) {
-          // Fallback also failed
+          // Fallback failed, continue
         }
       }
       
       // Handle found VIN
       if (foundVin) {
-        console.log('[VIN Scanner] Found VIN:', foundVin);
         isScanning = false;
-        if (scanInterval) clearInterval(scanInterval);
+        if (scanInterval) {
+          clearInterval(scanInterval);
+          scanInterval = null;
+        }
         handleScannedVin(foundVin);
       }
       
     } catch (error) {
       // Frame capture error, continue
-      console.warn('[VIN Scanner] Scan error:', error);
+      console.warn('[VIN Scanner] Scan frame error:', error);
     }
   };
   
@@ -1915,19 +2046,32 @@ function startBarcodeScanning() {
   vinScanner = {
     stop: () => {
       isScanning = false;
-      if (scanInterval) clearInterval(scanInterval);
+      if (scanInterval) {
+        clearInterval(scanInterval);
+        scanInterval = null;
+      }
+      // Clean up temp div
+      const tempDiv = document.getElementById('vinScannerTemp');
+      if (tempDiv) tempDiv.remove();
     }
   };
   
-  // Scan every 150ms for better responsiveness
-  scanInterval = setInterval(performScan, 150);
+  // Start scanning after video is ready
+  const startScanning = () => {
+    if (video.readyState >= 2) {
+      console.log('[VIN Scanner] Starting barcode scanning loop');
+      scanInterval = setInterval(performScan, 200);
+      performScan();
+    } else {
+      video.addEventListener('loadeddata', () => {
+        console.log('[VIN Scanner] Video loaded, starting scan loop');
+        scanInterval = setInterval(performScan, 200);
+        performScan();
+      }, { once: true });
+    }
+  };
   
-  // Wait for video to be ready before first scan
-  if (video.readyState === 4) {
-    performScan();
-  } else {
-    video.addEventListener('loadeddata', performScan, { once: true });
-  }
+  startScanning();
 }
 
 /**
