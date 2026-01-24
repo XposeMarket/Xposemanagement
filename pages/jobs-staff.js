@@ -457,8 +457,7 @@ function renderJobsTable(tableId, emptyId, jobs) {
     // Inspection button
     const inspectBtn = document.createElement('button');
     inspectBtn.className = 'btn small';
-    inspectBtn.style.background = '#8b5cf6';
-    inspectBtn.style.color = 'white';
+ 
     inspectBtn.textContent = '📋 Inspect';
     inspectBtn.onclick = (e) => {
       e.stopPropagation();
@@ -513,7 +512,7 @@ function createMobileActionModal() {
         <p id="jobActionsCustomer" style="margin: 0 0 16px 0; color: var(--muted); font-size: 0.95rem;"></p>
         <div style="display: flex; flex-direction: column; gap: 10px;">
           <button id="jobActionView" class="btn" style="width: 100%; padding: 14px; font-size: 1rem;">View Details</button>
-          <button id="jobActionInspection" class="btn" style="width: 100%; padding: 14px; font-size: 1rem; background: #8b5cf6; color: white;">📋 Start Inspection</button>
+          <button id="jobActionInspection" class="btn" style="width: 100%; padding: 14px; font-size: 1rem; ">📋 Start Inspection</button>
           <button id="jobActionNote" class="btn info" style="width: 100%; padding: 14px; font-size: 1rem;">Add Note</button>
           <button id="jobActionUnclaim" class="btn danger" style="width: 100%; padding: 14px; font-size: 1rem;">Unclaim Job</button>
         </div>
