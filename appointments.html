@@ -92,21 +92,30 @@
     }
     .vin-scan-btn {
       display: none; /* Hidden by default, shown on mobile */
-      padding: 10px 12px;
-      background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
-      color: white;
-      border: none;
+      padding: 10px 14px;
+      background: #f8f9fa;
+      color: var(--text, #374151);
+      border: 2px solid var(--line, #e5e7eb);
       border-radius: 8px;
       cursor: pointer;
       font-size: 1.1rem;
-      transition: transform 0.1s, box-shadow 0.1s;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.06);
+      transition: all 0.2s ease;
     }
     .vin-scan-btn:hover {
-      transform: scale(1.05);
-      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.15), 0 3px 6px rgba(0,0,0,0.1);
     }
     .vin-scan-btn:active {
-      transform: scale(0.98);
+      transform: translateY(0);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    /* Dark theme camera button */
+    [data-theme="dark"] .vin-scan-btn {
+      background: var(--card, #1f2937);
+      border-color: var(--line, #374151);
+      color: var(--text, #f3f4f6);
     }
     
     /* Show camera button on mobile/tablet */
@@ -116,6 +125,48 @@
         align-items: center;
         justify-content: center;
       }
+    }
+    
+    /* Fix YMM select inputs to follow theme - force override browser defaults */
+    #naVehicleYear, #naVehicleMake, #naVehicleModel,
+    #vehicleYear, #vehicleMake, #vehicleModel {
+      background-color: var(--card) !important;
+      color: var(--text) !important;
+      border: 1px solid var(--line) !important;
+      border-radius: 10px;
+      padding: 10px 12px;
+      width: 100%;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    #naVehicleYear:focus, #naVehicleMake:focus, #naVehicleModel:focus,
+    #vehicleYear:focus, #vehicleMake:focus, #vehicleModel:focus {
+      outline: none;
+      border-color: var(--accent) !important;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    }
+    
+    /* Dark theme - force color-scheme to get dark dropdowns */
+    :root.theme-dark #naVehicleYear, 
+    :root.theme-dark #naVehicleMake, 
+    :root.theme-dark #naVehicleModel,
+    :root.theme-dark #vehicleYear, 
+    :root.theme-dark #vehicleMake, 
+    :root.theme-dark #vehicleModel {
+      color-scheme: dark;
+      background-color: var(--card) !important;
+      color: var(--text) !important;
+      border-color: var(--line) !important;
+    }
+    :root.theme-dark #naVehicleYear option, 
+    :root.theme-dark #naVehicleMake option, 
+    :root.theme-dark #naVehicleModel option,
+    :root.theme-dark #vehicleYear option, 
+    :root.theme-dark #vehicleMake option, 
+    :root.theme-dark #vehicleModel option {
+      background-color: var(--card) !important;
+      color: var(--text) !important;
     }
     
     /* VIN Scanner Modal styles */

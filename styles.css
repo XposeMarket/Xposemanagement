@@ -120,6 +120,25 @@
   --folder-border: 1px dashed var(--line);
   --folder-blue-bg: linear-gradient(180deg, var(--card), rgba(240,249,255,0.04));
   --folder-blue-border: color-mix(in srgb, var(--line) 70%, #bfdbfe 30%);
+  color-scheme: dark;
+}
+
+/* Force dark theme on all select elements */
+:root.theme-dark select,
+:root.theme-dark select option {
+  background-color: var(--card) !important;
+  color: var(--text) !important;
+  color-scheme: dark;
+}
+
+/* Custom floating dropdown styling */
+.custom-select-list.floating {
+  background: var(--card) !important;
+  color: var(--text) !important;
+  border-color: var(--line) !important;
+}
+.custom-select-item:hover {
+  background: var(--bg) !important;
 }
 /*
   Blue-grey theme: similar style to theme-alt, but with blue-grey tones

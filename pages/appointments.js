@@ -5963,7 +5963,7 @@ async function setupAppointments() {
     inputEl.className = 'custom-select-input';
     inputEl.id = selectId + 'Input';
     inputEl.autocomplete = 'off';
-    inputEl.style.cssText = 'width:100%;padding:10px;border:1px solid var(--line);border-radius:6px;background:white;';
+    inputEl.style.cssText = 'width:100%;padding:10px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--text);';
     const selectedOpt = sel.options[sel.selectedIndex];
     if (selectedOpt && !selectedOpt.value) {
       inputEl.value = '';
@@ -5983,7 +5983,7 @@ async function setupAppointments() {
       floating = document.createElement('div');
       floating.id = floatingId;
       floating.className = 'custom-select-list floating';
-      floating.style.cssText = 'position:fixed;left:0;top:0;background:white;border:1px solid #e6e6e6;border-radius:6px;box-shadow:0 8px 24px rgba(13,38,59,0.08);max-height:260px;overflow:auto;display:none;z-index:200020;';
+      floating.style.cssText = 'position:fixed;left:0;top:0;background:var(--card,#fff);color:var(--text,#111);border:1px solid var(--line,#e6e6e6);border-radius:6px;box-shadow:0 8px 24px rgba(13,38,59,0.15);max-height:260px;overflow:auto;display:none;z-index:200020;';
       document.body.appendChild(floating);
     }
 
@@ -5998,7 +5998,7 @@ async function setupAppointments() {
         const it = document.createElement('div');
         it.className = 'custom-select-item';
         it.dataset.value = opt.value;
-        it.style.cssText = 'padding:10px;border-bottom:1px solid #f3f4f6;cursor:pointer;';
+        it.style.cssText = 'padding:10px;border-bottom:1px solid var(--line,#f3f4f6);cursor:pointer;';
         it.textContent = text;
         if (!opt.value) it.style.opacity = '0.6';
         floating.appendChild(it);
