@@ -1,491 +1,1105 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Xpose Management - Home</title>
-  <link rel="stylesheet" href="styles.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Xpose Management | Shop Operating System</title>
+  <meta name="description" content="Run your auto shop like a system. Scheduling, jobs, messaging, payments, and built in repair intelligence with Cortex." />
+
   <style>
-    body {
-      background: linear-gradient(120deg, #f6f8ff 0%, #eaf3ff 100%);
-      margin: 0;
-      font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
-      color: #222;
+    :root{
+      --bg:#070b12;
+      --bg2:#0b1020;
+      --card:rgba(255,255,255,0.06);
+      --card2:rgba(255,255,255,0.08);
+      --line:rgba(255,255,255,0.10);
+      --text:#eaf0ff;
+      --muted:rgba(234,240,255,0.72);
+      --muted2:rgba(234,240,255,0.56);
+      --brand:#22c55e;
+      --accent:#60a5fa;
+      --amber:#f59e0b;
+      --shadow: 0 18px 60px rgba(0,0,0,0.40);
+      --radius:18px;
+      --radius2:26px;
+      --max:1180px;
     }
-    .header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 40px 0 40px;
-      background: #fff;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      backdrop-filter: blur(8px);
-      box-shadow: 0 2px 8px rgba(42,124,255,0.04);
+
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0}
+    body{
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:
+        radial-gradient(900px 500px at 18% 12%, rgba(96,165,250,0.18), rgba(0,0,0,0) 65%),
+        radial-gradient(900px 500px at 82% 18%, rgba(34,197,94,0.16), rgba(0,0,0,0) 70%),
+        radial-gradient(900px 500px at 60% 92%, rgba(245,158,11,0.10), rgba(0,0,0,0) 65%),
+        linear-gradient(180deg, var(--bg), var(--bg2));
+      color:var(--text);
+      overflow-x:hidden;
     }
-    .header-logo {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: #2a7cff;
-      text-decoration: none;
+
+    a{color:inherit;text-decoration:none}
+    .wrap{max-width:var(--max);margin:0 auto;padding:0 22px}
+
+    .topbar{
+      position:sticky;
+      top:0;
+      z-index:50;
+      backdrop-filter: blur(14px);
+      background: rgba(7,11,18,0.65);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
     }
-    .header-nav {
-      display: flex;
-      align-items: center;
-      gap: 28px;
-      font-size: 1.08rem;
+    .topbar .row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:14px;
+      padding:14px 0;
     }
-    .header-nav a {
-      color: #222;
-      text-decoration: none;
-      font-weight: 500;
-      transition: color 0.2s;
+
+    .brandlock{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      min-width: 220px;
     }
-    .header-nav a:hover {
-      color: #2a7cff;
+    .brandlock img{
+      height:44px;
+      width:auto;
+      display:block;
+      filter: drop-shadow(0 10px 22px rgba(0,0,0,0.55));
     }
-    .header-actions {
-      display: flex;
-      gap: 12px;
+
+    .nav{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      justify-content:center;
+      flex:1;
     }
-    .btn-primary {
-      background: #2a7cff;
-      color: #fff;
-      border: none;
-      border-radius: 7px;
-      padding: 12px 32px;
-      font-size: 1.08rem;
-      font-weight: 600;
-      cursor: pointer;
-      box-shadow: 0 2px 8px rgba(42,124,255,0.10);
-      transition: background 0.2s;
+    .nav a{
+      padding:10px 12px;
+      border-radius:12px;
+      color:var(--muted);
+      font-weight:600;
+      font-size:14px;
+      border: 1px solid transparent;
+      transition: transform .14s ease, background .14s ease, border-color .14s ease;
     }
-    .btn-primary:hover {
-      background: #195bb5;
+    .nav a:hover{
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,255,255,0.10);
+      transform: translateY(-1px);
+      color: var(--text);
     }
-    .btn-secondary {
-      background: #fff;
-      color: #2a7cff;
-      border: 1.5px solid #e0e7ff;
-      border-radius: 7px;
-      padding: 12px 32px;
-      font-size: 1.08rem;
-      font-weight: 600;
-      cursor: pointer;
-      box-shadow: 0 2px 8px rgba(42,124,255,0.07);
-      transition: border 0.2s;
+
+    .actions{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:flex-end;
+      min-width: 220px;
     }
-    .btn-secondary:hover {
-      border-color: #2a7cff;
+
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      border-radius:14px;
+      padding:11px 14px;
+      border:1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      font-weight:800;
+      font-size:14px;
+      cursor:pointer;
+      transition: transform .14s ease, filter .14s ease, box-shadow .14s ease, border-color .14s ease;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.22);
+      user-select:none;
+      white-space:nowrap;
     }
-    .hero {
-      text-align: center;
-      padding: 10px 0 40px 0;
-      max-width: 800px;
-      margin: 0 auto;
+    .btn:hover{
+      transform: translateY(-2px);
+      border-color: rgba(255,255,255,0.18);
+      filter: brightness(1.03);
+      box-shadow: 0 16px 44px rgba(0,0,0,0.35);
     }
-    .badge {
-      display: inline-block;
-      background: #fffbe6;
-      color: #b38f00;
-      font-weight: 600;
-      font-size: 1rem;
-      padding: 7px 18px;
-      border-radius: 18px;
-      box-shadow: 0 1px 6px rgba(0,0,0,0.04);
-      margin-bottom: 18px;
+    .btn.primary{
+      background: linear-gradient(135deg, rgba(34,197,94,0.92), rgba(96,165,250,0.72));
+      border-color: rgba(255,255,255,0.10);
+      color: #05110a;
     }
-    .hero-title {
-      font-size: 3.1rem;
-      font-weight: 900;
-      margin-bottom: 18px;
-      letter-spacing: -1px;
+    .btn.ghost{
+      background: rgba(255,255,255,0.04);
     }
-    .gradient-text {
-      background: linear-gradient(90deg, #2a7cff 40%, #7f5fff 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      text-fill-color: transparent;
+
+    .hero{
+      padding: 44px 0 26px 0;
     }
-    .hero-sub {
-      font-size: 1.25rem;
-      color: #4a5a6a;
-      margin-bottom: 38px;
-      line-height: 1.5;
+    .heroGrid{
+      display:grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 22px;
+      align-items: stretch;
     }
-    .hero-actions {
-      display: flex;
-      justify-content: center;
-      gap: 18px;
-      margin-bottom: 38px;
-    }
-    .stats-row {
-      display: flex;
-      justify-content: center;
-      gap: 48px;
-      margin: 48px 0 0 0;
-      flex-wrap: wrap;
-    }
-    .stat {
-      text-align: center;
-    }
-    .stat-value {
-      font-size: 2.1rem;
+
+    .pillRow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin: 10px 0 18px}
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: var(--muted);
       font-weight: 800;
-      color: #7f5fff;
+      font-size: 13px;
+    }
+    .dot{
+      width:8px;height:8px;border-radius:999px;background: var(--brand);
+      box-shadow: 0 0 0 6px rgba(34,197,94,0.12);
+    }
+    .dot.blue{background: var(--accent); box-shadow: 0 0 0 6px rgba(96,165,250,0.12);}
+    .dot.amber{background: var(--amber); box-shadow: 0 0 0 6px rgba(245,158,11,0.12);}
+
+    h1{
+      margin:0;
+      font-size: 46px;
+      line-height: 1.04;
+      letter-spacing: -1px;
+      font-weight: 950;
+    }
+    .glowText{
+      background: linear-gradient(90deg, rgba(96,165,250,1), rgba(34,197,94,1));
+      -webkit-background-clip: text;
+      background-clip:text;
+      color: transparent;
+    }
+    .sub{
+      margin-top: 14px;
+      font-size: 16px;
+      line-height: 1.55;
+      color: var(--muted);
+      max-width: 62ch;
+    }
+
+    .heroCtas{
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top: 22px;
+      align-items:center;
+    }
+
+    .microTrust{
+      display:flex;
+      gap:14px;
+      flex-wrap:wrap;
+      margin-top: 18px;
+      color: var(--muted2);
+      font-weight:700;
+      font-size: 13px;
+    }
+    .microTrust span{
+      display:inline-flex;align-items:center;gap:8px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.04);
+    }
+    .tick{
+      width:16px;height:16px;border-radius:4px;
+      background: rgba(34,197,94,0.20);
+      border: 1px solid rgba(34,197,94,0.40);
+      display:grid;place-items:center;
+      flex: 0 0 16px;
+    }
+    .tick svg{width:12px;height:12px}
+
+    .heroCard{
+      border-radius: var(--radius2);
+      border: 1px solid rgba(255,255,255,0.12);
+      background:
+        radial-gradient(700px 400px at 30% 20%, rgba(96,165,250,0.20), rgba(0,0,0,0) 65%),
+        radial-gradient(700px 400px at 80% 30%, rgba(34,197,94,0.14), rgba(0,0,0,0) 70%),
+        rgba(255,255,255,0.04);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      position: relative;
+      overflow:hidden;
+    }
+    .heroCard::before{
+      content:"";
+      position:absolute;
+      inset:-2px;
+      background: linear-gradient(135deg, rgba(96,165,250,0.35), rgba(34,197,94,0.25), rgba(245,158,11,0.20));
+      opacity: 0.16;
+      filter: blur(18px);
+      pointer-events:none;
+    }
+
+    .cardTop{
+      position:relative;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom: 12px;
+    }
+    .cardTop .tag{
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(255,255,255,0.06);
+      font-weight: 900;
+      font-size: 12px;
+      color: var(--text);
+    }
+    .markRow{display:flex;align-items:center;gap:10px}
+    .markRow img{
+      height:34px;width:auto;display:block;
+      filter: drop-shadow(0 10px 22px rgba(0,0,0,0.55));
+      opacity: 0.95;
+    }
+    .markName{
+      display:flex;
+      flex-direction:column;
+      line-height: 1.05;
+    }
+    .markName b{font-size: 13px}
+    .markName span{font-size: 12px;color: var(--muted2);font-weight:700}
+
+    .miniDash{
+      position:relative;
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .mini{
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.05);
+      padding: 12px 12px;
+    }
+    .mini h4{margin:0 0 6px 0;font-size: 12px;color: var(--muted2);font-weight: 900;letter-spacing: 0.2px}
+    .mini .big{
+      font-size: 20px;
+      font-weight: 950;
+      letter-spacing: -0.4px;
+    }
+    .mini .small{
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+      line-height: 1.25;
+    }
+    .mini .bar{
+      height: 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.10);
+      overflow:hidden;
+      margin-top: 10px;
+    }
+    .mini .bar > i{
+      display:block;
+      height:100%;
+      width: 62%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(96,165,250,1), rgba(34,197,94,1));
+      opacity: 0.95;
+    }
+    .mini .bar.orange > i{background: linear-gradient(90deg, rgba(245,158,11,1), rgba(96,165,250,1)); width: 48%;}
+    .miniWide{
+      grid-column: 1 / -1;
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap: 12px;
+    }
+    .miniWide .left{
+      display:flex;
+      flex-direction:column;
+      gap: 8px;
+    }
+    .miniWide .kbdRow{
+      display:flex;gap:8px;flex-wrap:wrap;align-items:center;
+      margin-top: 4px;
+    }
+    .kbd{
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.05);
+      border-bottom-color: rgba(255,255,255,0.18);
+      border-radius: 12px;
+      padding: 7px 10px;
+      font-weight: 900;
+      font-size: 12px;
+      color: var(--muted);
+      user-select:none;
+    }
+
+    section.block{
+      padding: 28px 0;
+    }
+
+    .sectionTitle{
+      font-size: 26px;
+      font-weight: 950;
+      letter-spacing: -0.6px;
+      margin: 0 0 10px 0;
+    }
+    .sectionSub{
+      margin:0;
+      color: var(--muted);
+      line-height: 1.55;
+      max-width: 82ch;
+      font-weight: 650;
+    }
+
+    .grid3{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+    .card{
+      border-radius: var(--radius);
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.05);
+      padding: 16px;
+      box-shadow: 0 14px 44px rgba(0,0,0,0.24);
+      transition: transform .14s ease, border-color .14s ease, background .14s ease;
+    }
+    .card:hover{
+      transform: translateY(-2px);
+      border-color: rgba(255,255,255,0.16);
+      background: rgba(255,255,255,0.06);
+    }
+    .card h3{
+      margin: 2px 0 6px 0;
+      font-size: 15px;
+      font-weight: 950;
+      letter-spacing: -0.2px;
+    }
+    .card p{
+      margin:0;
+      color: var(--muted);
+      line-height: 1.5;
+      font-weight: 650;
+      font-size: 14px;
+    }
+    .icon{
+      width:42px;height:42px;border-radius: 14px;
+      display:grid;place-items:center;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.05);
+      margin-bottom: 10px;
+      box-shadow: 0 16px 50px rgba(0,0,0,0.25);
+    }
+    .icon svg{width:20px;height:20px;opacity: 0.95}
+
+    .flow{
+      margin-top: 18px;
+      border-radius: var(--radius2);
+      border: 1px solid rgba(255,255,255,0.10);
+      background:
+        radial-gradient(800px 420px at 20% 40%, rgba(96,165,250,0.16), rgba(0,0,0,0) 70%),
+        rgba(255,255,255,0.04);
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+    .flowRow{
+      display:flex;
+      flex-wrap:wrap;
+      gap: 10px;
+      align-items:center;
+      justify-content:space-between;
+    }
+    .node{
+      flex: 1 1 140px;
+      min-width: 140px;
+      border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.05);
+      padding: 12px;
+      position:relative;
+      overflow:hidden;
+    }
+    .node b{
+      display:block;
+      font-weight: 950;
+      font-size: 13px;
       margin-bottom: 4px;
     }
-    .stat-label {
-      font-size: 1.08rem;
-      color: #4a5a6a;
+    .node span{
+      display:block;
+      color: var(--muted);
+      font-weight: 650;
+      font-size: 12px;
+      line-height: 1.35;
     }
-    .footer {
-      margin-top: 80px;
-      background: #f6f8ff;
-      padding: 32px 0 16px 0;
-      text-align: center;
-      color: #7f5fff;
-      font-size: 1.08rem;
+    .node::after{
+      content:"";
+      position:absolute;
+      inset:-40%;
+      background: radial-gradient(circle at 30% 30%, rgba(34,197,94,0.22), rgba(0,0,0,0) 60%);
+      opacity: 0.45;
+      pointer-events:none;
+      transform: rotate(18deg);
     }
-    .coming-soon-badge {
-      background: #ffeaa7;
-      color: #d63031;
-      font-size: 0.95rem;
-      padding: 2px 10px;
-      border-radius: 12px;
-      margin-left: 8px;
-      font-weight: 600;
-      display: inline-block;
+    .node.blue::after{background: radial-gradient(circle at 30% 30%, rgba(96,165,250,0.24), rgba(0,0,0,0) 60%);}
+    .node.amber::after{background: radial-gradient(circle at 30% 30%, rgba(245,158,11,0.20), rgba(0,0,0,0) 60%);}
+
+    .split{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 18px;
+      align-items: stretch;
     }
-    .pricing-card-disabled {
-      opacity: 0.7;
-      position: relative;
+
+    .spotlight{
+      border-radius: var(--radius2);
+      border: 1px solid rgba(255,255,255,0.10);
+      background:
+        radial-gradient(900px 520px at 78% 22%, rgba(34,197,94,0.16), rgba(0,0,0,0) 68%),
+        radial-gradient(800px 480px at 22% 70%, rgba(96,165,250,0.18), rgba(0,0,0,0) 70%),
+        rgba(255,255,255,0.04);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      position:relative;
+      overflow:hidden;
     }
-    .pricing-card-disabled::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(255, 255, 255, 0.5);
+    .spotHeader{
+      display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+      margin-bottom: 10px;
+    }
+    .spotHeader .titleRow{
+      display:flex;align-items:center;gap:10px;
+    }
+    .spotHeader img{
+      height:32px;width:auto;display:block;opacity:0.95;
+      filter: drop-shadow(0 12px 24px rgba(0,0,0,0.6));
+    }
+    .spotHeader h3{margin:0;font-size: 16px;font-weight: 950}
+    .spotHeader p{margin:2px 0 0 0;color: var(--muted2);font-weight: 750;font-size: 13px}
+
+    .bullets{
+      margin: 12px 0 0 0;
+      padding: 0;
+      list-style:none;
+      display:grid;
+      gap: 10px;
+    }
+    .bullets li{
+      display:flex;gap:10px;align-items:flex-start;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+      border-radius: 16px;
+      padding: 12px;
+    }
+    .bullets .bicon{
+      width: 34px;height:34px;border-radius: 12px;
+      display:grid;place-items:center;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.05);
+      flex: 0 0 34px;
+      margin-top: 1px;
+    }
+    .bullets b{display:block;font-weight:950;font-size: 13px;margin-bottom: 2px}
+    .bullets span{display:block;color: var(--muted);font-weight: 650;font-size: 13px;line-height: 1.45}
+
+    .pricing{
+      border-radius: var(--radius2);
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.04);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      overflow:hidden;
+      position:relative;
+    }
+    .pricing .top{
+      display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;
+      margin-bottom: 10px;
+    }
+    .price{
+      font-size: 34px;
+      font-weight: 980;
+      letter-spacing: -0.8px;
+      margin-top: 2px;
+    }
+    .price small{font-size: 14px;color: var(--muted);font-weight: 800}
+    .priceNote{
+      color: var(--muted);
+      font-weight: 700;
+      line-height: 1.5;
+      margin: 8px 0 0 0;
+    }
+    .pricing .list{
+      margin: 12px 0 0 0;
+      padding: 0;
+      list-style:none;
+      display:grid;
+      gap: 10px;
+    }
+    .pricing .list li{
+      display:flex;align-items:flex-start;gap:10px;
+      color: var(--muted);
+      font-weight: 700;
+      line-height: 1.45;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
       border-radius: 14px;
-      pointer-events: none;
-      z-index: 1;
+      padding: 10px 12px;
     }
-    .pricing-card-disabled button {
-      background: #ccc !important;
-      cursor: not-allowed !important;
-      pointer-events: none !important;
-      border-color: #ccc !important;
+
+    .closing{
+      margin-top: 16px;
+      border-radius: var(--radius2);
+      border: 1px solid rgba(255,255,255,0.10);
+      background:
+        radial-gradient(800px 460px at 20% 20%, rgba(245,158,11,0.14), rgba(0,0,0,0) 65%),
+        radial-gradient(800px 460px at 80% 40%, rgba(96,165,250,0.16), rgba(0,0,0,0) 65%),
+        rgba(255,255,255,0.04);
+      box-shadow: var(--shadow);
+      padding: 18px;
     }
-    .available-now-badge {
-      background: #eaf3ff;
-      color: #2a7cff;
-      font-size: 0.95rem;
-      padding: 2px 10px;
-      border-radius: 12px;
-      margin-left: 8px;
-      font-weight: 600;
-      display: inline-block;
+    .closing h2{
+      margin:0;
+      font-size: 28px;
+      font-weight: 980;
+      letter-spacing: -0.6px;
     }
-    .main-logo {
-      display: flex;
-      justify-content: center;
-      margin: 12px 0 2px 0;
+    .closing p{
+      margin: 10px 0 0 0;
+      color: var(--muted);
+      font-weight: 700;
+      line-height: 1.55;
+      max-width: 90ch;
+    }
+    .closing .ctaRow{
+      margin-top: 14px;
+      display:flex;
+      gap: 12px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+
+    footer{
+      padding: 32px 0 46px 0;
+      color: var(--muted2);
+      font-weight: 750;
+      font-size: 13px;
+    }
+    .footRow{
+      display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:space-between;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding-top: 16px;
+    }
+    .footLinks{display:flex;gap:12px;flex-wrap:wrap}
+    .footLinks a{color: var(--muted2);font-weight: 850}
+    .footLinks a:hover{color: var(--text)}
+
+    .reveal{opacity:0;transform: translateY(10px) scale(0.99);transition: opacity .6s ease, transform .6s ease}
+    .reveal.on{opacity:1;transform: translateY(0) scale(1)}
+
+    @media (max-width: 980px){
+      .heroGrid{grid-template-columns: 1fr}
+      .actions{min-width: auto}
+      .brandlock{min-width:auto}
+      .nav{display:none}
+    }
+    @media (max-width: 720px){
+      h1{font-size: 38px}
+      .grid3{grid-template-columns: 1fr}
+      .split{grid-template-columns: 1fr}
+      .hero{padding-top: 28px}
+      .btn{width:auto}
+      .actions .btn.ghost{display:none}
     }
   </style>
 </head>
+
 <body>
-  <header class="header">
-    <a href="index.html" class="header-logo">
-      <img src="assets/XposeManagementCRMlogo.png" alt="CRM Official Logo" style="height:54px;vertical-align:middle;">
-    </a>
-    <nav class="header-nav">
-      <a href="index.html">Home</a>
-      <a href="features.html">Features</a>
-      <a href="paywall.html">Pricing</a>
-    </nav>
-    <div class="header-actions">
-      <a href="login.html"><button class="btn-secondary">Sign In</button></a>
+  <header class="topbar">
+    <div class="wrap">
+      <div class="row">
+        <a class="brandlock" href="index.html" aria-label="Xpose Management Home">
+          <img src="assets/XposeManagementCRMlogo.png" alt="Xpose Management logo" />
+        </a>
+
+        <nav class="nav" aria-label="Primary Navigation">
+          <a href="index.html">Home</a>
+          <a href="features.html">Features</a>
+          <a href="cortex-page.html">Cortex</a>
+          <a href="paywall.html">Pricing</a>
+        </nav>
+
+        <div class="actions">
+          <a class="btn ghost" href="features.html">Explore Features</a>
+          <a class="btn primary" href="paywall.html">Join Now</a>
+          <a class="btn" href="login.html">Sign In</a>
+        </div>
+      </div>
     </div>
   </header>
+
   <main>
-        <a href="index.html" class="main-logo">
-      <img src="assets/logo.png" alt="CRM Official Logo" style="height:54px;vertical-align:center;">
-    </a>
     <section class="hero">
-      <div class="badge">★ 25+ Shops using Xpose</div>
-      <div class="hero-title">Manage <span class="gradient-text">Everything</span> for Your Shop</div>
-      <div class="hero-sub">
-        The all-in-one CRM for auto shops.<br>
-        Appointments & Scheduling, Easy Invoices & Estimates, Revenue statistics & Payroll,<br> 2-Way Texting from Shops to Customers & More.<br>
-        Every feature. One Price, All Included. No premium features.<br> Stop paying extra for what you dont use.<br>
-        Join shops growing faster, saving time, money, and staying organized with <br>Xpose Management.
-      </div>
-      <div class="hero-actions">
-        <a href="paywall.html"><button class="btn-primary">Join Now!</button></a>
-        <a href="features.html"><button class="btn-secondary">Explore Features</button></a>
-      </div>
-      <div class="stats-row">
-        <div class="stat">
-          <div class="stat-value" style="color:#f5b301;font-size:2rem">★★★★☆</div>
-          <div class="stat-label">Average Rating</div>
-        </div>
-        <div class="stat">
-          <div class="stat-value">25+</div>
-          <div class="stat-label">Shops Using Xpose</div>
-        </div>
-        <div class="stat">
-          <div class="stat-value">99%</div>
-          <div class="stat-label">Customer Satisfaction</div>
-        </div>
-        <div class="stat">
-          <div class="stat-value">24/7</div>
-          <div class="stat-label">Support</div>
-        </div>
-      </div>
-
-    </section>
-
-    <!-- Integrated Brands Scroller -->
-    <section style="width:100%;margin:36px 0;padding:18px 0;background:transparent;">
-      <div style="max-width:1200px;margin:0 auto;padding:0 16px;">
-        <h3 style="font-size:1.4rem;font-weight:800;text-align:center;margin-bottom:12px;">Integrated with brands you trust</h3>
-      </div>
-      <div class="integrations-scroller" style="width:100%;overflow:hidden;padding:12px 0;background:linear-gradient(90deg, rgba(255,255,255,0.6), rgba(255,255,255,0.6));">
-        <style>
-          .logo-track{display:flex;align-items:center;gap:24px;padding:16px 24px;will-change:transform}
-          .logo-track.animate{animation:scroll-logos 26s linear infinite}
-          @keyframes scroll-logos{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
-          .integrations-scroller .logo-card{flex:0 0 auto;min-width:240px;max-width:320px;background:#fff;border-radius:10px;padding:12px 18px;display:flex;flex-direction:column;align-items:center;gap:8px;box-shadow:0 6px 20px rgba(2,6,23,0.06)}
-          .integrations-scroller .logo-card img{height:44px;object-fit:contain}
-          .integrations-scroller .logo-card h4{margin:0;font-size:16px;font-weight:700}
-          .integrations-scroller .logo-card p{margin:0;font-size:13px;color:#444;text-align:center;line-height:1.2}
-          @media (max-width:700px){.integrations-scroller .logo-card{min-width:180px}}
-        </style>
-        <div class="logo-track animate">
-          <!-- Stripe -->
-          <div class="logo-card">
-            <img src="assets/Integration-logos/Stripe_Logo,_revised_2016.svg.png" alt="Stripe">
-            <h4>Stripe</h4>
-            <p>Payments, POS and smart terminals for on-site checkouts.</p>
-          </div>
-          <!-- Twilio -->
-          <div class="logo-card">
-            <img src="assets/Integration-logos/twilio-1.webp" alt="Twilio">
-            <h4>Twilio</h4>
-            <p>SMS and programmable messaging for customer notifications.</p>
-          </div>
-          <!-- Resend -->
-          <div class="logo-card">
-            <img src="assets/Integration-logos/resend.png" alt="Resend">
-            <h4>Resend</h4>
-            <p>Reliable transactional email delivery and templates.</p>
-          </div>
-          <!-- Cortex -->
-          <div class="logo-card">
-            <img src="assets/Integration-logos/cortex-mark.png" alt="Cortex">
-            <h4>Cortex</h4>
-            <p>Repair diagnostics & labor knowledge — powered inside Xpose.</p>
-          </div>
-          <!-- Google Reviews -->
-          <div class="logo-card">
-            <img src="assets/Integration-logos/google-reviews.png" alt="Google Reviews">
-            <h4>Google</h4>
-            <p>Collect and display customer reviews to build trust.</p>
-          </div>
-          <!-- Xpose Market -->
-          <div class="logo-card">
-            <img src="assets/Integration-logos/xpose-market.png" alt="Xpose Market">
-            <h4>Xpose Market</h4>
-            <p>Marketplace & storefront tools to showcase your shop online.</p>
+      <div class="wrap heroGrid">
+        <div class="reveal">
+          <div class="pillRow">
+            <span class="pill"><span class="dot"></span> 25 plus shops already running on Xpose</span>
+            <span class="pill"><span class="dot blue"></span> Mobile first workflows</span>
+            <span class="pill"><span class="dot amber"></span> One price, everything included</span>
           </div>
 
-          <!-- duplicate sequence for smooth looping -->
-          <div class="logo-card">
-            <img src="assets/Integration-logos/Stripe_Logo,_revised_2016.svg.png" alt="Stripe">
-            <h4>Stripe</h4>
-            <p>Payments, POS and smart terminals for on-site checkouts.</p>
-          </div>
-          <div class="logo-card">
-            <img src="assets/Integration-logos/twilio-1.webp" alt="Twilio">
-            <h4>Twilio</h4>
-            <p>SMS and programmable messaging for customer notifications.</p>
-          </div>
-          <div class="logo-card">
-            <img src="assets/Integration-logos/resend.png" alt="Resend">
-            <h4>Resend</h4>
-            <p>Reliable transactional email delivery and templates.</p>
-          </div>
-          <div class="logo-card">
-            <img src="assets/Integration-logos/cortex-mark.png" alt="Cortex">
-            <h4>Cortex</h4>
-            <p>Repair diagnostics & labor knowledge — powered inside Xpose.</p>
-          </div>
-          <div class="logo-card">
-            <img src="assets/Integration-logos/google-reviews.png" alt="Google Reviews">
-            <h4>Google</h4>
-            <p>Collect and display customer reviews to build trust.</p>
-          </div>
-          <div class="logo-card">
-            <img src="assets/Integration-logos/xpose-market.png" alt="Xpose Market">
-            <h4>Xpose Market</h4>
-            <p>Marketplace & storefront tools to showcase your shop online.</p>
+          <h1>
+            Run Your Auto Shop Like a <span class="glowText">System</span>, Not a Mess of Tools
+          </h1>
+
+          <p class="sub">
+            Xpose Management brings scheduling, jobs, messaging, payments, parts, and customer history into one connected platform.
+            Cortex is built in to add repair intelligence that supports better decisions without slowing your team down.
+          </p>
+
+          <div class="heroCtas">
+            <a class="btn primary" href="paywall.html">Start Running Smarter</a>
+            <a class="btn ghost" href="#how">See How It Works</a>
           </div>
 
+          <div class="microTrust" aria-label="Trust Highlights">
+            <span>
+              <span class="tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 6L9 17l-5-5"></path>
+                </svg>
+              </span>
+              No feature gates
+            </span>
+            <span>
+              <span class="tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 6L9 17l-5-5"></path>
+                </svg>
+              </span>
+              Built for real shops
+            </span>
+            <span>
+              <span class="tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 6L9 17l-5-5"></path>
+                </svg>
+              </span>
+              Clean and fast UI
+            </span>
+            <span>
+              <span class="tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 6L9 17l-5-5"></path>
+                </svg>
+              </span>
+              Support when you need it
+            </span>
+          </div>
         </div>
-      </div>
-    </section>
 
-    <!-- Features Grid -->
-    <section style="max-width:1100px;margin:64px auto 0 auto;padding:0 16px;">
-      <h2 style="text-align:center;font-size:2.2rem;font-weight:800;margin-bottom:18px;">Everything you need to run your shop</h2>
-      <p style="text-align:center;color:#4a5a6a;font-size:1.15rem;margin-bottom:38px;">A complete toolkit for modern auto shops. No learning curve, no complexity.</p>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:32px;">
-        <div style="background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:32px 24px;text-align:left;">
-          <h3 style="color:#2a7cff;font-size:1.18rem;font-weight:700;margin-bottom:8px;">Appointments & Scheduling</h3>
-          <p style="color:#4a5a6a;font-size:1rem;">Easy booking, calendar view, reminders, and status tracking for every job.</p>
-        </div>
-        <div style="background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:32px 24px;text-align:left;">
-          <h3 style="color:#2a7cff;font-size:1.18rem;font-weight:700;margin-bottom:8px;">Messages</h3>
-          <p style="color:#4a5a6a;font-size:1rem;">Message customers directly from the app. Request a free Shop number included with your subscription and accept 2 way messaging directly from the platform. No more personal phones to connect with customers!</p>
-        </div>
-        <div style="background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:32px 24px;text-align:left;">
-          <h3 style="color:#2a7cff;font-size:1.18rem;font-weight:700;margin-bottom:8px;">Invoices & Payments</h3>
-          <p style="color:#4a5a6a;font-size:1rem;">Generate invoices & Estimates, track payments, and manage revenue with ease via our Xpose Management + Stripe System.</p>
-        </div>
-        <div style="background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:32px 24px;text-align:left;">
-          <h3 style="color:#2a7cff;font-size:1.18rem;font-weight:700;margin-bottom:8px;">Customer Management</h3>
-          <p style="color:#4a5a6a;font-size:1rem;">Store customer info, vehicles, and history for personalized service. All with a click of a button.</p>
-        </div>
-        <div style="background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:32px 24px;text-align:left;">
-          <h3 style="color:#2a7cff;font-size:1.18rem;font-weight:700;margin-bottom:8px;">Parts Finder & Inventory</h3>
-          <p style="color:#4a5a6a;font-size:1rem;">Quickly find parts, manage inventory, and keep jobs moving. Add your own suppliers as well for a personalized experience.</p>
-        </div>
-        <div style="background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:32px 24px;text-align:left;">
-          <h3 style="color:#2a7cff;font-size:1.18rem;font-weight:700;margin-bottom:8px;">Revenue & Statistics</h3>
-          <p style="color:#4a5a6a;font-size:1rem;">See your shop's performance, trends, and growth in real time. Track your spending across all metrics on your shop. Full breakdown of every dollar coming in and out of the shop.</p>
-        </div>
-          <div style="background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:32px 24px;text-align:left;">
-          <h3 style="color:#2a7cff;font-size:1.18rem;font-weight:700;margin-bottom:8px;">Staff Payroll </h3>
-          <p style="color:#4a5a6a;font-size:1rem;">Hourly & Flat rate - Keep track of all staff earnings & job assignments directly from our in platform revenue page.</p>
-        </div>
-              <div style="background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:32px 24px;text-align:left;">
-          <h3 style="color:#2a7cff;font-size:1.18rem;font-weight:700;margin-bottom:8px;">Inspections</h3>
-          <p style="color:#4a5a6a;font-size:1rem;">From quick 10pt inspections to full 60pt Pre Purchase inspections. Help your shop upsell faster, as well as making sure your customers stay safe on the road. </p>
-        </div>
-                      <div style="background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:32px 24px;text-align:left;">
-          <h3 style="color:#2a7cff;font-size:1.18rem;font-weight:700;margin-bottom:8px;">Customer Tracking</h3>
-          <p style="color:#4a5a6a;font-size:1rem;">With the click of a button - send your customers a text with a tracker link, that updates them on the status of the vehicle as well as any recommended services allowing them to accept or decline.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- Terminal Options Section -->
-    <section style="max-width:1100px;margin:48px auto 0 auto;padding:0 16px;">
-      <h2 style="text-align:center;font-size:2rem;font-weight:800;margin-bottom:16px;">Payment Terminal Options</h2>
-      <p style="text-align:center;color:#4a5a6a;font-size:1.13rem;margin-bottom:32px;">Every subscription includes a <b>Stripe Reader M2</b> for free. You can also upgrade to one of our advanced terminals to fit your shop's needs.</p>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:32px;">
-        <div style="background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:28px 20px;text-align:center;">
-          <img src="assets/Stripe Reader M2.png" alt="Stripe Reader M2" style="max-width:90px;margin-bottom:12px;">
-          <h3 style="color:#2a7cff;font-size:1.12rem;font-weight:700;margin-bottom:6px;">Stripe Reader M2 <span style='background:#e6ffef;color:#059669;padding:2px 8px;border-radius:8px;font-size:0.95rem;font-weight:600;margin-left:6px;'>Included FREE</span></h3>
-          <p style="color:#555;font-size:1rem;margin-bottom:0;">Countertop terminal, no screen. Perfect for basic card payments.</p>
-        </div>
-        <div style="background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:28px 20px;text-align:center;">
-          <img src="assets/BBPOS WisePOS E1.png" alt="BBPOS WisePOS E" style="max-width:90px;margin-bottom:12px;">
-          <h3 style="color:#2a7cff;font-size:1.12rem;font-weight:700;margin-bottom:6px;">BBPOS WisePOS E</h3>
-          <p style="color:#555;font-size:1rem;margin-bottom:0;">Handheld terminal with touchscreen. Portable and wireless.</p>
-        </div>
-        <div style="background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:28px 20px;text-align:center;">
-          <img src="assets/Stripe Reader S7001.png" alt="Stripe Reader S700" style="max-width:90px;margin-bottom:12px;">
-          <h3 style="color:#2a7cff;font-size:1.12rem;font-weight:700;margin-bottom:6px;">Stripe Reader S700</h3>
-          <p style="color:#555;font-size:1rem;margin-bottom:0;">Premium terminal with large color display and customer-facing screen.</p>
-        </div>
-      </div>
-    </section>
-
-    
-    <!-- CTA Section -->
-    <section style="max-width:700px;margin:80px auto 0 auto;padding:0 16px;text-align:center;">
-      <div style="font-size:2.5rem;color:#2a7cff;margin-bottom:18px;">⚡</div>
-      <h2 style="font-size:2rem;font-weight:800;margin-bottom:12px;">Ready to organize your shop?</h2>
-      <p style="color:#4a5a6a;font-size:1.15rem;margin-bottom:28px;">Join other shop owners building the future of auto service with Xpose Management.</p>
-      <a href="paywall.html"><button class="btn-primary" style="font-size:1.15rem;padding:16px 40px;">Join Now!</button></a>
-    </section>
-
-    <!-- Pricing Section -->
-    <section style="max-width:1100px;margin:80px auto 0 auto;padding:0 16px;">
-      <h2 style="text-align:center;font-size:2.2rem;font-weight:800;margin-bottom:18px;">Simple, transparent pricing</h2>
-      <p style="text-align:center;color:#4a5a6a;font-size:1.15rem;margin-bottom:38px;">Start with a 14-day free trial. Cancel anytime.</p>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:32px;">
-        <div style="background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:32px 24px;text-align:center;">
-          <h3 style="font-size:1.25rem;font-weight:700;margin-bottom:8px;color:#2a7cff;">Single <span class="available-now-badge">Available Now</span></h3>
-          <div style="color:#888;font-size:1.05rem;margin-bottom:6px;">1 Shop</div>
-          <div style="margin-bottom:8px;">
-            <div style="font-size:2rem;font-weight:800;color:#059669;">$99.99</div>
-            <div style="font-size:1.5rem;font-weight:700;">
-              <span style="color:#000;text-decoration:line-through;text-decoration-color:#059669;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$129.99</span>
-              <span style="font-size:1rem;font-weight:400;color:#000;"> /month</span>
+        <aside class="heroCard reveal" aria-label="Preview Panel">
+          <div class="cardTop">
+            <div class="tag">Xpose Management with Cortex inside</div>
+            <div class="markRow">
+              <img src="assets/Integration-logos/cortex-mark.png" alt="Cortex mark" />
+              <div class="markName">
+                <b>Cortex</b>
+                <span>Repair intelligence layer</span>
+              </div>
             </div>
           </div>
-          <ul style="list-style:disc inside;padding:0 0 0 18px;margin:0 0 18px 0;color:#888;font-size:1rem;text-align:left;">
-            <li>All core features</li>
-          </ul>
-          <a href="paywall.html"><button class="btn-primary">Start Single</button></a>
-        </div>
-        <div style="background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:32px 24px;text-align:center;border:2px solid #2a7cff;">
-          <h3 style="font-size:1.25rem;font-weight:700;margin-bottom:8px;color:#2a7cff;">Local <span class="available-now-badge">Most Popular</span></h3>
-          <div style="color:#888;font-size:1.05rem;margin-bottom:6px;">1-3 Shops</div>
-          <div style="margin-bottom:8px;">
-            <div style="font-size:2rem;font-weight:800;color:#059669;">$149.99</div>
-            <div style="font-size:1.5rem;font-weight:700;">
-              <span style="color:#000;text-decoration:line-through;text-decoration-color:#059669;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$199.99</span>
-              <span style="font-size:1rem;font-weight:400;color:#000;"> /month</span>
+
+          <div class="miniDash">
+            <div class="mini">
+              <h4>Today</h4>
+              <div class="big">7 Active Jobs</div>
+              <div class="small">5 in progress, 2 awaiting parts</div>
+              <div class="bar"><i></i></div>
+            </div>
+
+            <div class="mini">
+              <h4>Open Invoices</h4>
+              <div class="big">$3,420</div>
+              <div class="small"> 4 Total open invoices</div>
+              <div class="bar orange"><i></i></div>
+            </div>
+
+            <div class="mini miniWide">
+              <div class="left">
+                <h4>Cortex Smart-Diagnosis</h4>
+                <div class="big" style="font-size:18px">Is the cooling fan operating when the vehicle is idling?</div>
+                <div class="small">💡 A malfunctioning cooling fan is a common cause of overheating at idle, as it fails to provide adequate airflow through the radiator when the vehicle is not moving.</div>
+                <div class="kbdRow">
+                  <span class="kbd">Yes</span>
+                  <span class="kbd">No</span>
+                  <span class="kbd">Not Sure</span>
+                </div>
+              </div>
+              <div class="tag" style="align-self:flex-start;background:rgba(34,197,94,0.12);border-color:rgba(8, 27, 15, 0.3)">
+                Question 1 of 3
+              </div>
             </div>
           </div>
-          <ul style="list-style:disc inside;padding:0 0 0 18px;margin:0 0 18px 0;color:#888;font-size:1rem;text-align:left;">
-            <li>All Core features</li>
-            <li>Multi-shop management</li>
-            <li><strong>1 month free Messaging</strong></li>
-          </ul>
-          <button class="btn-primary">Start Local</button>
+        </aside>
+      </div>
+    </section>
+
+    <section id="how" class="block">
+      <div class="wrap">
+        <div class="reveal">
+          <h2 class="sectionTitle">More Than a CRM. This Is Your Shop Operating System.</h2>
+          <p class="sectionSub">
+            Most shop software handles one piece of the workflow. Xpose connects the whole job so nothing gets lost, delayed, or forgotten.
+            From booking to payment to review, every step lives in one system.
+          </p>
         </div>
-        <div style="background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.06);padding:32px 24px;text-align:center;">
-          <h3 style="font-size:1.25rem;font-weight:700;margin-bottom:8px;">Multi</h3>
-          <div style="color:#888;font-size:1.05rem;margin-bottom:6px;">1-6 Shops</div>
-          <div style="margin-bottom:8px;">
-            <div style="font-size:2rem;font-weight:800;color:#059669;">$199.99</div>
-            <div style="font-size:1.5rem;font-weight:700;">
-              <span style="color:#000;text-decoration:line-through;text-decoration-color:#059669;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$249.99</span>
-              <span style="font-size:1rem;font-weight:400;color:#000;"> /month</span>
+
+        <div class="grid3">
+          <div class="card reveal">
+            <div class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12h18"></path>
+                <path d="M12 3v18"></path>
+              </svg>
+            </div>
+            <h3>Everything Connected</h3>
+            <p>Appointments flow into jobs, jobs connect to parts and labor, invoices build as work is completed.</p>
+          </div>
+
+          <div class="card reveal">
+            <div class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20l9-5-9-5-9 5 9 5z"></path>
+                <path d="M12 12l9-5-9-5-9 5 9 5z"></path>
+              </svg>
+            </div>
+            <h3>Built for Real Shops</h3>
+            <p>No enterprise clutter. Fast, clear, mobile friendly screens that your team can learn quickly.</p>
+          </div>
+
+          <div class="card reveal">
+            <div class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 7l-8 10L4 12"></path>
+              </svg>
+            </div>
+            <h3>One Price, Everything Included</h3>
+            <p>No feature gates. No surprise tiers. The full platform is available to every shop from day one.</p>
+          </div>
+        </div>
+
+        <div class="flow reveal" aria-label="Connected Workflow">
+          <div class="flowRow">
+            <div class="node blue">
+              <b>Appointments</b>
+              <span>Book and track instantly</span>
+            </div>
+            <div class="node">
+              <b>Active Jobs</b>
+              <span>Status, notes, and progress</span>
+            </div>
+            <div class="node amber">
+              <b>Cortex</b>
+              <span>Diagnostics and labor logic</span>
+            </div>
+            <div class="node">
+              <b>Parts and Inventory</b>
+              <span>Keep jobs moving</span>
+            </div>
+            <div class="node blue">
+              <b>Invoice</b>
+              <span>Clean totals with less effort</span>
+            </div>
+            <div class="node">
+              <b>Payments</b>
+              <span>Receipts and tracking</span>
+            </div>
+            <div class="node amber">
+              <b>Reviews</b>
+              <span>Trust that compounds</span>
             </div>
           </div>
-          <ul style="list-style:disc inside;padding:0 0 0 18px;margin:0 0 18px 0;color:#888;font-size:1rem;text-align:left;">
-            <li>All Core features</li>
-            <li>Advanced multi-shop tools</li>
-            <li>First to receive all updates (Beta Testings included)</li>
-            <li><strong>1 month free Messaging</strong></li>
-          </ul>
-          <button class="btn-primary">Start Multi</button>
         </div>
       </div>
-      <p style="text-align:center;color:#888;font-size:1rem;margin-top:32px;">All plans come with a 14-day free trial. Cancel anytime free of charge.</p>
     </section>
+
+    <section id="cortex" class="block">
+      <div class="wrap split">
+        <div class="spotlight reveal">
+          <div class="spotHeader">
+            <div class="titleRow">
+              <img src="assets/Integration-logos/cortex-mark.png" alt="Cortex mark" />
+              <div>
+                <h3>Built In Repair & Diagnostics Intelligence with Cortex</h3>
+                <p>Cortex is the intelligence layer inside Xpose Management</p>
+              </div>
+            </div>
+            <span class="pill"><span class="dot blue"></span> Faster, clearer repairs</span>
+          </div>
+
+          <ul class="bullets">
+            <li>
+              <div class="bicon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2v6"></path><path d="M12 16v6"></path>
+                  <path d="M4.93 4.93l4.24 4.24"></path><path d="M14.83 14.83l4.24 4.24"></path>
+                  <path d="M2 12h6"></path><path d="M16 12h6"></path>
+                  <path d="M4.93 19.07l4.24-4.24"></path><path d="M14.83 9.17l4.24-4.24"></path>
+                </svg>
+              </div>
+              <div>
+                <b>Clear Diagnostic Paths</b>
+                <span>Connect symptoms and trouble codes into structured checks that your team can follow quickly.</span>
+              </div>
+            </li>
+
+            <li>
+              <div class="bicon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 7h18"></path><path d="M3 12h18"></path><path d="M3 17h18"></path>
+                  <path d="M7 7v10"></path>
+                </svg>
+              </div>
+              <div>
+                <b>Smarter Labor Logic</b>
+                <span>Help techs and advisors land on accurate labor time and service steps without bouncing between tools.</span>
+              </div>
+            </li>
+
+            <li>
+              <div class="bicon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path>
+                  <path d="M7 9h10"></path><path d="M7 13h6"></path>
+                </svg>
+              </div>
+              <div>
+                <b>Better Customer Explanations</b>
+                <span>Turn uncertainty into confident communication. More trust, more approvals, fewer stalls.</span>
+              </div>
+            </li>
+      <a
+        href="cortex-page.html"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="btn primary"
+        style="white-space:nowrap;"
+      >
+        Explore Cortex
+      </a>
+          </ul>
+        </div>
+
+        <div class="pricing reveal" aria-label="One Price Panel">
+          <div class="top">
+            <div>
+              <h2 class="sectionTitle" style="margin:0">Everything Included</h2>
+              <p class="sectionSub" style="margin-top:8px">
+                Your shop should not pay extra for basic tools. Xpose includes the full platform and grows with you.
+              </p>
+            </div>
+            <div class="price">
+              One Price
+              <small> per shop</small>
+            </div>
+          </div>
+
+          <p class="priceNote">
+            Scheduling, customer management, invoices, estimates, messaging, parts, inventory, revenue insights, and Cortex repair intelligence are all part of the core platform.
+          </p>
+
+          <ul class="list">
+            <li>
+              <span class="tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 6L9 17l-5-5"></path>
+                </svg>
+              </span>
+              Appointments, job tracking, and calendar views
+            </li>
+            <li>
+              <span class="tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 6L9 17l-5-5"></path>
+                </svg>
+              </span>
+              Invoices and estimates with clean totals
+            </li>
+            <li>
+              <span class="tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 6L9 17l-5-5"></path>
+                </svg>
+              </span>
+              Customer history, vehicles, and repeat work tracking
+            </li>
+            <li>
+              <span class="tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 6L9 17l-5-5"></path>
+                </svg>
+              </span>
+              Messaging and notifications that keep jobs moving
+            </li>
+            <li>
+              <span class="tick" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 6L9 17l-5-5"></path>
+                </svg>
+              </span>
+              Cortex backed diagnostics and labor guidance
+            </li>
+          </ul>
+
+          <div class="ctaRow" style="margin-top:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+            <a class="btn primary" href="paywall.html">Join Now</a>
+            <a class="btn ghost" href="features.html">View Full Feature List</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="wrap">
+        <div class="reveal">
+          <h2 class="sectionTitle">Everything You Need to Run Your Shop</h2>
+          <p class="sectionSub">
+            A complete toolkit that feels premium, stays organized, and helps your team move faster without extra complexity.
+          </p>
+        </div>
+
+        <div class="grid3">
+          <div class="card reveal">
+            <div class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 7V3h8v4"></path>
+                <path d="M5 7h14l-1 14H6L5 7z"></path>
+              </svg>
+            </div>
+            <h3>Appointments and Scheduling</h3>
+            <p>Calendar views, reminders, statuses, and job flow that matches how real shops operate.</p>
+          </div>
+
+          <div class="card reveal">
+            <div class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path>
+                <path d="M7 9h10"></path><path d="M7 13h6"></path>
+              </svg>
+            </div>
+            <h3>Messaging</h3>
+            <p>Keep communication inside the platform so your team does not rely on personal phones or scattered threads.</p>
+          </div>
+
+          <div class="card reveal">
+            <div class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 1v22"></path>
+                <path d="M17 5H9a4 4 0 0 0 0 8h6a4 4 0 0 1 0 8H6"></path>
+              </svg>
+            </div>
+            <h3>Invoices and Payments</h3>
+            <p>Create clean invoices and track payments with less manual work and fewer mistakes.</p>
+          </div>
+
+          <div class="card reveal">
+            <div class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+            </div>
+            <h3>Customer and Vehicle History</h3>
+            <p>Store customer info, vehicles, and prior work so every new visit starts with context.</p>
+          </div>
+
+          <div class="card reveal">
+            <div class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 7h-9"></path><path d="M14 17H5"></path>
+                <circle cx="17" cy="17" r="3"></circle>
+                <circle cx="7" cy="7" r="3"></circle>
+              </svg>
+            </div>
+            <h3>Parts and Inventory</h3>
+            <p>Track parts, manage inventory, and keep jobs moving with fewer delays and fewer surprises.</p>
+          </div>
+
+          <div class="card reveal">
+            <div class="icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 3v18h18"></path>
+                <path d="M19 9l-5 5-4-4-3 3"></path>
+              </svg>
+            </div>
+            <h3>Revenue and Insights</h3>
+            <p>See performance trends clearly so you can make smarter decisions without spreadsheet chaos.</p>
+          </div>
+        </div>
+
+        <div class="closing reveal">
+          <h2>Stop Paying Extra for What You Don't Use. One Price. All Features Included</h2>
+          <p>
+            Xpose replaces scattered scheduling tools, messaging apps, invoice systems, and guesswork with one connected platform.
+            Built for speed. Built for clarity. Built to help shops grow.
+          </p>
+          <div class="ctaRow">
+            <a class="btn primary" href="paywall.html">Start Running Smarter</a>
+            <a class="btn ghost" href="features.html">Explore Features</a>
+            <a class="btn" href="login.html">Sign In</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div class="wrap">
+        <div class="footRow">
+          <div style="display:flex;align-items:center;gap:10px">
+            <img src="assets/logo.png" alt="Xpose logo" style="height:28px;width:auto;opacity:0.9" />
+            <span>© <span id="year"></span> Xpose Management</span>
+          </div>
+          <div class="footLinks" aria-label="Footer Links">
+            <a href="faq.html">FAQ</a>
+            <a href="privacy.html">Privacy Policy</a>
+            <a href="terms.html">Terms of Service</a>
+            <a href="contact.html">Contact</a>
+          </div>
+        </div>
+      </div>
+    </footer>
   </main>
-  <footer class="footer" style="background:#f6f8ff;padding:32px 0 16px 0;text-align:center;color:#7f5fff;font-size:1.08rem;">
-    <span>© 2025 Xpose Management</span>
-    <div style="margin-top:18px;font-size:1.08rem;">
-      <a href="faq.html" style="margin-right:18px;color:#2a7cff;font-weight:600;">FAQ</a>
-      <a href="privacy.html" style="margin-right:18px;color:#2a7cff;font-weight:600;">Privacy Policy</a>
-      <a href="terms.html" style="margin-right:18px;color:#2a7cff;font-weight:600;">Terms of Service</a>
-      <a href="contact.html" style="color:#2a7cff;font-weight:600;">Contact/Support</a>
-    </div>
-  </footer>
+
+  <script>
+    (function(){
+      var y = document.getElementById('year');
+      if (y) y.textContent = String(new Date().getFullYear());
+
+      var items = Array.prototype.slice.call(document.querySelectorAll('.reveal'));
+      if (!items.length) return;
+
+      var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(e){
+          if (e.isIntersecting) e.target.classList.add('on');
+        });
+      }, { threshold: 0.12 });
+
+      items.forEach(function(el){ io.observe(el); });
+    })();
+  </script>
 </body>
 </html>

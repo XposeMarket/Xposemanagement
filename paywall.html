@@ -1,484 +1,638 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Xpose Management - Pricing</title>
-  <link rel="stylesheet" href="styles.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pricing | Xpose Management</title>
+  <meta name="description" content="Simple pricing for Xpose Management. Every core feature included with Cortex powered workflows." />
+
   <style>
-    /* ...existing styles... */
-    @media (max-width: 700px) {
-      .terminal-modal-options {
-        display: flex !important;
-        flex-direction: column !important;
-        gap: 80px !important;
-        max-height: 60vh !important;
-        overflow-y: auto !important;
-        padding-right: 4px !important;
-      }
-      .terminal-modal-options .terminal-option {
-        margin-bottom: 64px !important;
-        box-shadow: 0 2px 12px 0 rgba(0,0,0,0.07) !important;
-      }
-      .modal-content.card {
-        padding: 10px !important;
-        max-width: 98vw !important;
-      }
-      .terminal-modal-options img {
-        max-width: 90vw !important;
-      }
+    :root{
+      --bg:#070b12;
+      --bg2:#0b1020;
+      --card:rgba(255,255,255,0.06);
+      --card2:rgba(255,255,255,0.08);
+      --line:rgba(255,255,255,0.10);
+      --text:#eaf0ff;
+      --muted:rgba(234,240,255,0.72);
+      --muted2:rgba(234,240,255,0.56);
+      --brand:#22c55e;
+      --accent:#60a5fa;
+      --amber:#f59e0b;
+      --shadow: 0 18px 60px rgba(0,0,0,0.40);
+      --radius:18px;
+      --radius2:26px;
+      --max:1180px;
     }
-  </style>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      margin: 0;
-      padding: 0;
-      line-height: 1.6;
+
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0}
+    body{
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:
+        radial-gradient(900px 500px at 18% 12%, rgba(96,165,250,0.18), rgba(0,0,0,0) 65%),
+        radial-gradient(900px 500px at 82% 18%, rgba(34,197,94,0.16), rgba(0,0,0,0) 70%),
+        radial-gradient(900px 500px at 60% 92%, rgba(245,158,11,0.10), rgba(0,0,0,0) 65%),
+        linear-gradient(180deg, var(--bg), var(--bg2));
+      color:var(--text);
+      overflow-x:hidden;
     }
-    .header {
-      z-index: 100;
-      backdrop-filter: blur(8px);
-      box-shadow: 0 2px 8px rgba(42,124,255,0.04);
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      background: rgba(255, 255, 255, 0.9);
-      padding: 16px 32px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+    a{color:inherit;text-decoration:none}
+    .wrap{max-width:var(--max);margin:0 auto;padding:0 22px}
+
+    .topbar{
+      position:sticky; top:0; z-index:60;
+      backdrop-filter: blur(14px);
+      background: rgba(7,11,18,0.65);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
     }
-    .header-logo {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: #2a7cff;
-      text-decoration: none;
+    .topbar .row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 0}
+    .brandlock{display:flex;align-items:center;gap:12px;min-width:220px}
+    .brandlock img{height:44px;width:auto;display:block;filter: drop-shadow(0 10px 22px rgba(0,0,0,0.55));}
+
+    .nav{display:flex;gap:8px;align-items:center;justify-content:center;flex:1}
+    .nav a{
+      padding:10px 12px;border-radius:12px;color:var(--muted);
+      font-weight:600;font-size:14px;border:1px solid transparent;
+      transition: transform .14s ease, background .14s ease, border-color .14s ease;
     }
-    .header-nav {
-      display: flex;
-      align-items: center;
-      gap: 28px;
-      font-size: 1.08rem;
+    .nav a:hover{background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.10); transform: translateY(-1px); color: var(--text);}
+    .actions{display:flex;gap:10px;align-items:center;justify-content:flex-end;min-width:220px}
+
+    .btn{
+      display:inline-flex;align-items:center;justify-content:center;gap:10px;
+      border-radius:14px;padding:11px 14px;border:1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);color: var(--text);
+      font-weight:800;font-size:14px;cursor:pointer;user-select:none;white-space:nowrap;
+      transition: transform .14s ease, filter .14s ease, box-shadow .14s ease, border-color .14s ease;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.22);
     }
-    .header-nav a {
-      color: #222;
-      text-decoration: none;
-      font-weight: 500;
-      transition: color 0.2s;
+    .btn:hover{transform: translateY(-2px);border-color: rgba(255,255,255,0.18);filter: brightness(1.03);box-shadow: 0 16px 44px rgba(0,0,0,0.35);}
+    .btn.primary{background: linear-gradient(135deg, rgba(34,197,94,0.92), rgba(96,165,250,0.72));border-color: rgba(255,255,255,0.10);color:#05110a}
+    .btn.ghost{background: rgba(255,255,255,0.04)}
+
+    .pageHead{padding: 26px 0 12px;}
+    h1{margin:0;font-size: 40px;line-height:1.06;letter-spacing:-0.9px;font-weight:950}
+    .glowText{background: linear-gradient(90deg, rgba(96,165,250,1), rgba(34,197,94,1));-webkit-background-clip:text;background-clip:text;color:transparent}
+    .sub{margin-top:12px;font-size:15px;line-height:1.6;color:var(--muted);max-width: 90ch;font-weight:650}
+
+    .pillRow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0 14px}
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;
+      border:1px solid rgba(255,255,255,0.12);background: rgba(255,255,255,0.06);
+      color: var(--muted);font-weight:900;font-size:13px;
     }
-    .header-nav a:hover {
-      color: #2a7cff;
+    .dot{width:8px;height:8px;border-radius:999px;background: var(--brand);box-shadow: 0 0 0 6px rgba(34,197,94,0.12);}
+    .dot.blue{background: var(--accent); box-shadow: 0 0 0 6px rgba(96,165,250,0.12);}
+    .dot.amber{background: var(--amber); box-shadow: 0 0 0 6px rgba(245,158,11,0.12);}
+
+    .panel{
+      border-radius: var(--radius2);
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.05);
+      box-shadow: var(--shadow);
+      overflow:hidden;
     }
-    .header-actions {
-      display: flex;
-      gap: 12px;
+
+    .pricingShell{padding: 16px 0 38px;}
+    .topStrip{
+      display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;
+      padding: 14px; border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: radial-gradient(900px 260px at 20% 10%, rgba(96,165,250,0.12), rgba(0,0,0,0) 62%),
+                  radial-gradient(900px 260px at 82% 40%, rgba(34,197,94,0.10), rgba(0,0,0,0) 64%),
+                  rgba(255,255,255,0.03);
     }
-    .btn-secondary {
-      background: #fff;
-      color: #2a7cff;
-      border: 1.5px solid #e0e7ff;
-      border-radius: 7px;
-      padding: 12px 32px;
-      font-size: 1.08rem;
-      font-weight: 600;
-      cursor: pointer;
-      box-shadow: 0 2px 8px rgba(42,124,255,0.07);
-      transition: border 0.2s;
+    .stripLeft{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    .stripTitle{font-weight:950;letter-spacing:-0.3px}
+    .stripNote{color: var(--muted);font-weight:750;font-size:13px}
+
+    .tabs{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .pricing-tab{
+      border:1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.05);
+      color: var(--muted);
+      font-weight:950;
+      font-size:13px;
+      padding:10px 12px;
+      border-radius: 999px;
+      cursor:pointer;
+      transition: transform .14s ease, border-color .14s ease, background .14s ease;
     }
-    .btn-secondary:hover {
-      border-color: #2a7cff;
+    .pricing-tab:hover{transform: translateY(-1px); border-color: rgba(255,255,255,0.18);}
+    .pricing-tab.active{background: rgba(96,165,250,0.14); color: var(--text); border-color: rgba(96,165,250,0.25);}
+
+    .pricing-row{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      padding: 14px;
     }
-    .pricing-main {
-      max-width: 1100px;
-      margin: 48px auto 0 auto;
-      padding: 0 16px;
-      padding-top: 100px; /* Account for fixed header */
+    .pricing-card{
+      border-radius: var(--radius2);
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.05);
+      box-shadow: 0 18px 60px rgba(0,0,0,0.30);
+      padding: 16px 16px 14px;
+      position:relative;
+      overflow:hidden;
+      transition: transform .14s ease, border-color .14s ease, background .14s ease;
+      display:flex;
+      flex-direction:column;
+      min-height: 360px;
     }
-    .pricing-title {
-      font-size: 2.5rem;
-      font-weight: 800;
-      text-align: center;
-      margin-bottom: 18px;
+    .pricing-card:hover{transform: translateY(-2px);border-color: rgba(255,255,255,0.16);background: rgba(255,255,255,0.06);}
+    .pricing-card.popular{border-color: rgba(96,165,250,0.24);background: rgba(96,165,250,0.08);}
+    .pricing-card.popular::before{
+      content:"";
+      position:absolute; inset:-1px;
+      background: radial-gradient(600px 220px at 20% 10%, rgba(96,165,250,0.22), rgba(0,0,0,0) 62%),
+                  radial-gradient(600px 220px at 82% 40%, rgba(34,197,94,0.16), rgba(0,0,0,0) 64%);
+      pointer-events:none;
+      opacity: 0.85;
     }
-    .pricing-desc {
-      text-align: center;
-      color: #4a5a6a;
-      font-size: 1.18rem;
-      margin-bottom: 38px;
+    .pricing-card > *{position:relative; z-index:1}
+
+    .card-top h3{margin:0;font-size:16px;font-weight:950;letter-spacing:-0.2px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .plan-type{color: var(--muted);font-weight:850;margin-top:8px}
+
+    .badge-now,.badge-pop{
+      padding: 6px 10px;
+      border-radius: 999px;
+      border:1px solid rgba(255,255,255,0.14);
+      background: rgba(7,11,18,0.40);
+      color: var(--text);
+      font-weight:950;
+      font-size:12px;
     }
-    .pricing-tabs {
-      display: flex;
-      justify-content: center;
-      gap: 16px;
-      margin-bottom: 40px;
+    .badge-pop{border-color: rgba(96,165,250,0.24); background: rgba(96,165,250,0.14);}
+
+    .price{margin-top:14px}
+    .now{font-size: 34px; font-weight: 980; letter-spacing:-0.6px}
+    .was{margin-top:6px; display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
+    .strike{color: rgba(234,240,255,0.65); text-decoration: line-through; text-decoration-thickness: 3px; text-decoration-color: rgba(34,197,94,0.75); font-weight: 900}
+    .unit{color: rgba(234,240,255,0.75); font-weight: 850}
+
+    .list{margin: 14px 0 0 0; padding: 0 0 0 18px; color: var(--muted); font-weight: 750; line-height:1.55; font-size:14px}
+    .list li{margin: 6px 0}
+
+    .plan-btn{
+      margin-top:auto;
+      width:100%;
+      border:none;
+      border-radius: 16px;
+      padding: 12px 14px;
+      font-weight: 950;
+      font-size: 14px;
+      cursor:pointer;
+      background: rgba(255,255,255,0.08);
+      color: var(--text);
+      border: 1px solid rgba(255,255,255,0.14);
+      transition: transform .14s ease, filter .14s ease, border-color .14s ease, box-shadow .14s ease;
+      box-shadow: 0 14px 44px rgba(0,0,0,0.26);
     }
-    .pricing-tab {
-      background: #f0f4f8;
-      border: none;
-      border-radius: 8px;
-      padding: 12px 32px;
-      font-size: 1.08rem;
-      font-weight: 600;
-      cursor: pointer;
-      color: #666;
-      transition: all 0.2s;
+    .pricing-card.popular .plan-btn{background: linear-gradient(135deg, rgba(34,197,94,0.92), rgba(96,165,250,0.72)); color:#05110a; border-color: rgba(255,255,255,0.10)}
+    .plan-btn:hover{transform: translateY(-2px); filter: brightness(1.04); border-color: rgba(255,255,255,0.18); box-shadow: 0 18px 60px rgba(0,0,0,0.35)}
+
+    .trial-note{text-align:center;color: var(--muted);font-weight:750;font-size:14px;margin-top: 14px}
+
+    .grid2{display:grid;grid-template-columns: 1.15fr 0.85fr; gap: 14px; padding: 14px}
+    .miniCard{
+      border-radius: var(--radius2);
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.04);
+      box-shadow: 0 18px 60px rgba(0,0,0,0.26);
+      padding: 16px;
     }
-    .pricing-tab.active {
-      background: #2a7cff;
-      color: #fff;
+    .miniCard h4{margin:0;font-size: 15px; font-weight: 950}
+    .miniCard p{margin:10px 0 0 0; color: var(--muted); font-weight: 700; line-height:1.55; font-size: 13.5px}
+    .checkList{margin: 10px 0 0 0; padding: 0 0 0 18px; color: var(--muted); font-weight: 750; line-height:1.55; font-size: 13.5px}
+    .checkList li{margin: 6px 0}
+
+    /* Modal */
+    .modal-overlay{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; padding: 14px; background: rgba(0,0,0,0.74); z-index: 2200}
+    .modal-overlay.hidden{display:none}
+    .modal-content{
+      width: min(1100px, 96vw);
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(7,11,18,0.72);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 22px 80px rgba(0,0,0,0.55);
+      overflow:hidden;
     }
-    .pricing-tab:hover {
-      background: #e0e7ff;
+    .modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 14px;border-bottom:1px solid rgba(255,255,255,0.10)}
+    .modal-head h3{margin:0;font-size:16px;font-weight:980;letter-spacing:-0.3px}
+    .btn-close{
+      width: 42px; height: 42px; border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(7,11,18,0.70);
+      color: var(--text);
+      font-size: 20px;
+      cursor:pointer;
+      box-shadow: 0 18px 54px rgba(0,0,0,0.45);
     }
-    .pricing-tab.active:hover {
-      background: #195bb5;
+    .modal-body{padding: 14px}
+    .terminal-grid{display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px}
+    .terminal-option{
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.05);
+      box-shadow: 0 16px 50px rgba(0,0,0,0.25);
+      padding: 12px;
+      cursor:pointer;
+      transition: transform .14s ease, border-color .14s ease, background .14s ease;
+      user-select:none;
     }
-    .pricing-row {
-      display: grid;
-      grid-template-columns: repeat(auto-fit,minmax(260px,1fr));
-      gap: 32px;
-      margin-bottom: 32px;
-    }
-    .pricing-card {
-      background: #fff;
-      border-radius: 14px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-      padding: 32px 24px;
-      text-align: center;
+    .terminal-option:hover{transform: translateY(-2px); border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.06)}
+    .terminal-option.selected{border-color: rgba(34,197,94,0.35); background: rgba(34,197,94,0.10)}
+    .terminal-option img{width:100%; height: 150px; object-fit: contain; display:block; border-radius: 14px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08)}
+    .terminal-title{margin-top:10px;font-weight:980}
+    .terminal-sub{margin-top:6px;color: var(--muted); font-weight: 750; font-size: 13px; line-height:1.45}
+
+    .modal-foot{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;padding: 14px;border-top:1px solid rgba(255,255,255,0.10)}
+    .modal-foot button{border:none}
+    .btnWide{min-width: 220px}
+    #terminalOptOut{background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); color: var(--text)}
+    #terminalModalConfirm{background: linear-gradient(135deg, rgba(34,197,94,0.92), rgba(96,165,250,0.72)); color:#05110a; border: 1px solid rgba(255,255,255,0.10)}
+
+    /* Annual terminal upgrade overlay */
+    .terminal-grid-wrapper{position: relative}
+    .terminal-upgrade-overlay{
+      position: absolute;
+      inset: 0;
+      background: rgba(7,11,18,0.88);
+      backdrop-filter: blur(4px);
+      border-radius: 18px;
       display: flex;
       flex-direction: column;
       align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      z-index: 10;
     }
-    .pricing-card.popular {
-      border: 2px solid #2a7cff;
+    .terminal-upgrade-overlay.hidden{display: none}
+    .terminal-upgrade-overlay h4{
+      margin: 0 0 10px 0;
+      font-size: 16px;
+      font-weight: 950;
+      color: var(--text);
     }
-    .pricing-card h3 {
-      font-size: 1.25rem;
+    .terminal-upgrade-overlay p{
+      margin: 0;
+      color: var(--muted);
       font-weight: 700;
-      margin-bottom: 8px;
-      color: #2a7cff;
+      font-size: 14px;
+      line-height: 1.5;
+      max-width: 380px;
     }
-    .pricing-card .plan-type {
-      color: #888;
-      font-size: 1.05rem;
-      margin-bottom: 6px;
+
+    footer{padding: 32px 0 46px 0; color: var(--muted2); font-weight: 750; font-size: 13px;}
+    .footRow{display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:space-between;border-top: 1px solid rgba(255,255,255,0.08);padding-top: 16px}
+    .footLinks{display:flex;gap:12px;flex-wrap:wrap}
+    .footLinks a{color: var(--muted2);font-weight: 850}
+    .footLinks a:hover{color: var(--text)}
+
+    @media (max-width: 980px){
+      .nav{display:none}
+      .actions{min-width:auto}
+      .brandlock{min-width:auto}
+      .pricing-row{grid-template-columns: 1fr}
+      .grid2{grid-template-columns: 1fr}
+      .terminal-grid{grid-template-columns: 1fr}
     }
-    .pricing-card .plan-price {
-      font-size: 2rem;
-      font-weight: 800;
-      margin-bottom: 8px;
-    }
-    .pricing-card ul {
-      list-style: disc inside;
-      padding: 0 0 0 18px;
-      margin: 0 0 18px 0;
-      color: #888;
-      font-size: 1rem;
-      text-align: left;
-    }
-    .pricing-card .popular-badge {
-      background: #eaf3ff;
-      color: #2a7cff;
-      font-size: 0.95rem;
-      padding: 2px 10px;
-      border-radius: 12px;
-      margin-left: 8px;
-      font-weight: 600;
-      display: inline-block;
-    }
-    .pricing-card .coming-soon-badge {
-      background: #ffeaa7;
-      color: #d63031;
-      font-size: 0.95rem;
-      padding: 2px 10px;
-      border-radius: 12px;
-      margin-left: 8px;
-      font-weight: 600;
-      display: inline-block;
-    }
-    .pricing-card.disabled {
-      opacity: 0.7;
-      position: relative;
-    }
-    .pricing-card.disabled::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(255, 255, 255, 0.5);
-      border-radius: 14px;
-      pointer-events: none;
-    }
-    .pricing-card.disabled .plan-btn {
-      background: #ccc;
-      cursor: not-allowed;
-      pointer-events: none;
-    }
-    .pricing-card .plan-btn {
-      margin: 0 auto;
-      display: inline-block;
-      background: #2a7cff;
-      color: #fff;
-      border: none;
-      border-radius: 7px;
-      padding: 12px 32px;
-      font-size: 1.08rem;
-      font-weight: 600;
-      cursor: pointer;
-      box-shadow: 0 2px 8px rgba(42,124,255,0.10);
-      transition: background 0.2s;
-    }
-    .pricing-card .plan-btn:hover {
-      background: #195bb5;
-    }
-    .footer {
-      margin-top: 80px;
-      background: #f6f8ff;
-      padding: 32px 0 16px 0;
-      text-align: center;
-      color: #7f5fff;
-      font-size: 1.08rem;
-    }
-    .trial-note {
-      text-align: center;
-      color: #888;
-      font-size: 1rem;
-      margin-top: 32px;
+    @media (max-width: 720px){
+      h1{font-size: 34px}
+      .actions .btn.ghost{display:none}
     }
   </style>
-
 </head>
+
 <body>
-  <header class="header">
-    <a href="index.html" class="header-logo">
-      <img src="assets/XposeManagementCRMlogo.png" alt="CRM Official Logo" style="height:54px;vertical-align:middle;">
-    </a>
-    <nav class="header-nav">
-      <a href="index.html">Home</a>
-      <a href="features.html">Features</a>
-      <a href="paywall.html">Pricing</a>
-    </nav>
-    <div class="header-actions">
-      <a href="login.html"><button class="btn-secondary">Sign In</button></a>
+  <header class="topbar">
+    <div class="wrap">
+      <div class="row">
+        <a class="brandlock" href="index.html" aria-label="Xpose Management Home">
+          <img src="assets/XposeManagementCRMlogo.png" alt="Xpose Management logo" />
+        </a>
+
+        <nav class="nav" aria-label="Primary Navigation">
+          <a href="index.html">Home</a>
+          <a href="features.html">Features</a>
+          <a href="paywall.html">Pricing</a>
+        </nav>
+
+        <div class="actions">
+          <a class="btn" href="login.html">Sign In</a>
+          <a class="btn primary" href="#plans">Join Now</a>
+        </div>
+      </div>
     </div>
   </header>
-  <main class="pricing-main">
-    <div class="pricing-title">Choose Your Plan</div>
-    <div class="pricing-desc">Simple, transparent pricing. Start with a 14-day free trial. Cancel anytime.</div>
-      <div class="pricing-desc" style="font-size:1.08rem;color:#2a7cff;margin-bottom:8px;">All plans include a free Stripe M2 terminal with optional upgrades.</div>
-      <div class="pricing-desc" style="font-size:1.02rem;color:#666;margin-bottom:28px;">Terminals will ship within 5-7 Business Days of shop creation.</div>
-    
-    <!-- Pricing Tabs -->
-    <div class="pricing-tabs">
-      <button class="pricing-tab active" onclick="switchPricingPeriod('monthly')">Monthly</button>
-      <button class="pricing-tab" onclick="switchPricingPeriod('annually')">Annually</button>
-    </div>
 
-    <!-- Monthly Pricing -->
-    <div id="monthly-pricing" class="pricing-row">
-      <div class="pricing-card">
-        <h3>Single <span class="popular-badge">Available Now</span></h3>
-        <div class="plan-type">1 Shop</div>
-        <div style="font-size:2rem;font-weight:800;color:#059669;margin-bottom:4px;">$99.99</div>
-        <div style="font-size:1.5rem;font-weight:700;margin-bottom:8px;">
-          <span style="color:#000;text-decoration:line-through;text-decoration-color:#059669;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$129.99</span>
-          <span style="font-size:1rem;font-weight:400;color:#000;"> /month</span>
+  <main>
+    <section class="pageHead">
+      <div class="wrap">
+        <div class="pillRow">
+          <span class="pill"><span class="dot"></span> All core features included</span>
+          <span class="pill"><span class="dot blue"></span> Cortex powered workflow</span>
+          <span class="pill"><span class="dot amber"></span> Stripe terminal options</span>
         </div>
-        <ul>
+
+        <h1>Choose a plan that fits <span class="glowText">your shop</span></h1>
+        <p class="sub">
+          Simple pricing, real value. Start with a 14 day free trial and cancel anytime.
+          All plans include a free Stripe M2 terminal with optional upgrades.
+        </p>
+        <p class="sub" style="margin-top:8px;color:rgba(234,240,255,0.60);font-size:13.5px;">
+          Terminals ship within 5 to 7 business days after shop creation.
+        </p>
+      </div>
+    </section>
+
+    <section class="pricingShell" id="plans">
+      <div class="wrap">
+        <div class="panel">
+          <div class="topStrip">
+            <div class="stripLeft">
+              <div class="stripTitle">Pricing</div>
+              <div class="stripNote">Monthly or annually, same features, just pick what works best.</div>
+            </div>
+
+            <div class="tabs" role="tablist" aria-label="Billing period">
+              <button class="pricing-tab active" onclick="switchPricingPeriod('monthly')" type="button">Monthly</button>
+              <button class="pricing-tab" onclick="switchPricingPeriod('annually')" type="button">Annually</button>
+            </div>
+          </div>
+
+          <div id="monthly-pricing" class="pricing-row" role="tabpanel" aria-label="Monthly pricing">
+
+      <div class="pricing-card">
+        <div class="card-top">
+          <h3>Single <span class="badge-now">Available Now</span></h3>
+          <div class="plan-type">1 Shop</div>
+        </div>
+
+        <div class="price">
+          <div class="now">$99.99</div>
+          <div class="was">
+            <span class="strike">$129.99</span>
+            <span class="unit">/month</span>
+          </div>
+        </div>
+
+        <ul class="list">
           <li>All core features</li>
         </ul>
+
         <button class="plan-btn">Start Single</button>
       </div>
+    
+
       <div class="pricing-card popular">
-        <h3>Local <span class="popular-badge">Most Popular</span></h3>
-        <div class="plan-type">1-3 Shops</div>
-        <div style="font-size:2rem;font-weight:800;color:#059669;margin-bottom:4px;">$149.99</div>
-        <div style="font-size:1.5rem;font-weight:700;margin-bottom:8px;">
-          <span style="color:#000;text-decoration:line-through;text-decoration-color:#059669;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$199.99</span>
-          <span style="font-size:1rem;font-weight:400;color:#000;"> /month</span>
+        <div class="card-top">
+          <h3>Local <span class="badge-pop">Most Popular</span></h3>
+          <div class="plan-type">1-3 Shops</div>
         </div>
-        <ul>
-          <li>All Core features</li>
-          <li>Multi-shop management</li>
+
+        <div class="price">
+          <div class="now">$149.99</div>
+          <div class="was">
+            <span class="strike">$199.99</span>
+            <span class="unit">/month</span>
+          </div>
+        </div>
+
+        <ul class="list">
+          <li>All core features</li>
+<li>Multi-shop management</li>
+<li>1 month free Messaging</li>
         </ul>
+
         <button class="plan-btn">Select Local</button>
       </div>
+    
+
       <div class="pricing-card">
-        <h3>Multi</h3>
-        <div class="plan-type">1-6 Shops</div>
-        <div style="font-size:2rem;font-weight:800;color:#059669;margin-bottom:4px;">$199.99</div>
-        <div style="font-size:1.5rem;font-weight:700;margin-bottom:8px;">
-          <span style="color:#000;text-decoration:line-through;text-decoration-color:#059669;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$249.99</span>
-          <span style="font-size:1rem;font-weight:400;color:#000;"> /month</span>
+        <div class="card-top">
+          <h3>Multi </h3>
+          <div class="plan-type">1-6 Shops</div>
         </div>
-        <ul>
-          <li>All Core features</li>
-          <li>Advanced multi-shop tools</li>
-          <li>First to receive all updates (Beta Testings included)</li>
+
+        <div class="price">
+          <div class="now">$199.99</div>
+          <div class="was">
+            <span class="strike">$249.99</span>
+            <span class="unit">/month</span>
+          </div>
+        </div>
+
+        <ul class="list">
+          <li>All core features</li>
+<li>Advanced multi-shop tools</li>
+<li>First to receive all updates Beta testings included</li>
+<li>1 month free Messaging</li>
         </ul>
+
         <button class="plan-btn">Select Multi</button>
+      </div>
+    
+          </div>
+
+          <div id="annually-pricing" class="pricing-row" style="display:none;" role="tabpanel" aria-label="Annual pricing">
+
+      <div class="pricing-card">
+        <div class="card-top">
+          <h3>Single <span class="badge-now">Available Now</span></h3>
+          <div class="plan-type">1 Shop</div>
+        </div>
+
+        <div class="price">
+          <div class="now">$999</div>
+          <div class="was">
+            <span class="strike">$1,199</span>
+            <span class="unit">/year</span>
+          </div>
+        </div>
+
+        <ul class="list">
+          <li>All core features</li>
+        </ul>
+
+        <button class="plan-btn">Start Single</button>
+      </div>
+    
+
+      <div class="pricing-card popular">
+        <div class="card-top">
+          <h3>Local <span class="badge-pop">Most Popular</span></h3>
+          <div class="plan-type">1-3 Shops</div>
+        </div>
+
+        <div class="price">
+          <div class="now">$1,649</div>
+          <div class="was">
+            <span class="strike">$1,799</span>
+            <span class="unit">/year</span>
+          </div>
+        </div>
+
+        <ul class="list">
+          <li>All core features</li>
+<li>Multi-shop management</li>
+        </ul>
+
+        <button class="plan-btn">Select Local</button>
+      </div>
+    
+
+      <div class="pricing-card">
+        <div class="card-top">
+          <h3>Multi </h3>
+          <div class="plan-type">1-6 Shops</div>
+        </div>
+
+        <div class="price">
+          <div class="now">$1,999</div>
+          <div class="was">
+            <span class="strike">$2,399</span>
+            <span class="unit">/year</span>
+          </div>
+        </div>
+
+        <ul class="list">
+          <li>All core features</li>
+<li>Advanced multi-shop tools</li>
+<li>First to receive all updates Beta testings included</li>
+        </ul>
+
+        <button class="plan-btn">Select Multi</button>
+      </div>
+    
+          </div>
+        </div>
+
+        <div class="trial-note">All plans come with a 14 day free trial. Cancel anytime free of charge.</div>
+
+        <div class="panel" style="margin-top:14px;">
+          <div class="grid2">
+            <div class="miniCard">
+              <h4>What you get</h4>
+              <p>Everything you need to run the front desk and the bays without chaos.</p>
+              <ul class="checkList">
+                <li>Appointments, calendar, and job tracking</li>
+                <li>Invoices and estimates with clean totals</li>
+                <li>Customer profiles with full history</li>
+                <li>Inventory and parts tracking</li>
+                <li>Shop messaging with a dedicated number</li>
+                <li>Revenue tracking with profit awareness</li>
+              </ul>
+            </div>
+
+            <div class="miniCard">
+              <h4>Cortex inside</h4>
+              <p>
+                Cortex helps your shop move faster with repair knowledge and workflow intelligence
+                built into Xpose Management. The goal is fewer dead ends and faster decisions.
+              </p>
+              <div style="display:flex;gap:12px;align-items:center;margin-top:12px;flex-wrap:wrap;">
+                <img src="assets/logo.png" alt="Xpose logo" style="height:34px;width:auto;opacity:0.92" />
+                <img src="assets/Integration-logos/cortex-mark.png" alt="Cortex mark" style="height:34px;width:auto;opacity:0.92" />
+              </div>
+              <div style="margin-top:12px;color:rgba(234,240,255,0.62);font-weight:750;font-size:13px;line-height:1.45;">
+                You are not paying extra for the essentials. Core workflow features are included across plans.
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <footer>
+      <div class="wrap">
+        <div class="footRow">
+          <div style="display:flex;align-items:center;gap:10px">
+            <img src="assets/logo.png" alt="Xpose logo" style="height:28px;width:auto;opacity:0.9" />
+            <span>© <span id="year"></span> Xpose Management</span>
+          </div>
+          <div class="footLinks" aria-label="Footer Links">
+            <a href="faq.html">FAQ</a>
+            <a href="privacy.html">Privacy Policy</a>
+            <a href="terms.html">Terms of Service</a>
+            <a href="contact.html">Contact</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <div id="terminalModal" class="modal-overlay hidden" aria-hidden="true">
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="terminalModalTitle">
+        <div class="modal-head">
+          <h3 id="terminalModalTitle">Select your terminal for <span id="terminalModalPlan">Plan</span></h3>
+          <button id="terminalModalClose" class="btn-close" type="button" aria-label="Close">×</button>
+        </div>
+
+        <div class="modal-body">
+          <div style="color:rgba(234,240,255,0.75);font-weight:800;margin-bottom:8px;font-size:13px;line-height:1.4;">
+            Every plan includes a Stripe M2 as the default option. Pick an upgrade if you want a bigger screen or a handheld.
+          </div>
+          <div style="color:rgba(156,163,175,0.9);font-weight:700;margin-bottom:14px;font-size:12.5px;">
+            Terminal subscription payments will automatically end after 6 months.
+          </div>
+
+          <div class="terminal-grid-wrapper">
+          <div class="terminal-grid">
+            <div class="terminal-option selected" data-terminal="reader_m2" onclick="selectTerminal('reader_m2')" role="button" tabindex="0" aria-label="Stripe Reader M2">
+              <img src="assets/Stripe Reader M2.png" alt="Stripe Reader M2" />
+              <div class="terminal-title">Stripe Reader M2</div>
+              <div class="terminal-price" style="color:#22c55e;font-weight:800;font-size:13px;margin-top:6px;">Included FREE</div>
+              <div class="terminal-sub">Compact and reliable for everyday counter payments.</div>
+            </div>
+
+            <div class="terminal-option" data-terminal="wisepos_e" onclick="selectTerminal('wisepos_e')" role="button" tabindex="0" aria-label="BBPOS WisePOS E">
+              <img src="assets/BBPOS WisePOS E1.png" alt="BBPOS WisePOS E" />
+              <div class="terminal-title">BBPOS WisePOS E</div>
+              <div class="terminal-price" style="color:#f59e0b;font-weight:800;font-size:13px;margin-top:6px;">+$30 / month for 6 months</div>
+              <div class="terminal-sub">Handheld touchscreen, portable and wireless.</div>
+            </div>
+
+            <div class="terminal-option" data-terminal="reader_s700" onclick="selectTerminal('reader_s700')" role="button" tabindex="0" aria-label="Stripe Reader S700">
+              <img src="assets/Stripe Reader S7001.png" alt="Stripe Reader S700" />
+              <div class="terminal-title" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">Stripe Reader S700 <span class="badge-pop">Most Popular</span></div>
+              <div class="terminal-price" style="color:#ef4444;font-weight:800;font-size:13px;margin-top:6px;">+$50 / month for 6 months</div>
+              <div class="terminal-sub">Premium display with a larger customer facing screen.</div>
+            </div>
+          </div>
+
+          <!-- Overlay for annual plans -->
+          <div id="terminalUpgradeOverlay" class="terminal-upgrade-overlay hidden">
+            <h4>Terminal Upgrades Not Available</h4>
+            <p>Terminal upgrades are only available with monthly billing. You can purchase an upgraded terminal from within your shop settings after creation.</p>
+            <p style="margin-top:12px;color:rgba(34,197,94,0.9);font-weight:800;font-size:13px;">Your free Stripe M2 terminal is still included!</p>
+          </div>
+        </div>
+        </div>
+
+        <div class="modal-foot">
+          <button id="terminalOptOut" class="btn btnWide" type="button">
+            Opt out, I already have a terminal
+            <span style="display:block;font-size:12px;opacity:0.78;font-weight:850;margin-top:4px;">Start using immediately</span>
+          </button>
+          <button id="terminalModalConfirm" class="btn btnWide" type="button">Confirm and Checkout</button>
+        </div>
       </div>
     </div>
 
-    <!-- Annually Pricing -->
-    <div id="annually-pricing" class="pricing-row" style="display: none;">
-      <div class="pricing-card">
-        <h3>Single <span class="popular-badge">Available Now</span></h3>
-        <div class="plan-type">1 Shop</div>
-        <div style="font-size:2rem;font-weight:800;color:#059669;margin-bottom:4px;">$999</div>
-        <div style="font-size:1.5rem;font-weight:700;margin-bottom:8px;">
-          <span style="color:#000;text-decoration:line-through;text-decoration-color:#059669;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$1,199</span>
-          <span style="font-size:1rem;font-weight:400;color:#000;"> /year</span>
-        </div>
-        <ul>
-          <li>All core features</li>
-        </ul>
-        <button class="plan-btn">Start Single</button>
-      </div>
-      <div class="pricing-card popular">
-        <h3>Local <span class="popular-badge">Most Popular</span></h3>
-        <div class="plan-type">1-3 Shops</div>
-        <div style="font-size:2rem;font-weight:800;color:#059669;margin-bottom:4px;">$1,649</div>
-        <div style="font-size:1.5rem;font-weight:700;margin-bottom:8px;">
-          <span style="color:#000;text-decoration:line-through;text-decoration-color:#059669;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$1,799</span>
-          <span style="font-size:1rem;font-weight:400;color:#000;"> /year</span>
-        </div>
-        <ul>
-          <li>All Core features</li>
-          <li>Multi-shop management</li>
-        </ul>
-        <button class="plan-btn">Select Local</button>
-      </div>
-      <div class="pricing-card">
-        <h3>Multi</h3>
-        <div class="plan-type">1-6 Shops</div>
-        <div style="font-size:2rem;font-weight:800;color:#059669;margin-bottom:4px;">$1,999</div>
-        <div style="font-size:1.5rem;font-weight:700;margin-bottom:8px;">
-          <span style="color:#000;text-decoration:line-through;text-decoration-color:#059669;text-decoration-thickness:3px;font-family:'Brush Script MT',cursive;">$2,399</span>
-          <span style="font-size:1rem;font-weight:400;color:#000;"> /year</span>
-        </div>
-        <ul>
-          <li>All Core features</li>
-          <li>Advanced multi-shop tools</li>
-          <li>First to receive all updates (Beta Testings included)</li>
-        </ul>
-        <button class="plan-btn">Select Multi</button>
-      </div>
-    </div>
-    
-    <div class="trial-note">All plans come with a 14-day free trial. Cancel anytime free of charge.</div>
   </main>
 
+  <script>
+    (function(){
+      var y = document.getElementById('year');
+      if (y) y.textContent = String(new Date().getFullYear());
+    })();
+  </script>
 
-  <!-- Terminal selection modal -->
-  <div id="terminalModal" class="modal-overlay hidden">
-    <div class="modal-content card" style="max-width:1100px; width:95%; margin:6vh auto; padding:20px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
-        <h3 style="margin:0">Choose Your Terminal for <span id="terminalModalPlan"></span></h3>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <button id="terminalModalConfirm" class="btn btn-primary">Confirm & Checkout</button>
-          <button id="terminalModalClose" class="btn" aria-label="Close modal">×</button>
-        </div>
-      </div>
-      <div style="margin-top:12px;text-align:center;">
-        <button id="terminalOptOut" class="btn" style="background:#dc2626;color:#fff;font-size:0.95rem;padding:10px 20px;font-weight:600;line-height:1.4;">
-          Opt out - I have my own terminal<br>
-          <span style="font-size:0.85rem;opacity:0.9;">(Start using immediately)</span>
-        </button>
-      </div>
-      <p style="color:#666;margin-top:8px;">All subscriptions include a Stripe Reader M2 by default — choose a different terminal to add its monthly fee.</p>
-      <p style="color:#9ca3af;margin-top:6px;font-weight:600;">Terminal subscription payments will automatically end after 6 months.</p>
-      <div id="terminalModalOptions" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:14px;align-items:stretch;">
-        <div class="terminal-option selected" data-terminal="reader_m2" style="padding:16px;border-radius:10px;background:#fff;text-align:center;display:flex;flex-direction:column;justify-content:space-between;">
-          <img src="assets/Stripe Reader M2.png" alt="Reader M2" style="max-width:140px;margin-bottom:8px;">
-          <h4 style="margin:6px 0">Stripe Reader M2</h4>
-          <div style="color:#059669;font-weight:700;margin-bottom:8px;">Included FREE</div>
-          <p style="color:#666;font-size:0.95rem;">Countertop terminal, no screen.</p>
-          <div style="margin-top:10px"><button class="btn" onclick="selectTerminal('reader_m2')">Select</button></div>
-        </div>
-
-        <div class="terminal-option" data-terminal="wisepos_e" style="padding:16px;border-radius:10px;background:#fff;text-align:center;display:flex;flex-direction:column;justify-content:space-between;">
-          <img src="assets/BBPOS WisePOS E1.png" alt="WisePOS E" style="max-width:140px;margin-bottom:8px;">
-          <h4 style="margin:6px 0">BBPOS WisePOS E</h4>
-          <div style="color:#b45309;font-weight:700;margin-bottom:8px;">+$30 / month for 6 months</div>
-          <p style="color:#666;font-size:0.95rem;">Handheld terminal with touchscreen.</p>
-          <div style="margin-top:10px"><button class="btn" onclick="selectTerminal('wisepos_e')">Select</button></div>
-        </div>
-
-        <div class="terminal-option" data-terminal="reader_s700" style="padding:16px;border-radius:10px;background:#fff;text-align:center;display:flex;flex-direction:column;justify-content:space-between;">
-          <img src="assets/Stripe Reader S7001.png" alt="Reader S700" style="max-width:140px;margin-bottom:8px;">
-          <h4 style="margin:6px 0;display:flex;align-items:center;justify-content:center;gap:8px;">
-            Stripe Reader S700
-            <span style="background:#eaf3ff;color:#2a7cff;font-size:0.95rem;padding:2px 10px;border-radius:12px;font-weight:600;">Most Popular</span>
-          </h4>
-          <div style="color:#9b1238;font-weight:700;margin-bottom:8px;">+$50 / month for 6 months</div>
-          <p style="color:#666;font-size:0.95rem;">Premium terminal with customer-facing display.</p>
-          <div style="margin-top:10px"><button class="btn" onclick="selectTerminal('reader_s700')">Select</button></div>
-        </div>
-      </div>
-
-      
-      <style>
-        .modal-overlay { position:fixed; left:0; right:0; top:0; bottom:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:1200; padding: 20px; }
-        .modal-overlay.hidden { display:none; }
-        .modal-content { max-height: 86vh; overflow-y: auto; box-sizing: border-box; }
-        .terminal-option { border:1px solid #e6eefc; border-radius:10px; }
-        .terminal-option.selected {
-          border:3px solid #2a7cff;
-          background: #fff;
-          box-shadow: 0 2px 12px rgba(42,124,255,0.10);
-        }
-        #terminalModalOptions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; align-items: stretch; }
-        #terminalModalOptions img { max-width:160px; height:auto; display:block; margin:0 auto 8px; }
-        #terminalModalOptions .terminal-option { min-height:260px; display:flex; flex-direction:column; justify-content:space-between; gap:10px; padding:14px; box-sizing:border-box; align-items:flex-start; }
-        #terminalModalOptions .terminal-option h4 { margin: 6px 0; }
-        #terminalModalOptions .terminal-option p { margin: 6px 0 12px 0; color: #666; }
-        /* Style the select buttons inside modal to match site buttons */
-        #terminalModalOptions .btn,
-        #terminalModal .btn {
-          background: #2a7cff;
-          color: #fff;
-          border: none;
-          border-radius: 7px;
-          padding: 10px 18px;
-          font-weight: 600;
-          cursor: pointer;
-        }
-        #terminalModal .btn:hover { background: #195bb5; }
-
-        /* Responsive: stack options on small screens, increase spacing and make images smaller */
-        @media (max-width:900px) {
-          #terminalModalOptions { grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; }
-        }
-        @media (max-width:700px) {
-          /* Force stacked panels: one per row */
-          #terminalModalOptions { grid-template-columns: 1fr !important; gap:22px !important; }
-          #terminalModalOptions img { max-width:120px; }
-          .modal-content { width: 100%; margin: 0 8px; }
-          .terminal-option { padding: 16px; }
-          /* Make the select button full-width and larger for touch */
-          #terminalModalOptions .btn { width: 100%; padding: 12px 14px; font-size: 1rem; }
-        }
-      </style>
-    </div>
-  </div>
-  <footer class="footer" style="background:#f6f8ff;padding:32px 0 16px 0;text-align:center;color:#7f5fff;font-size:1.08rem;">
-    <span>© 2025 Xpose Management</span>
-    <div style="margin-top:18px;font-size:1.08rem;">
-      <a href="faq.html" style="margin-right:18px;color:#2a7cff;font-weight:600;">FAQ</a>
-      <a href="privacy.html" style="margin-right:18px;color:#2a7cff;font-weight:600;">Privacy Policy</a>
-      <a href="terms.html" style="margin-right:18px;color:#2a7cff;font-weight:600;">Terms of Service</a>
-      <a href="contact.html" style="color:#2a7cff;font-weight:600;">Contact/Support</a>
-    </div>
-  </footer>
-  
   <script>
     // Stripe Price IDs - monthly and annual price ids from Stripe Dashboard
     const PRICE_IDS = {
@@ -517,6 +671,11 @@
 
     // Select terminal option
     window.selectTerminal = function(terminal) {
+      // For annual plans, only allow the free M2 terminal
+      if (pricingPeriod === 'annually' && terminal !== 'reader_m2') {
+        return; // Don't allow selection of upgraded terminals on annual plans
+      }
+      
       selectedTerminal = terminal;
       document.querySelectorAll('.terminal-option').forEach(opt => {
         opt.classList.remove('selected');
@@ -530,13 +689,32 @@
       selectedTerminal = 'reader_m2';
       document.getElementById('terminalModalPlan').textContent = planName.charAt(0).toUpperCase() + planName.slice(1);
       document.getElementById('terminalModal').classList.remove('hidden');
+      document.getElementById('terminalModal').setAttribute('aria-hidden', 'false');
       selectTerminal('reader_m2');
+      
+      // Show/hide the annual overlay based on pricing period
+      const overlay = document.getElementById('terminalUpgradeOverlay');
+      if (pricingPeriod === 'annually') {
+        overlay.classList.remove('hidden');
+      } else {
+        overlay.classList.add('hidden');
+      }
     }
 
     // Hide modal
-    document.getElementById('terminalModalClose').onclick = function() {
+    function hideTerminalModal() {
       document.getElementById('terminalModal').classList.add('hidden');
-    };
+      document.getElementById('terminalModal').setAttribute('aria-hidden', 'true');
+    }
+
+    document.getElementById('terminalModalClose').onclick = hideTerminalModal;
+
+    // Close modal when clicking overlay background
+    document.getElementById('terminalModal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        hideTerminalModal();
+      }
+    });
 
     // Plan button click handler
     document.querySelectorAll('.plan-btn').forEach((btn) => {
@@ -570,8 +748,9 @@
         alert('Stripe is not configured yet. Please add your Price IDs to paywall.html');
         return;
       }
-      document.getElementById('terminalModalConfirm').disabled = true;
-      document.getElementById('terminalModalConfirm').textContent = 'Loading...';
+      const confirmBtn = document.getElementById('terminalModalConfirm');
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Loading...';
       try {
         const STRIPE_API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
           ? 'http://localhost:3001'
@@ -584,7 +763,7 @@
           body: JSON.stringify({
             priceId: priceId,
             customerEmail: getUserEmail(),
-            terminalModel: terminal // <-- FIXED: match backend param
+            terminalModel: terminal
           }),
         });
         if (!response.ok) {
@@ -604,8 +783,8 @@
         console.error('Checkout exception:', error);
         const msg = (error && error.message) ? error.message : 'Failed to start checkout. Please try again.';
         alert('Failed to start checkout: ' + msg);
-        document.getElementById('terminalModalConfirm').disabled = false;
-        document.getElementById('terminalModalConfirm').textContent = 'Confirm & Checkout';
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Confirm and Checkout';
       }
     };
 
@@ -622,8 +801,9 @@
         alert('Stripe is not configured yet. Please add your Price IDs to paywall.html');
         return;
       }
-      document.getElementById('terminalOptOut').disabled = true;
-      document.getElementById('terminalOptOut').textContent = 'Loading...';
+      const optOutBtn = document.getElementById('terminalOptOut');
+      optOutBtn.disabled = true;
+      optOutBtn.innerHTML = 'Loading...';
       try {
         const STRIPE_API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
           ? 'http://localhost:3001'
@@ -656,8 +836,8 @@
         console.error('Checkout exception:', error);
         const msg = (error && error.message) ? error.message : 'Failed to start checkout. Please try again.';
         alert('Failed to start checkout: ' + msg);
-        document.getElementById('terminalOptOut').disabled = false;
-        document.getElementById('terminalOptOut').innerHTML = 'Opt out - I have my own terminal<br><span style="font-size:0.85rem;opacity:0.9;">(Start using immediately)</span>';
+        optOutBtn.disabled = false;
+        optOutBtn.innerHTML = 'Opt out, I already have a terminal<span style="display:block;font-size:12px;opacity:0.78;font-weight:850;margin-top:4px;">Start using immediately</span>';
       }
     };
 
@@ -681,6 +861,9 @@
         pricingPeriod = 'annually';
       }
     }
+
+    // Make switchPricingPeriod available globally for onclick handlers
+    window.switchPricingPeriod = switchPricingPeriod;
   </script>
 </body>
 </html>
