@@ -164,9 +164,20 @@
     linear-gradient(180deg, #070b12, #0b1020);
 }
 
+/* Landing theme - glassmorphism header for in-platform pages (.main-header) */
 :root.theme-landing .main-header {
-  background: rgba(7,11,18,0.65);
-  backdrop-filter: blur(14px);
+  background: rgba(7,11,18,0.65) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  box-shadow: none;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Landing theme - glassmorphism header for in-platform pages (header.top) */
+:root.theme-landing header.top {
+  background: rgba(7,11,18,0.65) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
   box-shadow: none;
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
@@ -243,6 +254,38 @@
   border-color: #9ca3af !important;
 }
 
+/* Landing theme - Cortex button styling */
+:root.theme-landing .btn.quick-create {
+  background: rgba(255,255,255,0.08) !important;
+  border: 2px solid rgba(255,255,255,0.15) !important;
+  color: var(--text) !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+:root.theme-landing .btn.quick-create:hover {
+  background: rgba(255,255,255,0.12) !important;
+  border-color: rgba(34,197,94,0.5) !important;
+}
+
+/* Landing theme - Labor Time panel CSS variables */
+:root.theme-landing {
+  --labor-panel-bg: rgba(34,197,94,0.12);
+  --labor-panel-border: rgba(34,197,94,0.35);
+  --labor-title-color: #4ade80;
+  --labor-inner-bg: rgba(255,255,255,0.06);
+}
+
+/* Landing theme - Labor Time panel class overrides */
+:root.theme-landing .labor-time-panel {
+  background: rgba(34,197,94,0.12) !important;
+  border-color: rgba(34,197,94,0.35) !important;
+}
+:root.theme-landing .labor-time-panel h4 {
+  color: #4ade80 !important;
+}
+:root.theme-landing .labor-time-inner {
+  background: rgba(255,255,255,0.06) !important;
+}
+
 :root.theme-landing table th {
   background: rgba(255,255,255,0.03);
 }
@@ -298,6 +341,221 @@
   background: rgba(0,0,0,0.85) !important;
 }
 
+/* Landing theme - Logout confirmation modal */
+:root.theme-landing #logout-confirm-modal > div {
+  background: #0d1117 !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+  box-shadow: 0 25px 80px rgba(0,0,0,0.7) !important;
+}
+
+/* Landing theme - Inspection form modal */
+:root.theme-landing .inspection-form-modal,
+:root.theme-landing .inspection-template-modal {
+  background: #0d1117 !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+}
+
+:root.theme-landing .inspection-form-modal .inspection-header,
+:root.theme-landing .inspection-template-modal .inspection-header {
+  background: #0d1117 !important;
+  border-bottom-color: rgba(255,255,255,0.1) !important;
+}
+
+:root.theme-landing .vehicle-info-banner {
+  background: rgba(255,255,255,0.06) !important;
+}
+
+:root.theme-landing .vehicle-text {
+  color: var(--text) !important;
+}
+
+:root.theme-landing .template-card {
+  background: rgba(255,255,255,0.04) !important;
+  border-color: rgba(255,255,255,0.1) !important;
+}
+
+:root.theme-landing .template-card:hover {
+  background: rgba(59,130,246,0.1) !important;
+  border-color: #3b82f6 !important;
+}
+
+:root.theme-landing .inspection-item {
+  background: rgba(255,255,255,0.04) !important;
+  border-color: rgba(255,255,255,0.1) !important;
+}
+
+/* Inspection item text should be light */
+:root.theme-landing .inspection-item .item-name,
+:root.theme-landing .inspection-item label,
+:root.theme-landing .inspection-item span:not(.status-btn):not(.count-badge),
+:root.theme-landing .inspection-item .item-label,
+:root.theme-landing .inspection-form-modal .section-name,
+:root.theme-landing .inspection-form-modal .section-header,
+:root.theme-landing .inspection-form-modal h3,
+:root.theme-landing .inspection-form-modal h4,
+:root.theme-landing .inspection-form-modal p,
+:root.theme-landing .inspection-template-modal h3,
+:root.theme-landing .inspection-template-modal p,
+:root.theme-landing .template-card .template-name,
+:root.theme-landing .template-card .template-desc {
+  color: var(--text) !important;
+}
+
+:root.theme-landing .inspection-form-modal .muted,
+:root.theme-landing .inspection-form-modal .mileage-text,
+:root.theme-landing .inspection-form-modal .section-count {
+  color: var(--muted) !important;
+}
+
+/* Inspection items with status selected - colored backgrounds */
+:root.theme-landing .inspection-item.pass {
+  background: rgba(16,185,129,0.15) !important;
+  border-color: rgba(16,185,129,0.4) !important;
+  border-left: 3px solid #10b981 !important;
+}
+
+:root.theme-landing .inspection-item.attention,
+:root.theme-landing .inspection-item.attention-item {
+  background: rgba(245,158,11,0.15) !important;
+  border-color: rgba(245,158,11,0.4) !important;
+  border-left: 3px solid #f59e0b !important;
+}
+
+:root.theme-landing .inspection-item.fail,
+:root.theme-landing .inspection-item.has-issue {
+  background: rgba(239,68,68,0.15) !important;
+  border-color: rgba(239,68,68,0.4) !important;
+  border-left: 3px solid #ef4444 !important;
+}
+
+:root.theme-landing .inspection-item.n\/a {
+  background: rgba(107,114,128,0.1) !important;
+  border-color: rgba(107,114,128,0.3) !important;
+}
+
+:root.theme-landing .category-tab {
+  background: rgba(255,255,255,0.06) !important;
+  color: var(--text) !important;
+}
+
+:root.theme-landing .category-tab.active {
+  background: #3b82f6 !important;
+  color: white !important;
+}
+
+/* Section tabs (category navigation) */
+:root.theme-landing .section-tab {
+  background: rgba(255,255,255,0.06) !important;
+  border-color: rgba(255,255,255,0.15) !important;
+  color: var(--text) !important;
+}
+
+:root.theme-landing .section-tab.active {
+  background: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+  color: white !important;
+}
+
+:root.theme-landing .section-tab:not(.active):hover {
+  background: rgba(59,130,246,0.15) !important;
+  border-color: #3b82f6 !important;
+  color: #60a5fa !important;
+}
+
+:root.theme-landing .inspection-footer {
+  background: #0d1117 !important;
+  border-top-color: rgba(255,255,255,0.1) !important;
+}
+
+:root.theme-landing .status-btn {
+  background: rgba(255,255,255,0.06) !important;
+  border-color: rgba(255,255,255,0.15) !important;
+  color: var(--text) !important;
+}
+
+:root.theme-landing .status-btn.pass:not(.active) {
+  background: rgba(16,185,129,0.1) !important;
+  border-color: rgba(16,185,129,0.3) !important;
+  color: #10b981 !important;
+}
+
+:root.theme-landing .status-btn.pass.active {
+  background: #10b981 !important;
+  color: white !important;
+}
+
+:root.theme-landing .status-btn.attention:not(.active) {
+  background: rgba(245,158,11,0.1) !important;
+  border-color: rgba(245,158,11,0.3) !important;
+  color: #f59e0b !important;
+}
+
+:root.theme-landing .status-btn.attention.active {
+  background: #f59e0b !important;
+  color: white !important;
+}
+
+:root.theme-landing .status-btn.fail:not(.active) {
+  background: rgba(239,68,68,0.1) !important;
+  border-color: rgba(239,68,68,0.3) !important;
+  color: #ef4444 !important;
+}
+
+:root.theme-landing .status-btn.fail.active {
+  background: #ef4444 !important;
+  color: white !important;
+}
+
+:root.theme-landing .status-btn.n\/a:not(.active) {
+  background: rgba(255,255,255,0.06) !important;
+  border-color: rgba(255,255,255,0.15) !important;
+  color: var(--muted) !important;
+}
+
+:root.theme-landing .status-btn.n\/a.active {
+  background: #6b7280 !important;
+  color: white !important;
+}
+
+:root.theme-landing .priority-btn {
+  background: rgba(255,255,255,0.06) !important;
+  border-color: rgba(255,255,255,0.15) !important;
+  color: var(--text) !important;
+}
+
+:root.theme-landing .priority-btn.active {
+  border-color: rgba(255,255,255,0.3) !important;
+}
+
+:root.theme-landing .notes-input {
+  background: rgba(255,255,255,0.06) !important;
+  border-color: rgba(255,255,255,0.15) !important;
+  color: var(--text) !important;
+}
+
+:root.theme-landing .inspection-body {
+  background: #0a0e14 !important;
+}
+
+:root.theme-landing .count-badge {
+  background: rgba(255,255,255,0.1) !important;
+}
+
+:root.theme-landing .count-badge.pass {
+  background: rgba(16,185,129,0.2) !important;
+  color: #4ade80 !important;
+}
+
+:root.theme-landing .count-badge.attention {
+  background: rgba(245,158,11,0.2) !important;
+  color: #fbbf24 !important;
+}
+
+:root.theme-landing .count-badge.fail {
+  background: rgba(239,68,68,0.2) !important;
+  color: #f87171 !important;
+}
+
 /* Modal header and footer borders */
 :root.theme-landing .modal-head,
 :root.theme-landing .modal-foot {
@@ -308,23 +566,6 @@
 :root.theme-landing .modal .card,
 :root.theme-landing .modal-content .card {
   background: #0d1117 !important;
-}
-
-/* Landing theme sticky header - glassmorphism with blur for readability */
-:root.theme-landing .main-header {
-  background: rgba(7,11,18,0.75) !important;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  box-shadow: 0 4px 30px rgba(0,0,0,0.3);
-}
-
-:root.theme-landing header.main-header,
-:root.theme-landing .topbar,
-:root.theme-landing header[class*="header"] {
-  background: rgba(7,11,18,0.75) !important;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
 }
 
 /* Force dark theme on all select elements */

@@ -1216,11 +1216,11 @@ function renderOperationView(op, rate, hrs, vehicle) {
           ${renderCompatibilityWarning(op.name)}
           
           <!-- Labor Time Section -->
-          <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 16px;">
-            <h4 style="margin: 0 0 12px 0; color: #166534;">⏱️ Labor Time</h4>
+          <div class="labor-time-panel" style="background: var(--labor-panel-bg, #f0fdf4); border: 1px solid var(--labor-panel-border, #86efac); border-radius: 8px; padding: 16px;">
+            <h4 style="margin: 0 0 12px 0; color: var(--labor-title-color, #166534);">⏱️ Labor Time</h4>
             
             <!-- DB Baseline -->
-            <div style="background: white; border-radius: 6px; padding: 12px;">
+            <div class="labor-time-inner" style="background: var(--labor-inner-bg, white); border-radius: 6px; padding: 12px;">
               <div style="font-size: 0.8rem; color: var(--muted); margin-bottom: 4px;">📊 Cortex Labor Intelligence™ (OEM + Field Data)</div>
               <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                 <div><span style="color: var(--muted);">Range:</span> <strong>${op.labor_hours_low || hrs} – ${op.labor_hours_high || hrs} hrs</strong></div>
