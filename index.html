@@ -134,6 +134,50 @@
       background: rgba(255,255,255,0.04);
     }
 
+    /* Mobile menu */
+    .menu-toggle{
+      display:none;
+      width:42px;
+      height:42px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,0.12);
+      background:rgba(255,255,255,0.06);
+      color:var(--text);
+      cursor:pointer;
+      align-items:center;
+      justify-content:center;
+    }
+    .menu-toggle svg{width:22px;height:22px}
+    
+    .mobile-menu{
+      display:none;
+      position:absolute;
+      top:100%;
+      right:22px;
+      min-width:180px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,0.12);
+      background:rgba(7,11,18,0.95);
+      backdrop-filter:blur(14px);
+      box-shadow:0 18px 60px rgba(0,0,0,0.5);
+      padding:8px;
+      z-index:100;
+    }
+    .mobile-menu.open{display:block}
+    .mobile-menu a{
+      display:block;
+      padding:12px 14px;
+      border-radius:12px;
+      color:var(--muted);
+      font-weight:700;
+      font-size:14px;
+      transition:background 0.14s ease, color 0.14s ease;
+    }
+    .mobile-menu a:hover{
+      background:rgba(255,255,255,0.06);
+      color:var(--text);
+    }
+
     .hero{
       padding: 44px 0 26px 0;
     }
@@ -615,6 +659,7 @@
       .actions{min-width: auto}
       .brandlock{min-width:auto}
       .nav{display:none}
+      .menu-toggle{display:flex}
     }
     @media (max-width: 720px){
       h1{font-size: 38px}
@@ -630,7 +675,7 @@
 <body>
   <header class="topbar">
     <div class="wrap">
-      <div class="row">
+      <div class="row" style="position:relative;">
         <a class="brandlock" href="index.html" aria-label="Xpose Management Home">
           <img src="assets/XposeManagementCRMlogo.png" alt="Xpose Management logo" />
         </a>
@@ -643,9 +688,24 @@
         </nav>
 
         <div class="actions">
+          <button class="menu-toggle" id="menuToggle" aria-label="Open menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 12h18"></path>
+              <path d="M3 6h18"></path>
+              <path d="M3 18h18"></path>
+            </svg>
+          </button>
           <a class="btn ghost" href="features.html">Explore Features</a>
           <a class="btn primary" href="paywall.html">Join Now</a>
           <a class="btn" href="login.html">Sign In</a>
+        </div>
+        
+        <!-- Mobile dropdown menu -->
+        <div class="mobile-menu" id="mobileMenu">
+          <a href="index.html">Home</a>
+          <a href="features.html">Features</a>
+          <a href="cortex-page.html">Cortex</a>
+          <a href="paywall.html">Pricing</a>
         </div>
       </div>
     </div>
@@ -672,7 +732,7 @@
 
           <div class="heroCtas">
             <a class="btn primary" href="paywall.html">Start Running Smarter</a>
-            <a class="btn ghost" href="#how">See How It Works</a>
+            <a class="btn ghost" href="features.html">See How It Works</a>
           </div>
 
           <div class="microTrust" aria-label="Trust Highlights">
@@ -1090,15 +1150,40 @@
       if (y) y.textContent = String(new Date().getFullYear());
 
       var items = Array.prototype.slice.call(document.querySelectorAll('.reveal'));
-      if (!items.length) return;
+      if (items.length) {
+        var io = new IntersectionObserver(function(entries){
+          entries.forEach(function(e){
+            if (e.isIntersecting) e.target.classList.add('on');
+          });
+        }, { threshold: 0.12 });
 
-      var io = new IntersectionObserver(function(entries){
-        entries.forEach(function(e){
-          if (e.isIntersecting) e.target.classList.add('on');
+        items.forEach(function(el){ io.observe(el); });
+      }
+      
+      // Mobile menu toggle
+      var menuToggle = document.getElementById('menuToggle');
+      var mobileMenu = document.getElementById('mobileMenu');
+      
+      if (menuToggle && mobileMenu) {
+        menuToggle.addEventListener('click', function(e) {
+          e.stopPropagation();
+          mobileMenu.classList.toggle('open');
         });
-      }, { threshold: 0.12 });
-
-      items.forEach(function(el){ io.observe(el); });
+        
+        // Close menu when clicking outside
+        document.addEventListener('click', function(e) {
+          if (!mobileMenu.contains(e.target) && !menuToggle.contains(e.target)) {
+            mobileMenu.classList.remove('open');
+          }
+        });
+        
+        // Close menu when clicking a link
+        mobileMenu.querySelectorAll('a').forEach(function(link) {
+          link.addEventListener('click', function() {
+            mobileMenu.classList.remove('open');
+          });
+        });
+      }
     })();
   </script>
 </body>

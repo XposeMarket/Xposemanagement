@@ -85,6 +85,57 @@
       border:none;
     }
 
+    /* Mobile menu */
+    .menu-toggle{
+      display:none;
+      width:42px;
+      height:42px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,0.12);
+      background:rgba(255,255,255,0.06);
+      color:var(--text);
+      cursor:pointer;
+      align-items:center;
+      justify-content:center;
+    }
+    .menu-toggle svg{width:22px;height:22px}
+    
+    .mobile-menu{
+      display:none;
+      position:absolute;
+      top:100%;
+      right:22px;
+      min-width:180px;
+      border-radius:16px;
+      border:1px solid rgba(255,255,255,0.12);
+      background:rgba(7,11,18,0.95);
+      backdrop-filter:blur(14px);
+      box-shadow:0 18px 60px rgba(0,0,0,0.5);
+      padding:8px;
+      z-index:100;
+    }
+    .mobile-menu.open{display:block}
+    .mobile-menu a{
+      display:block;
+      padding:12px 14px;
+      border-radius:12px;
+      color:var(--muted);
+      font-weight:700;
+      font-size:14px;
+      transition:background 0.14s ease, color 0.14s ease;
+    }
+    .mobile-menu a:hover{
+      background:rgba(255,255,255,0.06);
+      color:var(--text);
+    }
+    
+    .actions{display:flex;gap:10px;align-items:center}
+
+    @media(max-width:900px){
+      .nav{display:none}
+      .menu-toggle{display:flex}
+    }
+
     /* Hero */
     .hero{padding:60px 0 36px}
     h1{
@@ -214,7 +265,7 @@
 <body>
 
 <header class="topbar">
-  <div class="wrap row">
+  <div class="wrap row" style="position:relative;">
     <a class="brandlock" href="index.html">
       <img src="assets/XposeManagementCRMlogo.png" alt="Xpose Management">
     </a>
@@ -224,7 +275,24 @@
       <a href="cortex-page.html">Cortex</a>
       <a href="paywall.html">Pricing</a>
     </nav>
-    <a class="btn primary" href="paywall.html">Get Started</a>
+    <div class="actions">
+      <button class="menu-toggle" id="menuToggle" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12h18"></path>
+          <path d="M3 6h18"></path>
+          <path d="M3 18h18"></path>
+        </svg>
+      </button>
+      <a class="btn primary" href="paywall.html">Get Started</a>
+    </div>
+    
+    <!-- Mobile dropdown menu -->
+    <div class="mobile-menu" id="mobileMenu">
+      <a href="index.html">Home</a>
+      <a href="features.html">Features</a>
+      <a href="cortex-page.html">Cortex</a>
+      <a href="paywall.html">Pricing</a>
+    </div>
   </div>
 </header>
 
@@ -465,6 +533,29 @@
 
 <script>
   document.getElementById("year").textContent = new Date().getFullYear();
+  
+  // Mobile menu toggle
+  var menuToggle = document.getElementById('menuToggle');
+  var mobileMenu = document.getElementById('mobileMenu');
+  
+  menuToggle.addEventListener('click', function(e) {
+    e.stopPropagation();
+    mobileMenu.classList.toggle('open');
+  });
+  
+  // Close menu when clicking outside
+  document.addEventListener('click', function(e) {
+    if (!mobileMenu.contains(e.target) && !menuToggle.contains(e.target)) {
+      mobileMenu.classList.remove('open');
+    }
+  });
+  
+  // Close menu when clicking a link
+  mobileMenu.querySelectorAll('a').forEach(function(link) {
+    link.addEventListener('click', function() {
+      mobileMenu.classList.remove('open');
+    });
+  });
 </script>
 
 </body>
