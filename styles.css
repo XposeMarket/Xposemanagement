@@ -1,3 +1,12 @@
+:root.theme-landing #mainNav.active {
+  background: rgba(7,11,18,0.97) !important;
+}
+/* Theme-specific: Make mobile nav dropdown less transparent in dark themes */
+:root.theme-dark #mainNav.active {
+  background: rgba(35,40,52,0.82) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+}
 /* Hide mainNav by default on mobile, show only when .active */
 @media (max-width: 900px) {
   #mainNav {
@@ -3038,10 +3047,12 @@ button,
     left: 0;
     right: 0;
     z-index: 9999; /* above message panels (z-index:80) but below modal backdrop (99999) */
-    background: var(--card);
+    background: var(--card, rgba(7,11,18,0.97));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     padding: 12px 18px;
     box-shadow: 0 12px 30px rgba(2,6,23,0.14);
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
   }
   /* Ensure the nav links stack nicely inside the dropdown */
   #mainNav.active a { display: block; padding: 10px 12px; border-radius:8px; margin-bottom:6px; }
