@@ -23,21 +23,7 @@
           <label for="csName">Shop Name</label>
           <input id="csName" required>
         </div>
-        <div>
-          <label for="csIndustry">Industry Type</label>
-          <select id="csIndustry" required>
-            <option value="mechanic">Auto Shop / Mechanic</option>
-          </select>
-        </div>
-        <div id="autoShopTypeContainer">
-          <label for="csType">Shop Specialization</label>
-          <select id="csType">
-            <option>Mechanic</option>
-            <option>Body</option>
-            <option>Performance</option>
-            <option>General Repair</option>
-          </select>
-        </div>
+        <input type="hidden" id="csIndustry" value="mechanic">
         <div style="grid-column:1/-1;display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
           <div style="grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div>

@@ -19,12 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const supabase = getSupabaseClient();
 
-  // Handle industry type selection to show/hide auto shop specialization
-  // Only 'mechanic' industry is selectable, so always show specialization
-  const autoShopTypeContainer = document.getElementById('autoShopTypeContainer');
-  if (autoShopTypeContainer) {
-    autoShopTypeContainer.style.display = 'block';
-  }
+  // Industry type is always 'mechanic' now. No specialization selection needed.
 
   // ============================================================================
   // OAUTH CALLBACK HANDLER - Check if we're returning from Google OAuth
@@ -63,8 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Retrieve stored shop data from sessionStorage
         const shopName = sessionStorage.getItem('create_shop_name');
-        const shopType = sessionStorage.getItem('create_shop_type');
-        const industryType = sessionStorage.getItem('create_shop_industry');
+        const industryType = 'mechanic';
         const zipcode = sessionStorage.getItem('create_shop_zipcode');
         const street = sessionStorage.getItem('create_shop_street') || '';
         const city = sessionStorage.getItem('create_shop_city') || '';
@@ -82,7 +76,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const join_code = Math.random().toString(36).slice(2,8).toUpperCase();
         const shopInsert = { 
           name: shopName, 
-          type: shopType || 'Mechanic', 
+          type: 'Mechanic', 
           industry_type: 'mechanic',
           zipcode: zipcode || '',
           street: street,
@@ -302,7 +296,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Collect form data
     const shopName = document.getElementById('csName').value.trim();
     const industryType = 'mechanic';
-    const shopType = document.getElementById('csType')?.value?.trim() || 'General';
     const shopLogoFile = document.getElementById('csLogo')?.files?.[0];
     const first = document.getElementById('csFirst').value.trim();
     const last = document.getElementById('csLast').value.trim();
@@ -433,7 +426,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const join_code = Math.random().toString(36).slice(2,8).toUpperCase();
             const shopInsert = { 
               name: sanitizedShopName, 
-              type: shopType, 
+              type: 'Mechanic', 
               industry_type: industryType,
               email: sanitizedEmail,
               zipcode: sanitizedZipcode,
@@ -709,27 +702,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       
       // Get form values and store them for after OAuth redirect
       const shopName = document.getElementById('csName')?.value?.trim();
-      const industryType = document.getElementById('csIndustry')?.value?.trim();
-      const shopType = document.getElementById('csType')?.value?.trim();
       const zipcode = document.getElementById('csZipcode')?.value?.trim();
-        const street = document.getElementById('csStreet')?.value?.trim() || '';
-        const city = document.getElementById('csCity')?.value?.trim() || '';
-        const state = document.getElementById('csState')?.value?.trim() || '';
-      
+      const street = document.getElementById('csStreet')?.value?.trim() || '';
+      const city = document.getElementById('csCity')?.value?.trim() || '';
+      const state = document.getElementById('csState')?.value?.trim() || '';
       if (!shopName) {
         err.textContent = 'Please enter a shop name first.';
         err.style.color = 'red';
         return;
       }
-      
       // Store shop data in sessionStorage for after redirect
       sessionStorage.setItem('create_shop_name', shopName);
       sessionStorage.setItem('create_shop_industry', 'mechanic');
-      sessionStorage.setItem('create_shop_type', shopType || 'General');
       if (zipcode) sessionStorage.setItem('create_shop_zipcode', zipcode);
-        if (street) sessionStorage.setItem('create_shop_street', street);
-        if (city) sessionStorage.setItem('create_shop_city', city);
-        if (state) sessionStorage.setItem('create_shop_state', state);
+      if (street) sessionStorage.setItem('create_shop_street', street);
+      if (city) sessionStorage.setItem('create_shop_city', city);
+      if (state) sessionStorage.setItem('create_shop_state', state);
       
       try {
         console.log('🔐 Initiating Google OAuth shop creation...');
