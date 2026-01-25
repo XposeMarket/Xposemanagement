@@ -451,7 +451,26 @@
       and proven repair paths used in professional environments.
     </p>
 
-    <div style="margin-top:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+    <div class="trust-panel-grid">
+        <style>
+          @media (max-width: 900px) {
+            .trust-panel-grid {
+              display: flex !important;
+              flex-direction: column !important;
+              gap: 16px !important;
+            }
+            .trust-panel-grid .card {
+              margin: 0 !important;
+            }
+          }
+          @media (min-width: 901px) {
+            .trust-panel-grid {
+              display: grid !important;
+              grid-template-columns: repeat(3, 1fr) !important;
+              gap: 16px !important;
+            }
+          }
+        </style>
       <div class="card">
         <h3>Massive coverage</h3>
         <p>
