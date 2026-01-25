@@ -3017,9 +3017,63 @@ async function renderAppointments(appointments = allAppointments) {
     tdVehicle.textContent = appt.vehicle || 'N/A';
     tr.appendChild(tdVehicle);
     
-    // Service
+    // Service - check for multiple services from invoice
     const tdService = document.createElement('td');
-    tdService.textContent = appt.service || 'N/A';
+    
+    // Get services from invoice items
+    let invoiceServices = [];
+    try {
+      const store = JSON.parse(localStorage.getItem('xm_data') || '{}');
+      const invoices = store.invoices || window.invoices || [];
+      let inv = null;
+      if (appt.invoice_id) inv = invoices.find(i => i.id === appt.invoice_id);
+      if (!inv) inv = invoices.find(i => i.appointment_id === appt.id);
+      if (inv && inv.items && Array.isArray(inv.items)) {
+        invoiceServices = inv.items.filter(item => 
+          item.type === 'service' || item.type === 'labor' || 
+          (item.name && !item.type)
+        ).map(item => item.name || item.description || 'Unknown Service');
+      }
+    } catch (e) {
+      console.warn('[Appointments] Could not get invoice services for table row', e);
+    }
+    
+    // Combine appointment service with invoice services (deduplicated)
+    const allServices = [];
+    if (appt.service) allServices.push(appt.service);
+    invoiceServices.forEach(s => {
+      if (!allServices.some(existing => existing.toLowerCase() === s.toLowerCase())) {
+        allServices.push(s);
+      }
+    });
+    
+    const hasMultipleServices = allServices.length > 1;
+    const primaryService = allServices[0] || 'N/A';
+    
+    if (hasMultipleServices) {
+      // Create dropdown button for multiple services
+      const serviceWrapper = document.createElement('div');
+      serviceWrapper.className = 'service-dropdown-wrapper';
+      serviceWrapper.style.cssText = 'position:relative;';
+      
+      const serviceBtn = document.createElement('button');
+      serviceBtn.className = 'service-dropdown-btn';
+      serviceBtn.innerHTML = `
+        <span class="service-primary">${primaryService}</span>
+        <span class="service-badge">+${allServices.length - 1}</span>
+        <span class="service-chevron">▼</span>
+      `;
+      serviceBtn.onclick = (e) => {
+        e.stopPropagation();
+        toggleServiceDropdown(serviceWrapper, allServices);
+      };
+      
+      serviceWrapper.appendChild(serviceBtn);
+      tdService.appendChild(serviceWrapper);
+    } else {
+      tdService.textContent = primaryService;
+    }
+    
     tr.appendChild(tdService);
     
     // Scheduled (date only)
@@ -3055,7 +3109,7 @@ async function renderAppointments(appointments = allAppointments) {
     const tdStatus = document.createElement('td');
     const statusSpan = document.createElement('span');
     statusSpan.className = `tag ${getStatusClass(appt.status)}`;
-    statusSpan.textContent = appt.status || 'new';
+    statusSpan.textContent = (appt.status || 'new').replace(/_/g, ' ');
     // Only allow status changes for non-staff users
     if (!isStaffUser) {
       statusSpan.style.cursor = 'pointer';
@@ -3533,7 +3587,7 @@ async function openViewModal(appt) {
       ${servicesHTML}
       <div><strong>Date:</strong> ${appt.preferred_date ? new Date(appt.preferred_date).toLocaleDateString() : 'Not set'}</div>
       <div><strong>Time:</strong> ${appt.preferred_time ? formatTime12(appt.preferred_time) : 'Not set'}</div>
-      <div><strong>Status:</strong> <span class="tag ${getStatusClass(appt.status)}">${appt.status || 'new'}</span></div>
+      <div><strong>Status:</strong> <span class="tag ${getStatusClass(appt.status)}">${(appt.status || 'new').replace(/_/g, ' ')}</span></div>
       ${invStatusHTML}
       <div id="inspectionStatusRow"></div>
       <div><strong>Assigned to:</strong> <span id="viewModalAssignedTo">${appt.assigned_to ? 'Loading...' : 'Unassigned'}</span></div>
@@ -6192,6 +6246,53 @@ window.toggleServicesExpand = function(headerEl) {
   const isExpanded = list.style.display !== 'none';
   list.style.display = isExpanded ? 'none' : 'block';
   if (icon) icon.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';
+};
+
+// Toggle service dropdown in table rows
+window.toggleServiceDropdown = function(wrapperEl, services) {
+// Close any other open dropdowns first
+document.querySelectorAll('.service-dropdown-menu.open').forEach(menu => {
+if (menu.parentElement !== wrapperEl) {
+menu.parentElement.closest('tr')?.classList.remove('dropdown-open');
+  menu.remove();
+  }
+});
+
+// Check if dropdown already exists
+let dropdown = wrapperEl.querySelector('.service-dropdown-menu');
+if (dropdown) {
+wrapperEl.closest('tr')?.classList.remove('dropdown-open');
+  dropdown.remove();
+  return;
+}
+
+// Add class to parent row for z-index
+wrapperEl.closest('tr')?.classList.add('dropdown-open');
+
+// Create dropdown
+dropdown = document.createElement('div');
+dropdown.className = 'service-dropdown-menu open';
+dropdown.innerHTML = services.map((svc) => `
+<div class="service-dropdown-item">
+  <span class="service-name">${svc}</span>
+    <button class="btn small cortex-btn" onclick="event.stopPropagation(); openCortexForService('${svc.replace(/'/g, "\\'")}')">
+      <img src="/assets/cortex-mark.png" alt="" style="width:14px;height:14px;">
+      Cortex
+    </button>
+  </div>
+`).join('');
+
+wrapperEl.appendChild(dropdown);
+
+// Close dropdown when clicking outside
+const closeHandler = (e) => {
+  if (!wrapperEl.contains(e.target)) {
+      wrapperEl.closest('tr')?.classList.remove('dropdown-open');
+      dropdown.remove();
+      document.removeEventListener('click', closeHandler);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', closeHandler), 0);
 };
 
 // Open Cortex modal with pre-filled search for a specific service

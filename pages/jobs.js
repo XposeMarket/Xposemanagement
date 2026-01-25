@@ -1589,7 +1589,7 @@ async function openJobViewModal(job, appt) {
       ${servicesHTML}
       <div><strong>Date:</strong> ${appt.preferred_date ? new Date(appt.preferred_date).toLocaleDateString() : 'Not set'}</div>
       <div><strong>Time:</strong> ${formatTime12(appt.preferred_time)}</div>
-      <div><strong>Status:</strong> <span class="tag ${getStatusClass(appt.status)}">${appt.status || 'new'}</span></div>
+      <div><strong>Status:</strong> <span class="tag ${getStatusClass(appt.status)}">${(appt.status || 'new').replace(/_/g, ' ')}</span></div>
       <div id="inspectionStatusRow"></div>
       ${appt.notes ? `<div><strong>Notes:</strong><br>${appt.notes}</div>` : ''}
     </div>

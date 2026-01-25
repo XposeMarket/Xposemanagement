@@ -580,6 +580,298 @@
   background: var(--accent, #22c55e) !important;
 }
 
+/* Service Dropdown Button & Menu - for table rows */
+.service-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.service-dropdown-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--card, #fff);
+  border: 1.5px solid var(--line, #e5e7eb);
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s ease;
+}
+
+.service-dropdown-btn:hover {
+  border-color: var(--accent, #3b82f6);
+  background: var(--bg, #f9fafb);
+}
+
+.service-dropdown-btn .service-primary {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.service-dropdown-btn .service-badge {
+  background: var(--accent, #3b82f6);
+  color: white;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.service-dropdown-btn .service-chevron {
+  font-size: 0.65rem;
+  opacity: 0.6;
+  transition: transform 0.2s;
+}
+
+.service-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 280px;
+  background: var(--card, #fff);
+  border: 1px solid var(--line, #e5e7eb);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  z-index: 10000;
+  overflow: hidden;
+  animation: dropdownFadeIn 0.15s ease;
+}
+
+/* Ensure table cells don't clip the dropdown */
+td:has(.service-dropdown-wrapper) {
+  overflow: visible !important;
+}
+
+table {
+  overflow: visible !important;
+}
+
+.table tbody tr {
+  position: relative;
+}
+
+/* Row with open dropdown needs higher z-index */
+.table tbody tr.dropdown-open {
+  z-index: 10001;
+}
+
+.table tbody tr.dropdown-open td {
+  position: relative;
+}
+
+@keyframes dropdownFadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.service-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line, #e5e7eb);
+  gap: 12px;
+}
+
+.service-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.service-dropdown-item:hover {
+  background: var(--bg, #f9fafb);
+}
+
+.service-dropdown-item .service-name {
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+.service-dropdown-item .cortex-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  border-radius: 6px;
+}
+
+/* Landing theme - Service Dropdown */
+:root.theme-landing .service-dropdown-btn {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.15);
+  color: var(--text);
+}
+
+:root.theme-landing .service-dropdown-btn:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: var(--accent, #22c55e);
+}
+
+:root.theme-landing .service-dropdown-btn .service-badge {
+  background: var(--accent, #22c55e);
+}
+
+:root.theme-landing .service-dropdown-menu {
+  background: #0d1117;
+  border-color: rgba(255,255,255,0.12);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+}
+
+:root.theme-landing .service-dropdown-item {
+  border-bottom-color: rgba(255,255,255,0.08);
+}
+
+:root.theme-landing .service-dropdown-item:hover {
+  background: rgba(255,255,255,0.06);
+}
+
+:root.theme-landing .service-dropdown-item .service-name {
+  color: var(--text);
+}
+
+:root.theme-landing .service-dropdown-item .cortex-btn {
+  background: rgba(34,197,94,0.15);
+  border-color: rgba(34,197,94,0.3);
+  color: #4ade80;
+}
+
+:root.theme-landing .service-dropdown-item .cortex-btn:hover {
+  background: rgba(34,197,94,0.25);
+}
+
+/* Landing theme - Parts Catalog Modal */
+:root.theme-landing #partsCatalogModal .card,
+:root.theme-landing #partsCatalogModal .modal-card {
+  background: #0d1117 !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+}
+
+/* Landing theme - Part Pricing Modal */
+:root.theme-landing #partPricingModal {
+  background: #0d1117 !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+}
+
+:root.theme-landing #partPricingModal #partInfoSection {
+  background: rgba(255,255,255,0.06) !important;
+}
+
+:root.theme-landing #partPricingModal .pricing-summary {
+  background: rgba(59,130,246,0.1) !important;
+  border: 1px solid rgba(59,130,246,0.3) !important;
+}
+
+:root.theme-landing #partPricingModal .modal-close {
+  color: var(--text) !important;
+}
+
+/* Landing theme - Edit Visible Suppliers Modal */
+:root.theme-landing #editSupplierModal > .card {
+  background: #0d1117 !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+}
+
+:root.theme-landing #editSupplierModal h3 {
+  color: var(--text) !important;
+}
+
+:root.theme-landing #editSupplierModal #editSupplierList > div {
+  background: rgba(255,255,255,0.04) !important;
+  border-color: rgba(255,255,255,0.1) !important;
+}
+
+:root.theme-landing #editSupplierModal #editSupplierList > div div {
+  color: var(--text) !important;
+}
+
+/* Landing theme - Add Dealer Modal */
+:root.theme-landing #addDealerModal > .card {
+  background: #0d1117 !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+}
+
+:root.theme-landing #addDealerModal h3,
+:root.theme-landing #addDealerModal label {
+  color: var(--text) !important;
+}
+
+:root.theme-landing #addDealerModal input,
+:root.theme-landing #addDealerModal select,
+:root.theme-landing #addDealerModal .custom-select button {
+  background: rgba(255,255,255,0.06) !important;
+  border-color: rgba(255,255,255,0.15) !important;
+  color: var(--text) !important;
+}
+
+:root.theme-landing #addDealerModal .custom-select-list,
+:root.theme-landing #dealerManufacturerList {
+  background: #0d1117 !important;
+  border-color: rgba(255,255,255,0.15) !important;
+}
+
+:root.theme-landing #addDealerModal .custom-select-list button,
+:root.theme-landing #dealerManufacturerList button {
+  color: var(--text) !important;
+}
+
+:root.theme-landing #addDealerModal .custom-select-list button:hover,
+:root.theme-landing #dealerManufacturerList button:hover {
+  background: rgba(255,255,255,0.1) !important;
+}
+
+:root.theme-landing #dealerSearchResults {
+  color: var(--text) !important;
+}
+
+:root.theme-landing #dealerSearchResults .card {
+  background: rgba(255,255,255,0.04) !important;
+  border-color: rgba(255,255,255,0.1) !important;
+}
+
+/* Landing theme - Part Labor Confirm Modal */
+:root.theme-landing #partLaborConfirmModal > div {
+  background: #0d1117 !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+}
+
+/* Landing theme - Supplier Link Cards (keep white for logo visibility) */
+/* These intentionally stay white so logos are visible */
+
+/* Landing theme - Section headers in parts modal */
+:root.theme-landing #supplierQuickLinks h4,
+:root.theme-landing #supplierDealerSection h4,
+:root.theme-landing #suppliersColumn h4,
+:root.theme-landing #dealershipsColumn h4 {
+  color: var(--text) !important;
+}
+
+/* Landing theme - Edit Dealer Modal */
+:root.theme-landing #editDealerModal > .card {
+  background: #0d1117 !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+}
+
+:root.theme-landing #editDealerModal h3 {
+  color: var(--text) !important;
+}
+
+:root.theme-landing #editDealerModal #editDealerList > div {
+  background: rgba(255,255,255,0.04) !important;
+  border-color: rgba(255,255,255,0.1) !important;
+}
+
+:root.theme-landing #editDealerModal #editDealerList > div span,
+:root.theme-landing #editDealerModal #editDealerList > div div {
+  color: var(--text) !important;
+}
+
+:root.theme-landing #editDealerModal p {
+  color: var(--muted) !important;
+}
+
 /* Modal header and footer borders */
 :root.theme-landing .modal-head,
 :root.theme-landing .modal-foot {
