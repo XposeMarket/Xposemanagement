@@ -123,10 +123,222 @@
   color-scheme: dark;
 }
 
+/*
+  Landing Dark theme: matches the new landing pages (index, features, paywall, cortex)
+  Deeper blacks with green/blue gradient accents
+*/
+:root.theme-landing {
+  --bg: #070b12;
+  --text: #eaf0ff;
+  --muted: rgba(234,240,255,0.72);
+  --card: rgba(255,255,255,0.05);
+  --line: rgba(255,255,255,0.10);
+  --accent: #22c55e;
+  --accent-blue: #60a5fa;
+  --folder-bg: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+  --folder-border: 1px solid rgba(255,255,255,0.10);
+  --folder-blue-bg: linear-gradient(180deg, rgba(96,165,250,0.08), rgba(255,255,255,0.02));
+  --folder-blue-border: rgba(96,165,250,0.25);
+  color-scheme: dark;
+}
+
+/* Landing theme enhancements - cards get subtle glow effects */
+:root.theme-landing .card {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 18px 60px rgba(0,0,0,0.40);
+}
+
+:root.theme-landing .btn.info,
+:root.theme-landing .btn.primary {
+  background: linear-gradient(135deg, rgba(34,197,94,0.92), rgba(96,165,250,0.72));
+  color: #05110a;
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+:root.theme-landing body {
+  background:
+    radial-gradient(900px 500px at 18% 12%, rgba(96,165,250,0.18), rgba(0,0,0,0) 65%),
+    radial-gradient(900px 500px at 82% 18%, rgba(34,197,94,0.16), rgba(0,0,0,0) 70%),
+    radial-gradient(900px 500px at 60% 92%, rgba(245,158,11,0.10), rgba(0,0,0,0) 65%),
+    linear-gradient(180deg, #070b12, #0b1020);
+}
+
+:root.theme-landing .main-header {
+  background: rgba(7,11,18,0.65);
+  backdrop-filter: blur(14px);
+  box-shadow: none;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+:root.theme-landing input,
+:root.theme-landing select,
+:root.theme-landing textarea {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text);
+}
+
+:root.theme-landing input:focus,
+:root.theme-landing select:focus,
+:root.theme-landing textarea:focus {
+  border-color: rgba(96,165,250,0.5);
+  outline: none;
+}
+
+:root.theme-landing .tag {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.15);
+}
+
+/* Landing theme status tags - solid backgrounds for readability */
+:root.theme-landing .tag.open {
+  background: #fee2e2 !important;
+  color: #991b1b !important;
+  border-color: #ef4444 !important;
+}
+:root.theme-landing .tag.scheduled {
+  background: #e0ecff !important;
+  color: #1e40af !important;
+  border-color: #3b82f6 !important;
+}
+:root.theme-landing .tag.in_progress,
+:root.theme-landing .tag.in-progress {
+  background: #fef3c7 !important;
+  color: #92400e !important;
+  border-color: #f59e0b !important;
+}
+:root.theme-landing .tag.awaiting_parts,
+:root.theme-landing .tag.awaiting-parts {
+  background: #e0e7ff !important;
+  color: #3730a3 !important;
+  border-color: #6366f1 !important;
+}
+:root.theme-landing .tag.completed,
+:root.theme-landing .tag.done {
+  background: #dcfce7 !important;
+  color: #065f46 !important;
+  border-color: #10b981 !important;
+}
+:root.theme-landing .tag.paid {
+  background: #dcfce7 !important;
+  color: #065f46 !important;
+  border-color: #10b981 !important;
+}
+:root.theme-landing .tag.unpaid,
+:root.theme-landing .tag.pending {
+  background: #fee2e2 !important;
+  color: #991b1b !important;
+  border-color: #ef4444 !important;
+}
+:root.theme-landing .tag.partial {
+  background: #fef3c7 !important;
+  color: #92400e !important;
+  border-color: #f59e0b !important;
+}
+:root.theme-landing .tag.cancelled,
+:root.theme-landing .tag.canceled {
+  background: #f3f4f6 !important;
+  color: #4b5563 !important;
+  border-color: #9ca3af !important;
+}
+
+:root.theme-landing table th {
+  background: rgba(255,255,255,0.03);
+}
+
+:root.theme-landing table tr:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+/* Landing theme modals - solid backgrounds for readability */
+:root.theme-landing .modal,
+:root.theme-landing .modal-content,
+:root.theme-landing .modal-card,
+:root.theme-landing .card.modal,
+:root.theme-landing [class*="modal"] .card,
+:root.theme-landing .modal .card,
+:root.theme-landing #emailModal,
+:root.theme-landing #passModal,
+:root.theme-landing #confirmModal,
+:root.theme-landing #invoiceModal,
+:root.theme-landing #apptModal,
+:root.theme-landing #jobModal,
+:root.theme-landing #custModal,
+:root.theme-landing #vehicleModal,
+:root.theme-landing #messageModal,
+:root.theme-landing #diagModal,
+:root.theme-landing #inspectionModal,
+:root.theme-landing #laborModal,
+:root.theme-landing #partModal,
+:root.theme-landing #statusModal,
+:root.theme-landing #terminalModal,
+:root.theme-landing #inviteModal,
+:root.theme-landing #staffModal,
+:root.theme-landing #paymentModal,
+:root.theme-landing #refundModal,
+:root.theme-landing #shopModal,
+:root.theme-landing #newShopModal,
+:root.theme-landing #editShopModal,
+:root.theme-landing #logoutModal,
+:root.theme-landing .confirm-modal,
+:root.theme-landing .dialog,
+:root.theme-landing [role="dialog"],
+:root.theme-landing .card[style*="fixed"],
+:root.theme-landing .card[style*="absolute"],
+:root.theme-landing div[style*="fixed"].card,
+:root.theme-landing div[style*="z-index"].card {
+  background: #0d1117 !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+  box-shadow: 0 25px 80px rgba(0,0,0,0.7) !important;
+}
+
+/* Modal backdrop should be darker too */
+:root.theme-landing .modal-backdrop {
+  background: rgba(0,0,0,0.85) !important;
+}
+
+/* Modal header and footer borders */
+:root.theme-landing .modal-head,
+:root.theme-landing .modal-foot {
+  border-color: rgba(255,255,255,0.10) !important;
+}
+
+/* Ensure modal cards inside modals also get solid background */
+:root.theme-landing .modal .card,
+:root.theme-landing .modal-content .card {
+  background: #0d1117 !important;
+}
+
+/* Landing theme sticky header - glassmorphism with blur for readability */
+:root.theme-landing .main-header {
+  background: rgba(7,11,18,0.75) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 4px 30px rgba(0,0,0,0.3);
+}
+
+:root.theme-landing header.main-header,
+:root.theme-landing .topbar,
+:root.theme-landing header[class*="header"] {
+  background: rgba(7,11,18,0.75) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
 /* Force dark theme on all select elements */
 :root.theme-dark select,
 :root.theme-dark select option {
   background-color: var(--card) !important;
+  color: var(--text) !important;
+  color-scheme: dark;
+}
+
+/* Force landing theme on all select elements */
+:root.theme-landing select,
+:root.theme-landing select option {
+  background-color: rgba(255,255,255,0.06) !important;
   color: var(--text) !important;
   color-scheme: dark;
 }

@@ -138,16 +138,17 @@ function canAccessPage(pageName, user = null) {
  * Toggle dark theme
  */
 
-// Cycle through: default (light) -> theme-alt -> theme-blue -> theme-bluegrey -> theme-dark -> default ...
+// Cycle through: default (light) -> theme-alt -> theme-blue -> theme-bluegrey -> theme-dark -> theme-landing -> default ...
 function toggleTheme() {
   const html = document.documentElement;
   const isAlt = html.classList.contains('theme-alt');
   const isBlue = html.classList.contains('theme-blue');
   const isBlueGrey = html.classList.contains('theme-bluegrey');
   const isDark = html.classList.contains('theme-dark');
+  const isLanding = html.classList.contains('theme-landing');
   let nextTheme = 'light';
-  html.classList.remove('theme-alt', 'theme-blue', 'theme-bluegrey', 'theme-dark');
-  if (!isAlt && !isBlue && !isBlueGrey && !isDark) {
+  html.classList.remove('theme-alt', 'theme-blue', 'theme-bluegrey', 'theme-dark', 'theme-landing');
+  if (!isAlt && !isBlue && !isBlueGrey && !isDark && !isLanding) {
     html.classList.add('theme-alt');
     nextTheme = 'theme-alt';
   } else if (isAlt) {
@@ -159,6 +160,9 @@ function toggleTheme() {
   } else if (isBlueGrey) {
     html.classList.add('theme-dark');
     nextTheme = 'theme-dark';
+  } else if (isDark) {
+    html.classList.add('theme-landing');
+    nextTheme = 'theme-landing';
   }
   // else stays light
   try { localStorage.setItem('xm_theme', nextTheme); } catch (e) {}
@@ -183,7 +187,7 @@ function setThemeFromUser() {
   try {
     const stored = localStorage.getItem('xm_theme');
     const html = document.documentElement;
-    html.classList.remove('theme-alt', 'theme-blue', 'theme-bluegrey', 'theme-dark');
+    html.classList.remove('theme-alt', 'theme-blue', 'theme-bluegrey', 'theme-dark', 'theme-landing');
     if (stored === 'theme-alt') {
       html.classList.add('theme-alt');
       return;
@@ -196,6 +200,9 @@ function setThemeFromUser() {
     } else if (stored === 'theme-dark') {
       html.classList.add('theme-dark');
       return;
+    } else if (stored === 'theme-landing') {
+      html.classList.add('theme-landing');
+      return;
     }
   } catch (e) {
     // ignore
@@ -203,11 +210,12 @@ function setThemeFromUser() {
   const u = currentUser();
   if (u && u.theme) {
     const html = document.documentElement;
-    html.classList.remove('theme-alt', 'theme-blue', 'theme-bluegrey', 'theme-dark');
+    html.classList.remove('theme-alt', 'theme-blue', 'theme-bluegrey', 'theme-dark', 'theme-landing');
     if (u.theme === 'theme-alt') html.classList.add('theme-alt');
     else if (u.theme === 'theme-blue') html.classList.add('theme-blue');
     else if (u.theme === 'theme-bluegrey') html.classList.add('theme-bluegrey');
     else if (u.theme === 'theme-dark') html.classList.add('theme-dark');
+    else if (u.theme === 'theme-landing') html.classList.add('theme-landing');
   }
 }
 
