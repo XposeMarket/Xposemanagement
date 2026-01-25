@@ -15,6 +15,7 @@ import { addUserToShop } from '../helpers/multi-shop.js';
 document.addEventListener('DOMContentLoaded', async () => {
   const form = document.getElementById('createShopForm');
   const err = document.getElementById('csErr');
+  let supabaseSuccess = false;
   if (!form) return;
 
   const supabase = getSupabaseClient();
