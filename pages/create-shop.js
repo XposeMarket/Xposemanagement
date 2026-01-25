@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const supabase = getSupabaseClient();
 
-  // Industry type is always 'mechanic' now. No specialization selection needed.
+  // Industry type is always 'auto_shop' now. No specialization selection needed.
 
   // ============================================================================
   // OAUTH CALLBACK HANDLER - Check if we're returning from Google OAuth
@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         // Retrieve stored shop data from sessionStorage
         const shopName = sessionStorage.getItem('create_shop_name');
-        const industryType = 'mechanic';
+        const industryType = 'auto_shop';
         const zipcode = sessionStorage.getItem('create_shop_zipcode');
         const street = sessionStorage.getItem('create_shop_street') || '';
         const city = sessionStorage.getItem('create_shop_city') || '';
@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const shopInsert = { 
           name: shopName, 
           type: 'Mechanic', 
-          industry_type: 'mechanic',
+          industry_type: 'auto_shop',
           zipcode: zipcode || '',
           street: street,
           city: city,
@@ -295,7 +295,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Collect form data
     const shopName = document.getElementById('csName').value.trim();
-    const industryType = 'mechanic';
+    const industryType = 'auto_shop';
     const shopLogoFile = document.getElementById('csLogo')?.files?.[0];
     const first = document.getElementById('csFirst').value.trim();
     const last = document.getElementById('csLast').value.trim();
@@ -713,7 +713,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       // Store shop data in sessionStorage for after redirect
       sessionStorage.setItem('create_shop_name', shopName);
-      sessionStorage.setItem('create_shop_industry', 'mechanic');
+      sessionStorage.setItem('create_shop_industry', 'auto_shop');
       if (zipcode) sessionStorage.setItem('create_shop_zipcode', zipcode);
       if (street) sessionStorage.setItem('create_shop_street', street);
       if (city) sessionStorage.setItem('create_shop_city', city);
