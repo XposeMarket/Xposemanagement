@@ -260,6 +260,7 @@
       display:grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 14px;
+      align-items: start;
     }
 
     .featureCard{
@@ -269,6 +270,7 @@
       box-shadow: 0 18px 60px rgba(0,0,0,0.30);
       overflow:hidden;
       transition: transform .14s ease, border-color .14s ease, background .14s ease;
+      height: fit-content;
     }
     .featureCard:hover{
       transform: translateY(-2px);
@@ -476,6 +478,7 @@
         <nav class="nav" aria-label="Primary Navigation">
           <a href="index.html">Home</a>
           <a href="features.html">Features</a>
+          <a href="cortex-page.html">Cortex</a>
           <a href="paywall.html">Pricing</a>
           <a href="#faq">FAQ</a>
         </nav>
@@ -574,7 +577,7 @@
               <div class="featureText">
                 <p>
                   Book appointments easily, view your calendar at a glance, and keep track of every job.
-                  Automated reminders help reduce no-shows and keep your shop running smoothly.
+                  Clear scheduling visibility helps your team stay organized and prepared for every day.
                 </p>
               </div>
               <div class="shot" data-img="assets/AppointmentsPage.png" data-alt="Appointments and Scheduling">
@@ -709,7 +712,7 @@
             <div class="featureBody">
               <div class="featureText">
                 <p>
-                  Keep customer contact details, vehicle history, and communication logs in one place to provide faster, more personalized service.
+                  Keep customer contact details, vehicle history, and previous appointments/invoices in one place to provide faster, more personalized service.
                 </p>
               </div>
               <div class="shot" data-img="assets/Customers.png" data-alt="Customer Profiles">
@@ -736,7 +739,7 @@
             <div class="featureBody">
               <div class="featureText">
                 <p>
-                  Track parts, quantities, and locations across your shop.
+                  Track items your shop keep in stock. The Inventory page makes it easy to update any items/parts you have across your shop.
                   Low-stock alerts and folder organization make reordering simple.
                 </p>
               </div>
@@ -772,34 +775,6 @@
             </div>
           </article>
 
-          <!-- Quick Stats -->
-          <article class="featureCard reveal" data-title="quick stats panels metrics revenue appointments parts availability outstanding invoices">
-            <div class="featureHead" role="button" tabindex="0" aria-expanded="false">
-              <div class="titleRow">
-                <div class="fIcon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M4 19V5"></path>
-                    <path d="M8 19V11"></path>
-                    <path d="M12 19V7"></path>
-                    <path d="M16 19v-9"></path>
-                    <path d="M20 19v-4"></path>
-                  </svg>
-                </div>
-                <h2>Quick Stats Panels</h2>
-              </div>
-              <div class="tag"><span class="dot"></span> Instant metrics <span class="chev">▾</span></div>
-            </div>
-            <div class="featureBody">
-              <div class="featureText">
-                <p>
-                  Quick stats panels surface key metrics at a glance. Appointments, revenue, parts availability, and outstanding invoices help you monitor shop health instantly.
-                </p>
-              </div>
-              <div class="shot" data-img="assets/Dashboard Revenue Columns.png" data-alt="Quick Stats Panels">
-                <img src="assets/Dashboard Revenue Columns.png" alt="Quick Stats Panels" />
-              </div>
-            </div>
-          </article>
 
           <!-- Quick Appointment Entry -->
           <article class="featureCard reveal" data-title="quick appointment entry modal customer details services availability">
@@ -903,6 +878,8 @@
         var isCollapsed = card.classList.contains('collapsed');
         var head = card.querySelector('.featureHead');
         if (!head) return;
+        
+        // Toggle only the clicked card
         card.classList.toggle('collapsed', !isCollapsed);
         head.setAttribute('aria-expanded', String(isCollapsed));
       }

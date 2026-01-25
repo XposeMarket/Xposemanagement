@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Cortex | Built In Repair Intelligence</title>
+  <meta name="description" content="Cortex is the intelligence layer inside Xpose Management. Structured diagnostics, smarter labor flow, and confident repair decisions built for real shops." />
+
+  <style>
+    :root{
+      --bg:#070b12;
+      --bg2:#0b1020;
+      --card:rgba(255,255,255,0.06);
+      --line:rgba(255,255,255,0.10);
+      --text:#eaf0ff;
+      --muted:rgba(234,240,255,0.72);
+      --muted2:rgba(234,240,255,0.56);
+      --brand:#22c55e;
+      --accent:#60a5fa;
+      --amber:#f59e0b;
+      --shadow: 0 18px 60px rgba(0,0,0,0.40);
+      --radius:18px;
+      --radius2:26px;
+      --max:1180px;
+    }
+
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0}
+    body{
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:
+        radial-gradient(900px 500px at 20% 12%, rgba(96,165,250,0.18), rgba(0,0,0,0) 65%),
+        radial-gradient(900px 500px at 80% 20%, rgba(34,197,94,0.16), rgba(0,0,0,0) 70%),
+        linear-gradient(180deg, var(--bg), var(--bg2));
+      color:var(--text);
+      overflow-x:hidden;
+    }
+
+    a{color:inherit;text-decoration:none}
+    .wrap{max-width:var(--max);margin:0 auto;padding:0 22px}
+
+    /* Header */
+    .topbar{
+      position:sticky;
+      top:0;
+      z-index:50;
+      backdrop-filter: blur(14px);
+      background: rgba(7,11,18,0.65);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .topbar .row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:14px;
+      padding:14px 0;
+    }
+    .brandlock img{
+      height:44px;
+      filter: drop-shadow(0 10px 22px rgba(0,0,0,0.55));
+    }
+    .nav{display:flex;gap:10px}
+    .nav a{
+      padding:10px 12px;
+      border-radius:12px;
+      color:var(--muted);
+      font-weight:700;
+      font-size:14px;
+    }
+    .nav a:hover{
+      background: rgba(255,255,255,0.06);
+      color:var(--text);
+    }
+    .btn{
+      padding:11px 14px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      font-weight:800;
+      font-size:14px;
+    }
+    .btn.primary{
+      background: linear-gradient(135deg, rgba(34,197,94,0.92), rgba(96,165,250,0.72));
+      color:#05110a;
+      border:none;
+    }
+
+    /* Hero */
+    .hero{padding:60px 0 36px}
+    h1{
+      font-size:46px;
+      line-height:1.05;
+      letter-spacing:-1px;
+      font-weight:950;
+      margin:0;
+    }
+    .glow{
+      background: linear-gradient(90deg, rgba(96,165,250,1), rgba(34,197,94,1));
+      -webkit-background-clip:text;
+      background-clip:text;
+      color:transparent;
+    }
+    .sub{
+      margin-top:16px;
+      font-size:17px;
+      line-height:1.65;
+      color:var(--muted);
+      max-width:90ch;
+      font-weight:650;
+    }
+
+    .logoPanel{
+      margin-top:28px;
+      border-radius:var(--radius2);
+      border:1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.04);
+      box-shadow:var(--shadow);
+      padding:32px;
+      display:flex;
+      justify-content:center;
+    }
+    .logoPanel img{
+      max-width:280px;
+      width:100%;
+      opacity:0.95;
+    }
+
+    section{padding:48px 0}
+
+    .panel{
+      border-radius:var(--radius2);
+      border:1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.05);
+      box-shadow:var(--shadow);
+      padding:28px;
+    }
+
+    h2{
+      font-size:28px;
+      letter-spacing:-0.6px;
+      margin:0 0 10px;
+      font-weight:950;
+    }
+
+    .split{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:20px;
+      align-items:center;
+    }
+
+    .imageBox{
+      border-radius:var(--radius2);
+      border:1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.04);
+      overflow:hidden;
+    }
+    .imageBox img{
+      width:100%;
+      height:280px;
+      object-fit:cover;
+      display:block;
+    }
+
+    .text p{
+      color:var(--muted);
+      line-height:1.7;
+      font-size:15.5px;
+      font-weight:650;
+      margin:10px 0 0;
+    }
+
+    .grid3{
+      display:grid;
+      grid-template-columns:repeat(3,1fr);
+      gap:16px;
+    }
+
+    .card{
+      border-radius:var(--radius2);
+      border:1px solid rgba(255,255,255,0.10);
+      background: rgba(255,255,255,0.05);
+      box-shadow:var(--shadow);
+      padding:22px;
+    }
+    .card h3{
+      margin:0;
+      font-size:18px;
+      font-weight:950;
+    }
+    .card p{
+      margin-top:10px;
+      color:var(--muted);
+      line-height:1.6;
+      font-size:14.5px;
+      font-weight:650;
+    }
+
+    footer{
+      padding:36px 0;
+      border-top:1px solid rgba(255,255,255,0.08);
+      color:var(--muted2);
+      font-size:13px;
+    }
+
+    @media(max-width:900px){
+      .split{grid-template-columns:1fr}
+      .grid3{grid-template-columns:1fr}
+      h1{font-size:36px}
+    }
+  </style>
+</head>
+
+<body>
+
+<header class="topbar">
+  <div class="wrap row">
+    <a class="brandlock" href="index.html">
+      <img src="assets/XposeManagementCRMlogo.png" alt="Xpose Management">
+    </a>
+    <nav class="nav">
+      <a href="index.html">Home</a>
+      <a href="features.html">Features</a>
+      <a href="cortex.html">Cortex</a>
+      <a href="paywall.html">Pricing</a>
+    </nav>
+    <a class="btn primary" href="paywall.html">Get Started</a>
+  </div>
+</header>
+
+<main>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap">
+    <h1>
+      Cortex is the <span class="glow">Decision Engine</span><br/>
+      Behind Smarter Auto Shops
+    </h1>
+    <p class="sub">
+        Cortex helps shops think through repairs the way experienced techs do.
+        It connects diagnostics, symptoms, labor logic, and service context into
+        clear workflows that remove guesswork without slowing anyone down.
+    </p>
+
+    <div class="logoPanel">
+      <img src="assets/Integration-logos/cortex-mark.png" alt="Cortex Logo">
+    </div>
+  </div>
+</section>
+
+<!-- WHY CORTEX EXISTS -->
+<section>
+  <div class="wrap panel">
+    <h2>Why Cortex Exists</h2>
+    <p class="sub">
+      Most shops are forced to piece together diagnostics from out-dated & disconnected sources.
+      Generic code descriptions, static charts, forum guesses, and tribal knowledge.
+	</p>
+
+    <p class="sub">
+	Costing them time and money that they dont even realize - just because they're used to it.
+      Cortex replaces that chaos with structure.
+    </p>
+
+    <p class="sub">
+      Instead of asking technicians to interpret raw information, Cortex organizes it into
+      logical steps, probable causes, and confirmable outcomes.
+      The result is faster decisions, fewer mistakes, and more confident estimates.
+    </p>
+  </div>
+</section>
+
+<!-- Cortex - Analysis -->
+<section>
+  <div class="wrap split">
+    <div class="imageBox">
+      <img src="assets/cortex-analysis.png" alt="Cortex Analysis">
+    </div>
+    <div class="text">
+      <h2>Cortex Analysis</h2>
+      <p>
+	Right off the bat - when you search & open a DTC code, symptom or any sort of workload, Cortex fires up.
+	Cortex scans through its database of sources to give the users the most common cause for the selected vehicle -
+	along with more likely causes + additional diagnosis steps, what the results of the diagnosis mean along with recommended services.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- Cortex - Labor -->
+<section>
+  <div class="wrap split">
+    <div class="text">
+      <h2>Cortex Labor Service Flow</h2>
+      <p>
+	When looking for services, Cortex references OEM and OEM+ procedures alongside trusted technician sources to surface the most accurate service operations.
+	It accounts for required tools, service steps, and real-world labor context so advisors can build estimates that are clear,
+	 defensible, and easy for customers to understand.
+      </p>
+    </div>
+    <div class="imageBox">
+      <img src="assets/cortex-labor.png" alt="Cortex Labor Flow">
+    </div>
+  </div>
+</section>
+
+<!-- PLACEHOLDER 3 -->
+<section>
+  <div class="wrap split">
+    <div class="imageBox">
+      <img src="assets/cortex-diagnosis.png" alt="Cortex Smart Diagnosis">
+    </div>
+    <div class="text">
+      <h2>Cortex Smart Diagnosis</h2>
+      <p>
+        Smart Diagnosis focuses on elimination and confirmation.
+        Cortex helps identify whether an issue is mechanical, electrical, software-related,
+        or service-based before unnecessary work is performed.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- WHY ITS BETTER -->
+<section>
+  <div class="wrap">
+    <h2>Why Cortex Feels Different</h2>
+    <div class="grid3">
+      <div class="card">
+        <h3>Built for consistency</h3>
+        <p>
+          Cortex ensures the same vehicle concern produces the same diagnostic logic,
+          regardless of who is working the job.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Designed for real workflows</h3>
+        <p>
+          Outputs are structured for repair orders, not textbooks.
+          Every step supports the way shops actually operate.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Confidence over guesswork</h3>
+        <p>
+          Cortex prioritizes confirmable steps and verification,
+          reducing comebacks and improving trust with customers.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section>
+  <div class="wrap panel">
+    <h2>Built Into Xpose Management</h2>
+    <p class="sub">
+      Cortex is not an add-on or a separate system.
+      It is fully embedded inside Xpose Management,
+      enhancing every job, estimate, and decision without extra complexity.
+    </p>
+    <a class="btn primary" href="paywall.html" style="margin-top:16px;display:inline-block;">
+      Start Using Cortex
+    </a>
+  </div>
+</section>
+<section>
+  <div class="wrap panel">
+    <h2>Built on a Trust-First Knowledge Base</h2>
+    <p class="sub">
+      Cortex is backed by a deep and growing repair knowledge base built from years of real service logic,
+      diagnostic playbooks, labor operations, and technician-grade workflows.
+      It is not guessing. It is referencing.
+    </p>
+    <p class="sub">
+      When Cortex generates an analysis or a labor recommendation, it is driven by information pulled from a wide network
+      of sources, including OEM and OEM+ references, service procedures, technical bulletins, known failure patterns,
+      and proven repair paths used in professional environments.
+    </p>
+
+    <div style="margin-top:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+      <div class="card">
+        <h3>Massive coverage</h3>
+        <p>
+          Cortex can evaluate data across hundreds to thousands of references to find what matches the exact concern,
+          not just the code or the symptom.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Manual quality control</h3>
+        <p>
+          Core service operations and diagnostic playbooks are built and reviewed with structured logic so results stay
+          consistent, shop-ready, and explainable to customers.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Always improving</h3>
+        <p>
+          Cortex gets sharper over time by learning what works, identifying better matches, and refining outputs so your
+          shop keeps moving faster without sacrificing accuracy.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="panel" style="
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      flex-wrap:wrap;
+      background:
+        radial-gradient(700px 260px at 20% 20%, rgba(96,165,250,0.18), rgba(0,0,0,0) 65%),
+        rgba(255,255,255,0.05);
+    ">
+      <div>
+        <h2 style="margin:0;font-size:24px;font-weight:950;letter-spacing:-0.4px;">
+          Want to go deeper into Cortex?
+        </h2>
+        <p class="sub" style="margin-top:8px;max-width:70ch;">
+          Explore how Cortex analyzes repairs, structures labor logic, and turns complex diagnostic data
+          into confident decisions shops can stand behind.
+          <a
+            href="https://xposemarket.github.io/cortex-auto.github.io/"
+            target="_blank"
+            rel="noopener noreferrer"
+            style="
+              color:var(--accent);
+              font-weight:900;
+              text-decoration:none;
+              border-bottom:2px solid rgba(96,165,250,0.45);
+            "
+          >
+            Learn more here
+          </a>.
+        </p>
+      </div>
+
+      <a
+        href="https://xposemarket.github.io/cortex-auto.github.io/"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="btn primary"
+        style="white-space:nowrap;"
+      >
+        Explore Cortex
+      </a>
+    </div>
+  </div>
+</section>
+
+
+</main>
+
+<footer>
+  <div class="wrap">
+    © <span id="year"></span> Xpose Management.
+  </div>
+</footer>
+
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+</script>
+
+</body>
+</html>
