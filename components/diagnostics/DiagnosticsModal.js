@@ -84,7 +84,7 @@ function renderCompatibilityWarning(codeOrService) {
 }
 
 let currentIsStaff = false;
-export function openDiagnosticsModal({ jobs = [], appointments = [], onClose, isStaff = false }) {
+export function openDiagnosticsModal({ jobs = [], appointments = [], onClose, isStaff = false, initialSearch = '' }) {
   availableJobs = jobs.filter(j => j.status !== 'completed');
   availableAppointments = appointments;
   onCloseCallback = onClose || null;
@@ -100,7 +100,24 @@ export function openDiagnosticsModal({ jobs = [], appointments = [], onClose, is
   loadShopData();
   currentIsStaff = !!isStaff;
   createModal();
-  availableJobs.length > 0 ? showJobSelectionView() : showSearchView();
+  
+  // If initialSearch is provided, go directly to search view with pre-filled query
+  if (initialSearch) {
+    showSearchView();
+    setTimeout(() => {
+      const searchInput = document.getElementById('diagSearchInput');
+      if (searchInput) {
+        searchInput.value = initialSearch;
+        diagSearchState.query = initialSearch;
+        // Trigger the search
+        if (typeof window.diagDoSearch === 'function') {
+          window.diagDoSearch();
+        }
+      }
+    }, 100);
+  } else {
+    availableJobs.length > 0 ? showJobSelectionView() : showSearchView();
+  }
   document.getElementById('diagnosticsModal')?.classList.remove('hidden');
 }
 

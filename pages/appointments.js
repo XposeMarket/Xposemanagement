@@ -3443,8 +3443,9 @@ async function openViewModal(appt) {
   
   if (!modal || !content) return;
 
-  // Determine invoice status (prefer appt.invoice_id, then appointment_id)
+  // Determine invoice status and get services from invoice
   let invStatusHTML = `<div style="display:flex;align-items:center;gap:8px;"><strong>Invoice Status:</strong> <span class=\"tag open\" style=\"flex:0 0 auto;display:inline-flex;\">No Invoice</span></div>`;
+  let invoiceServices = [];
   try {
     const store = JSON.parse(localStorage.getItem('xm_data') || '{}');
     const invoices = store.invoices || window.invoices || [];
@@ -3456,9 +3457,70 @@ async function openViewModal(appt) {
       const cls = (s === 'paid') ? 'completed' : 'open';
       const label = (inv.status || 'open').toString().replace(/_/g, ' ');
       invStatusHTML = `<div style="display:flex;align-items:center;gap:8px;"><strong>Invoice Status:</strong> <span class=\"tag ${cls}\" style=\"flex:0 0 auto;display:inline-flex;\">${label}</span></div>`;
+      // Get services from invoice items (type 'service' or 'labor')
+      if (inv.items && Array.isArray(inv.items)) {
+        invoiceServices = inv.items.filter(item => 
+          item.type === 'service' || item.type === 'labor' || 
+          (item.name && !item.type) // fallback for items without type
+        ).map(item => item.name || item.description || 'Unknown Service');
+      }
     }
   } catch (e) {
     console.warn('[Appointments] Could not determine invoice status for view modal', e);
+  }
+  
+  // Combine appointment service with invoice services (deduplicated)
+  const allServices = [];
+  if (appt.service) allServices.push(appt.service);
+  invoiceServices.forEach(s => {
+    if (!allServices.some(existing => existing.toLowerCase() === s.toLowerCase())) {
+      allServices.push(s);
+    }
+  });
+  
+  // Build services HTML with expandable functionality
+  const hasMultipleServices = allServices.length > 1;
+  const servicesLabel = hasMultipleServices ? 'Services' : 'Service';
+  const primaryService = allServices[0] || 'N/A';
+  
+  let servicesHTML = '';
+  if (hasMultipleServices) {
+    servicesHTML = `
+      <div class="services-expandable">
+        <div class="services-header" onclick="toggleServicesExpand(this)" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <strong>${servicesLabel}:</strong>
+          <span class="primary-service" style="flex:1;">${primaryService}</span>
+          <span class="services-count" style="background:var(--accent, #3b82f6);color:white;padding:2px 8px;border-radius:12px;font-size:12px;">+${allServices.length - 1} more</span>
+          <span class="expand-icon" style="transition:transform 0.2s;">▼</span>
+        </div>
+        <div class="services-list" style="display:none;margin-top:12px;padding-left:12px;border-left:2px solid var(--accent, #3b82f6);">
+          ${allServices.map((svc, idx) => `
+            <div class="service-item" style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;${idx < allServices.length - 1 ? 'border-bottom:1px solid var(--line, #e5e7eb);' : ''}">
+              <span style="flex:1;">${svc}</span>
+              <button class="btn small" onclick="openCortexForService('${svc.replace(/'/g, "\\'")}')"
+                style="display:flex;align-items:center;gap:4px;padding:4px 10px;font-size:12px;">
+                <img src="/assets/cortex-mark.png" alt="" style="width:14px;height:14px;">
+                Cortex
+              </button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  } else {
+    servicesHTML = `
+      <div style="display:flex;align-items:center;gap:8px;">
+        <strong>${servicesLabel}:</strong>
+        <span style="flex:1;">${primaryService}</span>
+        ${primaryService !== 'N/A' ? `
+          <button class="btn small" onclick="openCortexForService('${primaryService.replace(/'/g, "\\'")}')"
+            style="display:flex;align-items:center;gap:4px;padding:4px 10px;font-size:12px;">
+            <img src="/assets/cortex-mark.png" alt="" style="width:14px;height:14px;">
+            Cortex
+          </button>
+        ` : ''}
+      </div>
+    `;
   }
   
   content.innerHTML = `
@@ -3468,7 +3530,7 @@ async function openViewModal(appt) {
       <div><strong>Email:</strong> ${appt.email || 'N/A'}</div>
       <div><strong>Vehicle:</strong> ${appt.vehicle || 'N/A'}</div>
       ${appt.vin ? `<div><strong>VIN:</strong> ${appt.vin}</div>` : ''}
-      <div><strong>Service:</strong> ${appt.service || 'N/A'}</div>
+      ${servicesHTML}
       <div><strong>Date:</strong> ${appt.preferred_date ? new Date(appt.preferred_date).toLocaleDateString() : 'Not set'}</div>
       <div><strong>Time:</strong> ${appt.preferred_time ? formatTime12(appt.preferred_time) : 'Not set'}</div>
       <div><strong>Status:</strong> <span class="tag ${getStatusClass(appt.status)}">${appt.status || 'new'}</span></div>
@@ -6116,6 +6178,47 @@ async function setupAppointments() {
 
 // Export the customer upsert function so it can be used from the modal save buttons
 export { setupAppointments, upsertCustomerToSupabase, saveAppointments, loadAppointments, renderAppointments, openViewModal };
+
+// === Services Expand & Cortex Integration ===
+
+// Toggle services expand/collapse
+window.toggleServicesExpand = function(headerEl) {
+  const container = headerEl.closest('.services-expandable');
+  if (!container) return;
+  const list = container.querySelector('.services-list');
+  const icon = container.querySelector('.expand-icon');
+  if (!list) return;
+  
+  const isExpanded = list.style.display !== 'none';
+  list.style.display = isExpanded ? 'none' : 'block';
+  if (icon) icon.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';
+};
+
+// Open Cortex modal with pre-filled search for a specific service
+window.openCortexForService = async function(serviceName) {
+  try {
+    // Import the diagnostics modal dynamically
+    const { openDiagnosticsModal } = await import('../components/diagnostics/DiagnosticsModal.js');
+    
+    // Get current jobs and appointments for context
+    const store = JSON.parse(localStorage.getItem('xm_data') || '{}');
+    const jobs = store.jobs || [];
+    const appointments = allAppointments || [];
+    
+    // Open the modal
+    openDiagnosticsModal({
+      jobs: jobs.filter(j => j.status !== 'completed'),
+      appointments: appointments,
+      initialSearch: serviceName, // Pre-fill search with service name
+      onClose: () => {
+        console.log('[Appointments] Cortex modal closed for service:', serviceName);
+      }
+    });
+  } catch (err) {
+    console.error('[Appointments] Failed to open Cortex for service:', err);
+    alert('Could not open Cortex. Please try again.');
+  }
+};
 
 // Initialize note modal bindings for pages that reuse the appointment modals
 function initAppointmentNotes() {

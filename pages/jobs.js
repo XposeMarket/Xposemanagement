@@ -1507,6 +1507,78 @@ async function openJobViewModal(job, appt) {
     return map[status] || '';
   };
   
+  // Get services from invoice items
+  let invoiceServices = [];
+  try {
+    const store = JSON.parse(localStorage.getItem('xm_data') || '{}');
+    const invoices = store.invoices || [];
+    let inv = null;
+    if (appt.invoice_id) inv = invoices.find(i => i.id === appt.invoice_id);
+    if (!inv) inv = invoices.find(i => i.appointment_id === appt.id);
+    if (inv && inv.items && Array.isArray(inv.items)) {
+      invoiceServices = inv.items.filter(item => 
+        item.type === 'service' || item.type === 'labor' || 
+        (item.name && !item.type)
+      ).map(item => item.name || item.description || 'Unknown Service');
+    }
+  } catch (e) {
+    console.warn('[Jobs] Could not get invoice services for view modal', e);
+  }
+  
+  // Combine appointment service with invoice services (deduplicated)
+  const allServices = [];
+  if (appt.service) allServices.push(appt.service);
+  invoiceServices.forEach(s => {
+    if (!allServices.some(existing => existing.toLowerCase() === s.toLowerCase())) {
+      allServices.push(s);
+    }
+  });
+  
+  // Build services HTML with expandable functionality
+  const hasMultipleServices = allServices.length > 1;
+  const servicesLabel = hasMultipleServices ? 'Services' : 'Service';
+  const primaryService = allServices[0] || 'N/A';
+  
+  let servicesHTML = '';
+  if (hasMultipleServices) {
+    servicesHTML = `
+      <div class="services-expandable">
+        <div class="services-header" onclick="toggleServicesExpand(this)" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <strong>${servicesLabel}:</strong>
+          <span class="primary-service" style="flex:1;">${primaryService}</span>
+          <span class="services-count" style="background:var(--accent, #3b82f6);color:white;padding:2px 8px;border-radius:12px;font-size:12px;">+${allServices.length - 1} more</span>
+          <span class="expand-icon" style="transition:transform 0.2s;">▼</span>
+        </div>
+        <div class="services-list" style="display:none;margin-top:12px;padding-left:12px;border-left:2px solid var(--accent, #3b82f6);">
+          ${allServices.map((svc, idx) => `
+            <div class="service-item" style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;${idx < allServices.length - 1 ? 'border-bottom:1px solid var(--line, #e5e7eb);' : ''}">
+              <span style="flex:1;">${svc}</span>
+              <button class="btn small" onclick="openCortexForService('${svc.replace(/'/g, "\\'")}')"
+                style="display:flex;align-items:center;gap:4px;padding:4px 10px;font-size:12px;">
+                <img src="/assets/cortex-mark.png" alt="" style="width:14px;height:14px;">
+                Cortex
+              </button>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  } else {
+    servicesHTML = `
+      <div style="display:flex;align-items:center;gap:8px;">
+        <strong>${servicesLabel}:</strong>
+        <span style="flex:1;">${primaryService}</span>
+        ${primaryService !== 'N/A' ? `
+          <button class="btn small" onclick="openCortexForService('${primaryService.replace(/'/g, "\\'")}')"
+            style="display:flex;align-items:center;gap:4px;padding:4px 10px;font-size:12px;">
+            <img src="/assets/cortex-mark.png" alt="" style="width:14px;height:14px;">
+            Cortex
+          </button>
+        ` : ''}
+      </div>
+    `;
+  }
+  
   content.innerHTML = `
     <div style="display: grid; gap: 12px;">
       <div><strong>Customer:</strong> ${appt.customer || 'N/A'}</div>
@@ -1514,7 +1586,7 @@ async function openJobViewModal(job, appt) {
       <div><strong>Email:</strong> ${appt.email || 'N/A'}</div>
       <div><strong>Vehicle:</strong> ${appt.vehicle || 'N/A'}</div>
       ${appt.vin ? `<div><strong>VIN:</strong> ${appt.vin}</div>` : ''}
-      <div><strong>Service:</strong> ${appt.service || 'N/A'}</div>
+      ${servicesHTML}
       <div><strong>Date:</strong> ${appt.preferred_date ? new Date(appt.preferred_date).toLocaleDateString() : 'Not set'}</div>
       <div><strong>Time:</strong> ${formatTime12(appt.preferred_time)}</div>
       <div><strong>Status:</strong> <span class="tag ${getStatusClass(appt.status)}">${appt.status || 'new'}</span></div>
@@ -4843,6 +4915,44 @@ async function addServiceToSettings(name, price) {
     console.error('[jobs] addServiceToSettings failed:', ex);
     throw ex;
   }
+}
+
+// === Services Expand & Cortex Integration ===
+
+// Toggle services expand/collapse (if not already defined)
+if (typeof window.toggleServicesExpand !== 'function') {
+  window.toggleServicesExpand = function(headerEl) {
+    const container = headerEl.closest('.services-expandable');
+    if (!container) return;
+    const list = container.querySelector('.services-list');
+    const icon = container.querySelector('.expand-icon');
+    if (!list) return;
+    
+    const isExpanded = list.style.display !== 'none';
+    list.style.display = isExpanded ? 'none' : 'block';
+    if (icon) icon.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';
+  };
+}
+
+// Open Cortex modal with pre-filled search for a specific service (if not already defined)
+if (typeof window.openCortexForService !== 'function') {
+  window.openCortexForService = async function(serviceName) {
+    try {
+      // Use the already imported openDiagnosticsModal
+      openDiagnosticsModal({
+        jobs: allJobs.filter(j => j.status !== 'completed'),
+        appointments: allAppointments,
+        initialSearch: serviceName,
+        onClose: () => {
+          console.log('[Jobs] Cortex modal closed for service:', serviceName);
+          renderJobs(); // Refresh in case changes were made
+        }
+      });
+    } catch (err) {
+      console.error('[Jobs] Failed to open Cortex for service:', err);
+      alert('Could not open Cortex. Please try again.');
+    }
+  };
 }
 
 export { setupJobs, saveJobs };

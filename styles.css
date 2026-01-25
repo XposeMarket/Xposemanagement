@@ -556,6 +556,30 @@
   color: #f87171 !important;
 }
 
+/* Landing theme - Services expandable in view modals */
+:root.theme-landing .services-expandable {
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+:root.theme-landing .services-header:hover {
+  background: rgba(255,255,255,0.05);
+  border-radius: 6px;
+}
+
+:root.theme-landing .services-list {
+  border-left-color: var(--accent, #22c55e) !important;
+}
+
+:root.theme-landing .service-item {
+  border-bottom-color: rgba(255,255,255,0.1) !important;
+}
+
+:root.theme-landing .services-count {
+  background: var(--accent, #22c55e) !important;
+}
+
 /* Modal header and footer borders */
 :root.theme-landing .modal-head,
 :root.theme-landing .modal-foot {
