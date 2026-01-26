@@ -1,7 +1,7 @@
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Invoices</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="css/terminal-modal.css">
 <style>
-  .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.35); display:flex; align-items:center; justify-content:center; z-index:10030; }
-  .modal-card { width:min(720px,92vw); background:var(--card,#fff); color:inherit; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+  .modal-backdrop { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:10030; }
+  .modal-card { width:min(720px,92vw); border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); }
   .modal-head { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid var(--border,#e5e5e5); }
   .modal-body { padding:12px 14px; }
   .modal-foot { display:flex; justify-content:flex-end; gap:8px; padding:12px 14px; border-top:1px solid var(--border,#e5e5e5); }
@@ -86,7 +86,10 @@
         <div id="platformFeeDesc" style="font-size:0.85rem;color:var(--muted);">Platform fee: Stripe processing (2.7% + $0.05) + Xpose platform fee (2.3%)</div>
       </div>
       <div style="display:flex;gap:8px;">
-        <button id="sendEstimateBtn" class="btn secondary" style="background:#8b5cf6;color:white;" title="Send estimate to customer for approval">📋 Send Estimate</button>
+        <button id="sendEstimateBtn" class="btn quick-create" style="display:flex;align-items:center;gap:6px;" title="Send estimate to customer for approval">
+          <span style="font-size:1.1em;">📋</span>
+          <span style="font-weight:600;">Send Estimate</span>
+        </button>
         <button id="closeInv" class="btn">Close</button>
       </div>
     </div>
@@ -119,7 +122,7 @@
       <div style="margin-right:auto;"></div>
       <div>Subtotal: $<span id="subTotal">0.00</span></div><div style="width:14px"></div>
       <div>Grand Total: $<span id="grandTotal">0.00</span></div><div style="width:14px"></div>
-      <div style="font-weight:bold;color:var(--primary,#0070f3);">Total After Platform Fee: $<span id="netTotal">0.00</span></div><div style="width:14px"></div>
+      <div>Total After Platform Fee: $<span id="netTotal">0.00</span></div><div style="width:14px"></div>
       <button id="saveInv" class="btn primary">Save</button>
     </div>
   </div>

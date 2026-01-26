@@ -17,6 +17,7 @@ import { createShopNotification } from '../helpers/shop-notifications.js';
 import { getInspectionSummary } from '../helpers/inspection-api.js';
 import { inspectionForm } from '../components/inspectionFormModal.js';
 import { decodeVIN, isValidVIN, formatVehicleDisplay, getVehicleDetails } from '../helpers/vin-decoder.js';
+import { openDiagnosticsModal } from '../components/diagnostics/DiagnosticsModal.js';
 
 // Current appointment being edited
 let currentApptId = null;
@@ -200,6 +201,7 @@ async function fetchCurrentUserRole() {
 // ========== Status Polling for Appointments ==========
 let apptStatusPollingInterval = null;
 let lastKnownApptStatusHash = null;
+let lastKnownInvoiceHash = null;
 const APPT_STATUS_POLL_INTERVAL = 30000; // 30 seconds
 
 function generateApptStatusHash(items) {
@@ -207,14 +209,24 @@ function generateApptStatusHash(items) {
   return items.map(i => `${i.id}:${i.status}:${i.updated_at || ''}`).sort().join('|');
 }
 
+function generateInvoiceHash(invoices) {
+  if (!invoices || invoices.length === 0) return 'empty';
+  return invoices.map(inv => {
+    const itemsHash = (inv.items || []).map(i => `${i.name || ''}:${i.type || ''}`).join(',');
+    return `${inv.id}:${inv.updated_at || ''}:${itemsHash}`;
+  }).sort().join('|');
+}
+
 async function pollForAppointmentStatuses() {
   try {
     const supabase = getSupabaseClient();
+    const shopId = getCurrentShopId();
     if (!supabase || !allAppointments.length) return;
 
     const apptIds = allAppointments.map(a => a.id).filter(Boolean);
     if (!apptIds.length) return;
 
+    // Poll for appointment status changes
     const { data: rows, error } = await supabase
       .from('appointments')
       .select('id,status,updated_at')
@@ -222,28 +234,49 @@ async function pollForAppointmentStatuses() {
 
     if (error) { console.warn('[ApptStatusPolling] Supabase error:', error); return; }
 
+    let needsRerender = false;
+
     const currentHash = generateApptStatusHash(rows || []);
-    if (lastKnownApptStatusHash === null) { lastKnownApptStatusHash = currentHash; return; }
-    if (currentHash !== lastKnownApptStatusHash) {
-      console.log('[ApptStatusPolling] Appointment statuses changed, merging and refreshing table...');
+    if (lastKnownApptStatusHash === null) { lastKnownApptStatusHash = currentHash; }
+    else if (currentHash !== lastKnownApptStatusHash) {
+      console.log('[ApptStatusPolling] Appointment statuses changed, merging...');
       lastKnownApptStatusHash = currentHash;
 
       // Merge the polled appointment status rows into the in-memory `allAppointments` array.
       const rowsMap = (rows || []).reduce((m, r) => { if (r && r.id) m[r.id] = r; return m; }, {});
-      let didChange = false;
       allAppointments = allAppointments.map(a => {
         if (!a || !a.id) return a;
         const polled = rowsMap[a.id];
         if (!polled) return a;
         if (a.status !== polled.status || (polled.updated_at && a.updated_at !== polled.updated_at)) {
-          didChange = true;
+          needsRerender = true;
           return Object.assign({}, a, { status: polled.status, updated_at: polled.updated_at });
         }
         return a;
       });
-
-      if (didChange) await renderAppointments();
     }
+
+    // Poll for invoice changes (items added/removed)
+    if (shopId) {
+      try {
+        const { data: invoiceRows } = await supabase
+          .from('invoices')
+          .select('id, appointment_id, items, updated_at')
+          .eq('shop_id', shopId);
+        
+        const currentInvoiceHash = generateInvoiceHash(invoiceRows || []);
+        if (lastKnownInvoiceHash === null) { lastKnownInvoiceHash = currentInvoiceHash; }
+        else if (currentInvoiceHash !== lastKnownInvoiceHash) {
+          console.log('[ApptStatusPolling] Invoice items changed, refreshing table...');
+          lastKnownInvoiceHash = currentInvoiceHash;
+          needsRerender = true;
+        }
+      } catch (invErr) {
+        console.warn('[ApptStatusPolling] Error polling invoices:', invErr);
+      }
+    }
+
+    if (needsRerender) await renderAppointments();
   } catch (e) {
     console.warn('[ApptStatusPolling] Error polling appointment statuses:', e);
   }
@@ -2908,6 +2941,37 @@ async function renderAppointments(appointments = allAppointments) {
     console.warn('Could not fetch notes for indicators:', e);
   }
   
+  // Fetch fresh invoice data for services display
+  let freshInvoices = [];
+  try {
+    const supabase = getSupabaseClient();
+    const shopId = getCurrentShopId();
+    if (supabase && shopId) {
+      // Fetch from invoices table (most up-to-date)
+      const { data: invData } = await supabase
+        .from('invoices')
+        .select('id, appointment_id, items, status')
+        .eq('shop_id', shopId);
+      if (invData) freshInvoices = invData;
+    }
+    if (freshInvoices.length === 0) {
+      // Fallback to localStorage
+      const store = JSON.parse(localStorage.getItem('xm_data') || '{}');
+      freshInvoices = store.invoices || [];
+    }
+  } catch (e) {
+    console.warn('Could not fetch invoices for services display:', e);
+    const store = JSON.parse(localStorage.getItem('xm_data') || '{}');
+    freshInvoices = store.invoices || [];
+  }
+  
+  // Create invoice lookup map
+  const invoiceLookup = new Map();
+  freshInvoices.forEach(inv => {
+    if (inv.appointment_id) invoiceLookup.set(inv.appointment_id, inv);
+    if (inv.id) invoiceLookup.set(inv.id, inv);
+  });
+  
   // Get staff auth_id for consistent comparison
   const staffAuthId = currentUserForClaim?.auth_id || currentUserForClaim?.id;
   
@@ -3020,18 +3084,16 @@ async function renderAppointments(appointments = allAppointments) {
     // Service - check for multiple services from invoice
     const tdService = document.createElement('td');
     
-    // Get services from invoice items
+    // Get services from fresh invoice data (use invoiceLookup from renderAppointments)
     let invoiceServices = [];
     try {
-      const store = JSON.parse(localStorage.getItem('xm_data') || '{}');
-      const invoices = store.invoices || window.invoices || [];
       let inv = null;
-      if (appt.invoice_id) inv = invoices.find(i => i.id === appt.invoice_id);
-      if (!inv) inv = invoices.find(i => i.appointment_id === appt.id);
+      if (appt.invoice_id) inv = invoiceLookup.get(appt.invoice_id);
+      if (!inv) inv = invoiceLookup.get(appt.id);
       if (inv && inv.items && Array.isArray(inv.items)) {
         invoiceServices = inv.items.filter(item => 
-          item.type === 'service' || item.type === 'labor' || 
-          (item.name && !item.type)
+          item.type === 'service' || 
+          (!item.type && item.name && !item.name.toLowerCase().startsWith('labor'))
         ).map(item => item.name || item.description || 'Unknown Service');
       }
     } catch (e) {
@@ -3497,15 +3559,39 @@ async function openViewModal(appt) {
   
   if (!modal || !content) return;
 
-  // Determine invoice status and get services from invoice
+  // Fetch fresh invoice data from Supabase (don't rely on localStorage cache)
   let invStatusHTML = `<div style="display:flex;align-items:center;gap:8px;"><strong>Invoice Status:</strong> <span class=\"tag open\" style=\"flex:0 0 auto;display:inline-flex;\">No Invoice</span></div>`;
   let invoiceServices = [];
   try {
-    const store = JSON.parse(localStorage.getItem('xm_data') || '{}');
-    const invoices = store.invoices || window.invoices || [];
+    const supabase = getSupabaseClient();
+    const shopId = getCurrentShopId();
     let inv = null;
-    if (appt.invoice_id) inv = invoices.find(i => i.id === appt.invoice_id);
-    if (!inv) inv = invoices.find(i => i.appointment_id === appt.id);
+    
+    if (supabase && shopId) {
+      // Try to fetch from invoices table first (most up-to-date)
+      if (appt.invoice_id) {
+        const { data: invData } = await supabase.from('invoices').select('*').eq('id', appt.invoice_id).single();
+        if (invData) inv = invData;
+      }
+      if (!inv) {
+        const { data: invData } = await supabase.from('invoices').select('*').eq('appointment_id', appt.id).single();
+        if (invData) inv = invData;
+      }
+      // Fallback to data.invoices JSONB
+      if (!inv) {
+        const { data: dataRow } = await supabase.from('data').select('invoices').eq('shop_id', shopId).single();
+        const invoices = dataRow?.invoices || [];
+        if (appt.invoice_id) inv = invoices.find(i => i.id === appt.invoice_id);
+        if (!inv) inv = invoices.find(i => i.appointment_id === appt.id);
+      }
+    } else {
+      // Fallback to localStorage
+      const store = JSON.parse(localStorage.getItem('xm_data') || '{}');
+      const invoices = store.invoices || [];
+      if (appt.invoice_id) inv = invoices.find(i => i.id === appt.invoice_id);
+      if (!inv) inv = invoices.find(i => i.appointment_id === appt.id);
+    }
+    
     if (inv) {
       const s = (inv.status || 'open').toString().trim().toLowerCase();
       const cls = (s === 'paid') ? 'completed' : 'open';
@@ -3514,8 +3600,8 @@ async function openViewModal(appt) {
       // Get services from invoice items (type 'service' or 'labor')
       if (inv.items && Array.isArray(inv.items)) {
         invoiceServices = inv.items.filter(item => 
-          item.type === 'service' || item.type === 'labor' || 
-          (item.name && !item.type) // fallback for items without type
+          item.type === 'service' || 
+          (!item.type && item.name && !item.name.toLowerCase().startsWith('labor'))
         ).map(item => item.name || item.description || 'Unknown Service');
       }
     }
@@ -5857,6 +5943,12 @@ async function setupAppointments() {
     newBtn.style.display = 'none';
   }
   
+  // Hide Add Services button for staff (they use jobs page Cortex)
+  const servicesBtn = document.getElementById('openServicesBtn');
+  if (servicesBtn && isStaffUser) {
+    servicesBtn.style.display = 'none';
+  }
+  
   // Load appointments
   allAppointments = await loadAppointments();
   console.log(`✅ Loaded ${allAppointments.length} appointments`);
@@ -5870,6 +5962,21 @@ async function setupAppointments() {
   
   // Event listeners
   if (newBtn) newBtn.addEventListener('click', openNewModal);
+  
+  // Add Services button - opens Cortex in services-only mode
+  if (servicesBtn) {
+    servicesBtn.addEventListener('click', () => {
+      openDiagnosticsModal({
+        appointments: allAppointments,
+        servicesOnly: true,
+        onClose: () => {
+          console.log('[Appointments] Services modal closed');
+          // Refresh the table in case services were added
+          renderAppointments();
+        }
+      });
+    });
+  }
   
   const closeNewBtn = document.getElementById('closeAppt');
   if (closeNewBtn) closeNewBtn.addEventListener('click', closeNewModal);

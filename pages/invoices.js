@@ -2410,12 +2410,12 @@ function setupInvoices() {
 
     // Build invoice summary with same style as invoice.html
     const itemsHTML = (inv.items || []).map(item => `
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;">
+      <div class="checkout-item" style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line, #eee);">
         <div>
-          <div style="font-weight:500;">${item.name || 'Item'}</div>
-          <div style="font-size:12px;color:#666;">Qty: ${item.qty || 1} × ${(item.price || 0).toFixed(2)}</div>
+          <div style="font-weight:500;color:var(--text);">${item.name || 'Item'}</div>
+          <div style="font-size:12px;color:var(--muted, #666);">Qty: ${item.qty || 1} × ${(item.price || 0).toFixed(2)}</div>
         </div>
-        <div style="font-weight:600;">${((item.qty || 1) * (item.price || 0)).toFixed(2)}</div>
+        <div style="font-weight:600;color:var(--text);">${((item.qty || 1) * (item.price || 0)).toFixed(2)}</div>
       </div>
     `).join('');
 
@@ -2426,21 +2426,21 @@ function setupInvoices() {
         </div>
         <div class="terminal-body">
           <div class="invoice-summary">
-            <p><strong>Invoice #${inv.number || inv.id}</strong></p>
-            <p>Customer: ${customerName}</p>
+            <p style="color:var(--text);"><strong>Invoice #${inv.number || inv.id}</strong></p>
+            <p style="color:var(--text);">Customer: ${customerName}</p>
             <div style="margin:16px 0;">${itemsHTML}</div>
-            <div style="display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:2px solid #ddd;">
+            <div style="display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:2px solid var(--line, #ddd);color:var(--muted);">
               <div>Subtotal:</div>
               <div>${subtotal.toFixed(2)}</div>
             </div>
             ${tax > 0 ? `
-            <div style="display:flex;justify-content:space-between;margin-top:4px;">
+            <div style="display:flex;justify-content:space-between;margin-top:4px;color:var(--muted);">
               <div>Tax (${inv.tax_rate || 0}%):</div>
               <div>${tax.toFixed(2)}</div>
             </div>
             ` : ''}
             ${discount > 0 ? `
-            <div style="display:flex;justify-content:space-between;margin-top:4px;">
+            <div style="display:flex;justify-content:space-between;margin-top:4px;color:var(--muted);">
               <div>Discount (${inv.discount || 0}%):</div>
               <div>-${discount.toFixed(2)}</div>
             </div>

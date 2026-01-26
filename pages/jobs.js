@@ -156,7 +156,45 @@ function stopNotesPolling() {
 // ========== Status Polling ==========
 let statusPollingInterval = null;
 let lastKnownStatusHash = null;
+let lastKnownJobInvoiceHash = null;
 const STATUS_POLL_INTERVAL = 15000; // 15 seconds - align with notifications and claim-board
+
+function generateJobInvoiceHash(invoices) {
+  if (!invoices || invoices.length === 0) return 'empty';
+  return invoices.map(inv => {
+    const itemsHash = (inv.items || []).map(i => `${i.name || ''}:${i.type || ''}`).join(',');
+    return `${inv.id}:${inv.updated_at || ''}:${itemsHash}`;
+  }).sort().join('|');
+}
+
+async function pollForInvoiceChanges() {
+  try {
+    const supabase = getSupabaseClient();
+    const shopId = getCurrentShopId();
+    if (!supabase || !shopId) return;
+
+    const { data: invoiceRows } = await supabase
+      .from('invoices')
+      .select('id, appointment_id, items, updated_at')
+      .eq('shop_id', shopId);
+    
+    const currentHash = generateJobInvoiceHash(invoiceRows || []);
+    if (lastKnownJobInvoiceHash === null) { lastKnownJobInvoiceHash = currentHash; return; }
+    if (currentHash !== lastKnownJobInvoiceHash) {
+      console.log('[JobsPolling] Invoice items changed, refreshing table...');
+      lastKnownJobInvoiceHash = currentHash;
+      await renderJobs();
+    }
+  } catch (e) {
+    console.warn('[JobsPolling] Error polling invoices:', e);
+  }
+}
+
+function startInvoicePolling() {
+  // Poll for invoice changes every 15 seconds (aligned with status polling)
+  setInterval(pollForInvoiceChanges, STATUS_POLL_INTERVAL);
+  pollForInvoiceChanges(); // Initial poll
+}
 
 // Highlighting for newly displayed job rows
 let newJobHighlights = new Map();
@@ -849,6 +887,35 @@ async function renderJobs() {
     console.warn('Could not fetch notes for indicators:', e);
   }
   
+  // Fetch fresh invoice data for services display
+  let freshInvoices = [];
+  try {
+    const supabase = getSupabaseClient();
+    const shopId = getCurrentShopId();
+    if (supabase && shopId) {
+      const { data: invData } = await supabase
+        .from('invoices')
+        .select('id, appointment_id, items, status')
+        .eq('shop_id', shopId);
+      if (invData) freshInvoices = invData;
+    }
+    if (freshInvoices.length === 0) {
+      const store = JSON.parse(localStorage.getItem('xm_data') || '{}');
+      freshInvoices = store.invoices || [];
+    }
+  } catch (e) {
+    console.warn('Could not fetch invoices for services display:', e);
+    const store = JSON.parse(localStorage.getItem('xm_data') || '{}');
+    freshInvoices = store.invoices || [];
+  }
+  
+  // Create invoice lookup map and store globally for table rows
+  window._jobsInvoiceLookup = new Map();
+  freshInvoices.forEach(inv => {
+    if (inv.appointment_id) window._jobsInvoiceLookup.set(inv.appointment_id, inv);
+    if (inv.id) window._jobsInvoiceLookup.set(inv.id, inv);
+  });
+  
   // Active jobs (in_progress)
   const activeJobs = allJobs.filter(j => j.status === 'in_progress');
   renderJobsTable('jobsTable', 'jobsEmpty', activeJobs, 'No active jobs.', unreadNotesMap);
@@ -1123,9 +1190,62 @@ function openJobActionsModal(job) {
     tdVehicle.textContent = appt?.vehicle || 'N/A';
     tr.appendChild(tdVehicle);
     
-    // Service
+    // Service - check for multiple services from invoice
     const tdService = document.createElement('td');
-    tdService.textContent = appt?.service || 'N/A';
+    
+    // Get services from fresh invoice data (use window._jobsInvoiceLookup from renderJobs)
+    let invoiceServices = [];
+    try {
+      const invoiceLookup = window._jobsInvoiceLookup || new Map();
+      let inv = null;
+      if (appt?.invoice_id) inv = invoiceLookup.get(appt.invoice_id);
+      if (!inv && appt?.id) inv = invoiceLookup.get(appt.id);
+      if (inv && inv.items && Array.isArray(inv.items)) {
+        invoiceServices = inv.items.filter(item => 
+          item.type === 'service' || 
+          (!item.type && item.name && !item.name.toLowerCase().startsWith('labor'))
+        ).map(item => item.name || item.description || 'Unknown Service');
+      }
+    } catch (e) {
+      console.warn('[Jobs] Could not get invoice services for table row', e);
+    }
+    
+    // Combine appointment service with invoice services (deduplicated)
+    const allServices = [];
+    if (appt?.service) allServices.push(appt.service);
+    invoiceServices.forEach(s => {
+      if (!allServices.some(existing => existing.toLowerCase() === s.toLowerCase())) {
+        allServices.push(s);
+      }
+    });
+    
+    const hasMultipleServices = allServices.length > 1;
+    const primaryService = allServices[0] || 'N/A';
+    
+    if (hasMultipleServices) {
+      // Create dropdown button for multiple services
+      const serviceWrapper = document.createElement('div');
+      serviceWrapper.className = 'service-dropdown-wrapper';
+      serviceWrapper.style.cssText = 'position:relative;';
+      
+      const serviceBtn = document.createElement('button');
+      serviceBtn.className = 'service-dropdown-btn';
+      serviceBtn.innerHTML = `
+        <span class="service-primary">${primaryService}</span>
+        <span class="service-badge">+${allServices.length - 1}</span>
+        <span class="service-chevron">▼</span>
+      `;
+      serviceBtn.onclick = (e) => {
+        e.stopPropagation();
+        toggleServiceDropdown(serviceWrapper, allServices);
+      };
+      
+      serviceWrapper.appendChild(serviceBtn);
+      tdService.appendChild(serviceWrapper);
+    } else {
+      tdService.textContent = primaryService;
+    }
+    
     tr.appendChild(tdService);
     
     // Status
@@ -1507,18 +1627,36 @@ async function openJobViewModal(job, appt) {
     return map[status] || '';
   };
   
-  // Get services from invoice items
+  // Get services from invoice items - fetch fresh from Supabase
   let invoiceServices = [];
   try {
-    const store = JSON.parse(localStorage.getItem('xm_data') || '{}');
-    const invoices = store.invoices || [];
+    const supabase = getSupabaseClient();
+    const shopId = getCurrentShopId();
     let inv = null;
-    if (appt.invoice_id) inv = invoices.find(i => i.id === appt.invoice_id);
-    if (!inv) inv = invoices.find(i => i.appointment_id === appt.id);
+    
+    if (supabase && shopId) {
+      // Try to fetch from invoices table first (most up-to-date)
+      if (appt.invoice_id) {
+        const { data: invData } = await supabase.from('invoices').select('*').eq('id', appt.invoice_id).single();
+        if (invData) inv = invData;
+      }
+      if (!inv) {
+        const { data: invData } = await supabase.from('invoices').select('*').eq('appointment_id', appt.id).single();
+        if (invData) inv = invData;
+      }
+    }
+    
+    // Fallback to lookup or localStorage
+    if (!inv) {
+      const invoiceLookup = window._jobsInvoiceLookup || new Map();
+      if (appt.invoice_id) inv = invoiceLookup.get(appt.invoice_id);
+      if (!inv) inv = invoiceLookup.get(appt.id);
+    }
+    
     if (inv && inv.items && Array.isArray(inv.items)) {
       invoiceServices = inv.items.filter(item => 
-        item.type === 'service' || item.type === 'labor' || 
-        (item.name && !item.type)
+        item.type === 'service' || 
+        (!item.type && item.name && !item.name.toLowerCase().startsWith('labor'))
       ).map(item => item.name || item.description || 'Unknown Service');
     }
   } catch (e) {
@@ -4826,6 +4964,8 @@ async function setupJobs() {
   startNotesPolling();
   // Start polling for status updates so other users see live status changes
   if (typeof startStatusPolling === 'function') startStatusPolling();
+  // Start polling for invoice changes (services updates)
+  startInvoicePolling();
 
   // Wire up Diagnostics button
   const diagBtn = document.getElementById('openDiagnosticsBtn');
@@ -4931,6 +5071,93 @@ if (typeof window.toggleServicesExpand !== 'function') {
     const isExpanded = list.style.display !== 'none';
     list.style.display = isExpanded ? 'none' : 'block';
     if (icon) icon.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';
+  };
+}
+
+// Open Cortex modal with pre-filled search for a specific service (if not already defined)
+if (typeof window.openCortexForService !== 'function') {
+  window.openCortexForService = async function(serviceName) {
+    try {
+      // Use the already imported openDiagnosticsModal
+      openDiagnosticsModal({
+        jobs: allJobs.filter(j => j.status !== 'completed'),
+        appointments: allAppointments,
+        initialSearch: serviceName,
+        onClose: () => {
+          console.log('[Jobs] Cortex modal closed for service:', serviceName);
+          renderJobs(); // Refresh in case changes were made
+        }
+      });
+    } catch (err) {
+      console.error('[Jobs] Failed to open Cortex for service:', err);
+      alert('Could not open Cortex. Please try again.');
+    }
+  };
+}
+
+// === Services Expand & Cortex Integration ===
+
+// Toggle services expand/collapse (if not already defined)
+if (typeof window.toggleServicesExpand !== 'function') {
+  window.toggleServicesExpand = function(headerEl) {
+    const container = headerEl.closest('.services-expandable');
+    if (!container) return;
+    const list = container.querySelector('.services-list');
+    const icon = container.querySelector('.expand-icon');
+    if (!list) return;
+    
+    const isExpanded = list.style.display !== 'none';
+    list.style.display = isExpanded ? 'none' : 'block';
+    if (icon) icon.style.transform = isExpanded ? 'rotate(0deg)' : 'rotate(180deg)';
+  };
+}
+
+// Toggle service dropdown in table rows (if not already defined)
+if (typeof window.toggleServiceDropdown !== 'function') {
+  window.toggleServiceDropdown = function(wrapperEl, services) {
+    // Close any other open dropdowns first
+    document.querySelectorAll('.service-dropdown-menu.open').forEach(menu => {
+      if (menu.parentElement !== wrapperEl) {
+        menu.parentElement.closest('tr')?.classList.remove('dropdown-open');
+        menu.remove();
+      }
+    });
+
+    // Check if dropdown already exists
+    let dropdown = wrapperEl.querySelector('.service-dropdown-menu');
+    if (dropdown) {
+      wrapperEl.closest('tr')?.classList.remove('dropdown-open');
+      dropdown.remove();
+      return;
+    }
+
+    // Add class to parent row for z-index
+    wrapperEl.closest('tr')?.classList.add('dropdown-open');
+
+    // Create dropdown
+    dropdown = document.createElement('div');
+    dropdown.className = 'service-dropdown-menu open';
+    dropdown.innerHTML = services.map((svc) => `
+      <div class="service-dropdown-item">
+        <span class="service-name">${svc}</span>
+        <button class="btn small cortex-btn" onclick="event.stopPropagation(); openCortexForService('${svc.replace(/'/g, "\\'")}')">
+          <img src="/assets/cortex-mark.png" alt="" style="width:14px;height:14px;">
+          Cortex
+        </button>
+      </div>
+    `).join('');
+
+    wrapperEl.appendChild(dropdown);
+
+    // Close dropdown when clicking outside
+    const closeHandler = (e) => {
+      if (!wrapperEl.contains(e.target)) {
+        wrapperEl.closest('tr')?.classList.remove('dropdown-open');
+        dropdown.remove();
+        document.removeEventListener('click', closeHandler);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeHandler), 0);
   };
 }
 

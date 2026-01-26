@@ -25,6 +25,15 @@ const DATA_POLL_INTERVAL = 15000; // 15 seconds
 // Track seen job IDs to detect new ones
 let seenJobIds = new Set();
 let lastKnownDataHash = null;
+let lastKnownClaimInvoiceHash = null;
+
+function generateClaimInvoiceHash(invoices) {
+  if (!invoices || invoices.length === 0) return 'empty';
+  return invoices.map(inv => {
+    const itemsHash = (inv.items || []).map(i => `${i.name || ''}:${i.type || ''}`).join(',');
+    return `${inv.id}:${inv.updated_at || ''}:${itemsHash}`;
+  }).sort().join('|');
+}
 
 // Track the set of job ids currently displayed on the board (for highlight detection)
 let lastDisplayedJobIds = new Set();
@@ -290,6 +299,24 @@ async function pollForDataUpdates() {
     if (lastKnownDataHash === null || prevHash !== currHash) {
       lastKnownDataHash = currHash;
       await initClaimBoard(true);
+    }
+  } catch (e) {
+    // Also check for invoice changes (services updates)
+    try {
+      const { data: invoiceRows } = await supabase
+        .from('invoices')
+        .select('id, appointment_id, items, updated_at')
+        .eq('shop_id', shopId);
+      
+      const currentInvoiceHash = generateClaimInvoiceHash(invoiceRows || []);
+      if (lastKnownClaimInvoiceHash === null) { lastKnownClaimInvoiceHash = currentInvoiceHash; }
+      else if (currentInvoiceHash !== lastKnownClaimInvoiceHash) {
+        console.log('[claim-board] Invoice items changed, refreshing...');
+        lastKnownClaimInvoiceHash = currentInvoiceHash;
+        await initClaimBoard(true);
+      }
+    } catch (invErr) {
+      console.warn('[claim-board] Invoice polling error:', invErr);
     }
   } catch (e) {
     console.warn('[claim-board] Polling error:', e);
@@ -1004,19 +1031,26 @@ async function initClaimBoard(isPollingRefresh = false) {
       const renderedAppts = unassigned.map(j => {
       const apptKey = String(j.appointment_id || j.id || '');
       const appt = apptLookup.get(apptKey) || {};
-      const customer = j.customer || appt.customer || ((appt.customer_first || appt.customer_last) ? `${appt.customer_first || ''} ${appt.customer_last || ''}`.trim() : 'N/A');
-      const vehicle = j.vehicle || appt.vehicle || (appt.vehicle_make ? `${appt.vehicle_make} ${appt.vehicle_model || ''}`.trim() : (appt.vehicle || 'N/A'));
-      const service = j.service || appt.service || appt.service_requested || 'N/A';
+      // IMPORTANT: Prefer appointment data over job data for customer/vehicle info
+      // Jobs may have stale data from when they were created
+      const customer = appt.customer || ((appt.customer_first || appt.customer_last) ? `${appt.customer_first || ''} ${appt.customer_last || ''}`.trim() : null) || j.customer || 'N/A';
+      const vehicle = appt.vehicle || (appt.vehicle_make ? `${appt.vehicle_make} ${appt.vehicle_model || ''}`.trim() : null) || j.vehicle || 'N/A';
+      const service = appt.service || appt.service_requested || j.service || 'N/A';
+      const phone = appt.phone || j.phone || '';
+      const email = appt.email || j.email || '';
       return {
         id: j.appointment_id || j.id,
         customer: customer || 'N/A',
         vehicle: vehicle || 'N/A',
         service: service || 'N/A',
+        phone: phone,
+        email: email,
         status: j.status || 'in_progress',
-        preferred_date: j.preferred_date || appt.preferred_date || appt.scheduled_date || appt.start_date || appt.scheduled_at || null,
-        preferred_time: j.preferred_time || appt.preferred_time || appt.scheduled_time || appt.start_time || (appt.scheduled_at ? new Date(appt.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }) : null),
+        preferred_date: appt.preferred_date || appt.scheduled_date || appt.start_date || appt.scheduled_at || j.preferred_date || null,
+        preferred_time: appt.preferred_time || appt.scheduled_time || appt.start_time || (appt.scheduled_at ? new Date(appt.scheduled_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true }) : null) || j.preferred_time || null,
         created_at: j.created_at || new Date().toISOString(),
-        updated_at: j.updated_at || new Date().toISOString()
+        updated_at: j.updated_at || new Date().toISOString(),
+        invoice_id: appt.invoice_id || j.invoice_id || null
       };
     });
 

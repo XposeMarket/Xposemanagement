@@ -84,8 +84,9 @@ function renderCompatibilityWarning(codeOrService) {
 }
 
 let currentIsStaff = false;
-export function openDiagnosticsModal({ jobs = [], appointments = [], onClose, isStaff = false, initialSearch = '' }) {
-  availableJobs = jobs.filter(j => j.status !== 'completed');
+let currentServicesOnly = false;
+export function openDiagnosticsModal({ jobs = [], appointments = [], onClose, isStaff = false, initialSearch = '', servicesOnly = false }) {
+  availableJobs = servicesOnly ? [] : jobs.filter(j => j.status !== 'completed');
   availableAppointments = appointments;
   onCloseCallback = onClose || null;
   currentJob = currentAppt = currentVehicle = currentResult = null;
@@ -99,6 +100,7 @@ export function openDiagnosticsModal({ jobs = [], appointments = [], onClose, is
   };
   loadShopData();
   currentIsStaff = !!isStaff;
+  currentServicesOnly = !!servicesOnly;
   createModal();
   
   // If initialSearch is provided, go directly to search view with pre-filled query
@@ -115,6 +117,9 @@ export function openDiagnosticsModal({ jobs = [], appointments = [], onClose, is
         }
       }
     }, 100);
+  } else if (currentServicesOnly) {
+    // Services-only mode: show appointment selection or go directly to search
+    availableAppointments.length > 0 ? showAppointmentSelectionView() : showSearchView();
   } else {
     availableJobs.length > 0 ? showJobSelectionView() : showSearchView();
   }
@@ -152,14 +157,18 @@ function createModal() {
   modal.className = 'modal-overlay hidden';
   modal.style.cssText = 'z-index: 10100;';
   modal.onclick = (e) => { if (e.target === modal) closeDiagnosticsModal(); };
+  
+  const modalTitle = currentServicesOnly ? 'Add Services' : 'Cortex';
+  const modalSubtitle = currentServicesOnly ? 'Search and add services to appointment' : 'Search diagnostics, services, or repairs';
+  
   modal.innerHTML = `
     <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 900px; width: 95%; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;">
       <div class="modal-head" style="padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center;">
         <div style="display: flex; align-items: center; gap: 12px;">
           <img src="/assets/cortex-mark.png" alt="Cortex" style="width:28px;height:28px;object-fit:contain;" />
           <div style="display:flex;align-items:center;gap:10px;">
-            <h3 style="margin: 0; font-size: 1.2rem;">Cortex</h3>
-            <p id="diagVehicleInfo" style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--muted);">Search diagnostics, services, or repairs</p>
+            <h3 style="margin: 0; font-size: 1.2rem;">${modalTitle}</h3>
+            <p id="diagVehicleInfo" style="margin: 2px 0 0 0; font-size: 0.85rem; color: var(--muted);">${modalSubtitle}</p>
           </div>
         </div>
         <button onclick="window.closeDiagnosticsModal()" class="btn-close" style="font-size: 24px; width: 36px; height: 36px;">&times;</button>
@@ -213,11 +222,19 @@ window.diagSelectJob = async function(jobId) {
   if (!j) return;
   currentJob = j;
   currentAppt = availableAppointments.find(x => x.id === j.appointment_id) || null;
+  
+  // Try to get vehicle from appointment first, then from job directly
   currentVehicle = parseVehicleFromAppt(currentAppt);
+  if (!currentVehicle || (!currentVehicle.year && !currentVehicle.make && !currentVehicle.model)) {
+    // Fallback: try to parse vehicle from job itself
+    currentVehicle = parseVehicleFromAppt(j);
+  }
+  
+  console.log('[DiagnosticsModal] Job selected:', j.id, 'Appt:', currentAppt?.id, 'Vehicle:', currentVehicle);
   
   // Decode VIN if available to get fuel type info
   vinDecodedInfo = null;
-  const vin = currentAppt?.vin || currentAppt?.vehicle_vin || null;
+  const vin = currentAppt?.vin || currentAppt?.vehicle_vin || j?.vin || null;
   if (vin && vin.length === 17) {
     console.log('[DiagnosticsModal] Decoding VIN for compatibility check:', vin);
     const decoded = await decodeVinForCortex(vin);
@@ -232,16 +249,73 @@ window.diagSelectJob = async function(jobId) {
 window.diagSkipJobSelection = function() { currentJob = currentAppt = currentVehicle = null; vinDecodedInfo = null; showSearchView(); };
 window.diagChangeJob = function() { currentJob = currentAppt = currentVehicle = null; vinDecodedInfo = null; selectedVehicle = { year: '', make: '', model: '' }; triageAnswers = {}; showJobSelectionView(); };
 
+// Appointment Selection (for services-only mode)
+function showAppointmentSelectionView() {
+  const body = document.getElementById('diagModalBody');
+  if (!body) return;
+  body.innerHTML = `
+    <div style="max-width: 700px; margin: 0 auto;">
+      <h3 style="margin: 0 0 8px 0;">Select an Appointment</h3>
+      <p style="color: var(--muted); margin-bottom: 20px;">Choose an appointment to add services to, or skip for general search.</p>
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; max-height: 400px; overflow-y: auto;">
+        ${availableAppointments.map(a => {
+          const statusClass = a.status === 'new' ? '#3b82f6' : a.status === 'scheduled' ? '#8b5cf6' : a.status === 'in_progress' ? '#f59e0b' : '#6b7280';
+          return `<button class="btn" onclick="window.diagSelectAppointment('${a.id}')" style="text-align: left; padding: 16px; background: var(--card-bg); border: 2px solid var(--line); border-radius: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <strong>${a.vehicle || 'No vehicle'}</strong><br>
+                <span style="font-size: 0.9rem; color: var(--muted);">${a.customer || 'Unknown'}</span>
+              </div>
+              <span style="font-size: 0.75rem; padding: 4px 10px; border-radius: 12px; background: ${statusClass}20; color: ${statusClass};">${(a.status || 'new').replace(/_/g, ' ')}</span>
+            </div>
+          </button>`;
+        }).join('')}
+      </div>
+      <div style="text-align: center; border-top: 1px solid var(--line); padding-top: 16px;">
+        <button onclick="window.diagSkipAppointmentSelection()" class="btn" style="padding: 12px 32px;">Skip - General Search</button>
+      </div>
+    </div>`;
+}
+
+window.diagSelectAppointment = async function(apptId) {
+  const a = availableAppointments.find(x => x.id === apptId);
+  if (!a) return;
+  currentAppt = a;
+  currentJob = null; // No job in services-only mode
+  currentVehicle = parseVehicleFromAppt(currentAppt);
+  
+  // Decode VIN if available
+  vinDecodedInfo = null;
+  const vin = currentAppt?.vin || currentAppt?.vehicle_vin || null;
+  if (vin && vin.length === 17) {
+    const decoded = await decodeVinForCortex(vin);
+    if (decoded.success) vinDecodedInfo = decoded;
+  }
+  
+  showSearchView();
+};
+window.diagSkipAppointmentSelection = function() { currentJob = currentAppt = currentVehicle = null; vinDecodedInfo = null; showSearchView(); };
+window.diagChangeAppointment = function() { currentJob = currentAppt = currentVehicle = null; vinDecodedInfo = null; selectedVehicle = { year: '', make: '', model: '' }; showAppointmentSelectionView(); };
+
 // Main Search View
 function showSearchView() {
   const body = document.getElementById('diagModalBody');
   if (!body) return;
   updateVehicleDisplay();
 
-  const backBtn = currentJob ? `<button onclick="window.diagChangeJob()" class="btn small" style="margin-bottom: 16px;">← Change Job</button>` :
-    (availableJobs.length ? `<button onclick="window.diagChangeJob()" class="btn small" style="margin-bottom: 16px;">← Select a Job</button>` : '');
+  // Back button logic - different for services-only mode vs normal mode
+  let backBtn = '';
+  if (currentServicesOnly) {
+    backBtn = currentAppt 
+      ? `<button onclick="window.diagChangeAppointment()" class="btn small" style="margin-bottom: 16px;">← Change Appointment</button>`
+      : (availableAppointments.length ? `<button onclick="window.diagChangeAppointment()" class="btn small" style="margin-bottom: 16px;">← Select an Appointment</button>` : '');
+  } else {
+    backBtn = currentJob 
+      ? `<button onclick="window.diagChangeJob()" class="btn small" style="margin-bottom: 16px;">← Change Job</button>`
+      : (availableJobs.length ? `<button onclick="window.diagChangeJob()" class="btn small" style="margin-bottom: 16px;">← Select a Job</button>` : '');
+  }
 
-  const ymmHtml = !currentJob ? `
+  const ymmHtml = (!currentJob && !currentAppt) ? `
     <div style="background: var(--bg); padding: 16px; border-radius: 8px; margin-bottom: 20px;">
       <label style="font-weight: 600; display: block; margin-bottom: 12px;">🚗 Vehicle (optional)</label>
       <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -257,33 +331,46 @@ function showSearchView() {
       </div>
     </div>` : '';
 
+  // Search placeholder text
+  const searchPlaceholder = currentServicesOnly 
+    ? 'Search services (e.g., oil change, brake pads, spark plugs)'
+    : 'DTC code, symptom, or service (e.g., P0300, rough idle, spark plugs)';
+
+  // Quick search services (always shown)
+  const quickServicesHtml = `
+    <div style="margin-bottom: 24px;">
+      <label style="font-weight: 600; display: block; margin-bottom: 12px;">⚡ Quick Search</label>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        ${['Oil Change', 'Brake Pads', 'Spark Plugs', 'Battery', 'Alternator', 'Struts', 'AC Recharge', 'Tire Rotation', 'Transmission Fluid', 'Coolant Flush'].map(s => 
+          `<button class="btn small" onclick="window.diagQuickSearch('${s}')" style="border-radius: 20px; padding: 8px 16px;">${s}</button>`).join('')}
+      </div>
+    </div>`;
+
+  // Symptoms section - only show in non-services-only mode
+  const symptomsHtml = !currentServicesOnly ? `
+    <div>
+      <label style="font-weight: 600; display: block; margin-bottom: 12px;">🩺 Common Symptoms</label>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        ${['No start', 'Rough idle', 'Overheating', 'Brake noise', 'AC not cold', 'Check engine', 'Battery drain'].map(s => 
+          `<button class="btn small" onclick="window.diagQuickSearch('${s}')" style="border-radius: 20px; padding: 8px 16px; background: var(--bg);">${s}</button>`).join('')}
+      </div>
+    </div>` : '';
+
   body.innerHTML = `
     <div style="max-width: 700px; margin: 0 auto;">
       ${backBtn}${ymmHtml}
       ${(currentJob && !currentIsStaff) ? `<div style="margin-bottom:12px;"><button id="diagAddServiceBtn" class="btn" onclick="window.dispatchEvent(new CustomEvent('openServiceFromDiagnostics',{detail:{jobId:'${currentJob.id}'}}))" style="background: linear-gradient(135deg, #06b6d4, #0ea5a4); color: white; padding: 10px 16px; font-weight:600;">➕ Add Service to Job</button></div>` : ''}
       <div style="margin-bottom: 24px;">
-        <label style="font-weight: 600; display: block; margin-bottom: 8px;">🔍 Search anything...</label>
+        <label style="font-weight: 600; display: block; margin-bottom: 8px;">🔍 ${currentServicesOnly ? 'Search Services' : 'Search anything...'}</label>
         <div style="display: flex; gap: 8px;">
-          <input type="text" id="diagSearchInput" placeholder="DTC code, symptom, or service (e.g., P0300, rough idle, spark plugs)" 
+          <input type="text" id="diagSearchInput" placeholder="${searchPlaceholder}" 
             style="flex: 1; padding: 14px; border: 2px solid var(--line); border-radius: 8px; font-size: 16px;" onkeypress="if(event.key==='Enter') window.diagDoSearch()">
           <button onclick="window.diagDoSearch()" class="btn info" style="padding: 14px 28px; font-size: 16px;">Search</button>
         </div>
       </div>
       <div id="diagQuickInfo" style="display: none; margin-bottom: 20px;"></div>
-      <div style="margin-bottom: 24px;">
-        <label style="font-weight: 600; display: block; margin-bottom: 12px;">⚡ Quick Search</label>
-        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-          ${['Oil Change', 'Brake Pads', 'Spark Plugs', 'Battery', 'Alternator', 'Struts', 'AC Recharge'].map(s => 
-            `<button class="btn small" onclick="window.diagQuickSearch('${s}')" style="border-radius: 20px; padding: 8px 16px;">${s}</button>`).join('')}
-        </div>
-      </div>
-      <div>
-        <label style="font-weight: 600; display: block; margin-bottom: 12px;">🩺 Common Symptoms</label>
-        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-          ${['No start', 'Rough idle', 'Overheating', 'Brake noise', 'AC not cold', 'Check engine', 'Battery drain'].map(s => 
-            `<button class="btn small" onclick="window.diagQuickSearch('${s}')" style="border-radius: 20px; padding: 8px 16px; background: var(--bg);">${s}</button>`).join('')}
-        </div>
-      </div>
+      ${quickServicesHtml}
+      ${symptomsHtml}
     </div>`;
 
   const input = document.getElementById('diagSearchInput');
@@ -389,12 +476,31 @@ window.diagDoSearch = async function() {
 function showResultsView(results, query) {
   const body = document.getElementById('diagModalBody');
   if (!body) return;
-  const { playbooks, operations, combined } = results;
+  let { playbooks, operations, combined } = results;
   const rate = getDefaultLaborRate();
+
+  // In services-only mode, filter out playbooks (diagnostics)
+  if (currentServicesOnly) {
+    combined = combined.filter(i => i.resultType === 'operation');
+    playbooks = [];
+  }
 
   // Build results HTML - staff can see all results but won't have "Add to Invoice" buttons
   // We'll render a search input + filter buttons on the results page and allow client-side filtering
   // The actual list is rendered below by renderResultsList()
+
+  // Filters HTML - hide in services-only mode since we only show services
+  const filtersHtml = !currentServicesOnly ? `
+    <div id="diagFilters" style="display:flex;gap:8px;margin-left:8px;">
+      <button id="diagFilterAll" class="btn small" style="border-radius:20px;">All</button>
+      <button id="diagFilterServices" class="btn small" style="border-radius:20px;">Services</button>
+      <button id="diagFilterDiagnosis" class="btn small" style="border-radius:20px;">Diagnostics</button>
+    </div>` : '';
+
+  // Results count text
+  const resultsCountText = currentServicesOnly 
+    ? `<strong>Searched:</strong> "${query}" | Found: ${operations.length} services`
+    : `<strong>Searched:</strong> "${query}" | Found: ${playbooks.length} diagnostics, ${operations.length} services`;
 
   body.innerHTML = `
     <div style="max-width: 800px; margin: 0 auto;">
@@ -404,11 +510,7 @@ function showResultsView(results, query) {
           <input id="diagResultsSearchInput" type="text" placeholder="Search again (press Enter)" value="${escapeHtml(query)}" style="flex:1;padding:10px;border:1px solid var(--line);border-radius:8px;min-width:0;" onkeypress="if(event.key==='Enter') { const v=this.value; const mi=document.getElementById('diagSearchInput'); if(mi) mi.value=v; diagSearchState.query=v; window.diagDoSearch(); }" />
           <button id="diagResultsSearchBtn" class="btn info small" style="margin-left:8px;padding:10px 12px;">Search</button>
         </div>
-        <div id="diagFilters" style="display:flex;gap:8px;margin-left:8px;">
-          <button id="diagFilterAll" class="btn small" style="border-radius:20px;">All</button>
-          <button id="diagFilterServices" class="btn small" style="border-radius:20px;">Services</button>
-          <button id="diagFilterDiagnosis" class="btn small" style="border-radius:20px;">Diagnostics</button>
-        </div>
+        ${filtersHtml}
       </div>
       <style>
         @media (max-width: 600px) {
@@ -419,7 +521,7 @@ function showResultsView(results, query) {
         }
       </style>
       <div style="background: var(--bg); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px;">
-        <p style="margin: 0; font-size: 0.9rem; color: var(--muted);"><strong>Searched:</strong> "${query}" | Found: ${playbooks.length} diagnostics, ${operations.length} services</p>
+        <p style="margin: 0; font-size: 0.9rem; color: var(--muted);">${resultsCountText}</p>
       </div>
       <div id="diagResultsContainer"></div>
     </div>`;
@@ -580,8 +682,8 @@ window.diagViewPlaybook = async function(id) {
   if (!playbook) { showErrorView('Could not load playbook'); return; }
   currentResult = playbook;
   const pb = playbook.playbook || {}, rate = getDefaultLaborRate();
-  const canAdd = !!currentJob && !currentIsStaff;
-  const noJobMsg = currentIsStaff ? '' : '<span style="font-size: 0.8rem; color: var(--muted); font-style: italic;">Select job to add</span>';
+  const canAdd = (!!currentJob || (currentServicesOnly && !!currentAppt)) && !currentIsStaff;
+  const noJobMsg = currentIsStaff ? '' : '<span style="font-size: 0.8rem; color: var(--muted); font-style: italic;">' + (currentServicesOnly ? 'Select appointment to add' : 'Select job to add') + '</span>';
 
   // Initialize triage answers for this playbook if not exists
   if (!triageAnswers[id]) triageAnswers[id] = {};
@@ -1068,8 +1170,8 @@ function renderOperationView(op, rate, hrs, vehicle) {
   const body = document.getElementById('diagModalBody');
   if (!body) return;
   
-  const canAdd = !!currentJob && !currentIsStaff;
-  const noJobMsg = currentIsStaff ? '' : '<span style="font-size: 0.8rem; color: var(--muted); font-style: italic;">Select job to add</span>';
+  const canAdd = (!!currentJob || (currentServicesOnly && !!currentAppt)) && !currentIsStaff;
+  const noJobMsg = currentIsStaff ? '' : '<span style="font-size: 0.8rem; color: var(--muted); font-style: italic;">' + (currentServicesOnly ? 'Select appointment to add' : 'Select job to add') + '</span>';
   const esc = (s) => (s || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
   
   // Build AI Labor Section HTML
@@ -1323,20 +1425,44 @@ function renderOperationView(op, rate, hrs, vehicle) {
 
 // Add to Invoice
 window.diagAddToInvoice = async function(serviceName, laborHours, type, itemId) {
-  if (!currentJob) { alert('No job selected. Please select a job first.'); return; }
+  // Allow either currentJob or currentAppt (for services-only mode)
+  if (!currentJob && !currentAppt) { 
+    alert(currentServicesOnly ? 'No appointment selected. Please select an appointment first.' : 'No job selected. Please select a job first.'); 
+    return; 
+  }
   try {
     const supabase = getSupabaseClient();
     const session = JSON.parse(localStorage.getItem('xm_session') || '{}');
     const shopId = session.shopId;
     if (!supabase || !shopId) throw new Error('No connection');
     const rate = getDefaultLaborRate();
+    
+    // Determine appointment_id and job_id based on what's available
+    const appointmentId = currentJob?.appointment_id || currentAppt?.id || null;
+    const jobId = currentJob?.id || null;
+    
     const { data: freshData, error: dataError } = await supabase.from('data').select('*').eq('shop_id', shopId).single();
     if (dataError) throw dataError;
     const invoices = freshData.invoices || [];
-    let invoice = invoices.find(i => i.appointment_id === currentJob.appointment_id || i.job_id === currentJob.id);
+    let invoice = invoices.find(i => 
+      (appointmentId && i.appointment_id === appointmentId) || 
+      (jobId && i.job_id === jobId)
+    );
     if (!invoice) {
       const maxNum = invoices.reduce((m, i) => Math.max(m, parseInt(i.number) || 0), 1000);
-      invoice = { id: `inv_${Date.now()}`, number: maxNum + 1, shop_id: shopId, appointment_id: currentJob.appointment_id, job_id: currentJob.id, status: 'draft', items: [], subtotal: 0, tax: 0, total: 0, created_at: new Date().toISOString() };
+      invoice = { 
+        id: `inv_${Date.now()}`, 
+        number: maxNum + 1, 
+        shop_id: shopId, 
+        appointment_id: appointmentId, 
+        job_id: jobId, 
+        status: 'draft', 
+        items: [], 
+        subtotal: 0, 
+        tax: 0, 
+        total: 0, 
+        created_at: new Date().toISOString() 
+      };
       invoices.push(invoice);
     }
 
@@ -1720,7 +1846,7 @@ function renderDynamicTriageUI(playbookId) {
   const vehicle = currentVehicle || selectedVehicle;
   const state = dynamicTriageState;
   const rate = getDefaultLaborRate();
-  const canAdd = !!currentJob && !currentIsStaff;
+  const canAdd = (!!currentJob || (currentServicesOnly && !!currentAppt)) && !currentIsStaff;
   
   // Build conversation history HTML
   let conversationHtml = '';
