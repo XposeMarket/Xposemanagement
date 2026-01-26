@@ -329,6 +329,12 @@
 :root.theme-landing #passModal,
 :root.theme-landing #confirmModal,
 :root.theme-landing #invoiceModal,
+:root.theme-landing #invModal,
+:root.theme-landing #invModal .modal-card,
+:root.theme-landing #itemTypeModal,
+:root.theme-landing #itemTypeModal .modal-card,
+:root.theme-landing #confirmItemRemoveModal,
+:root.theme-landing #confirmItemRemoveModal .modal-card,
 :root.theme-landing #apptModal,
 :root.theme-landing #jobModal,
 :root.theme-landing #custModal,
@@ -894,6 +900,90 @@ table {
 
 :root.theme-landing #editDealerModal p {
   color: var(--muted) !important;
+}
+
+/* Landing theme - Terminal Checkout Modal */
+:root.theme-landing #terminal-payment-modal {
+  background: rgba(0,0,0,0.7) !important;
+}
+
+:root.theme-landing #terminal-payment-modal .terminal-modal {
+  background: #0d1117 !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+  box-shadow: 0 25px 80px rgba(0,0,0,0.7) !important;
+}
+
+:root.theme-landing #terminal-payment-modal .terminal-body {
+  background: #0d1117 !important;
+}
+
+:root.theme-landing #terminal-payment-modal .invoice-summary {
+  background: rgba(255,255,255,0.04) !important;
+  border: 1px solid rgba(255,255,255,0.1) !important;
+  color: var(--text) !important;
+}
+
+:root.theme-landing #terminal-payment-modal .invoice-summary p,
+:root.theme-landing #terminal-payment-modal .invoice-summary div {
+  color: var(--text) !important;
+}
+
+:root.theme-landing #terminal-payment-modal .invoice-summary div[style*="border-bottom"] {
+  border-bottom-color: rgba(255,255,255,0.1) !important;
+}
+
+:root.theme-landing #terminal-payment-modal .invoice-summary div[style*="border-top"] {
+  border-top-color: rgba(255,255,255,0.15) !important;
+}
+
+:root.theme-landing #terminal-payment-modal .invoice-summary div[style*="color:#666"],
+:root.theme-landing #terminal-payment-modal .invoice-summary div[style*="color: #666"] {
+  color: var(--muted) !important;
+}
+
+:root.theme-landing #terminal-payment-modal .terminal-amount span {
+  color: #4ade80 !important;
+}
+
+:root.theme-landing #terminal-payment-modal .terminal-status {
+  color: var(--text) !important;
+}
+
+:root.theme-landing #terminal-payment-modal .terminal-status p {
+  color: var(--text) !important;
+}
+
+:root.theme-landing #terminal-payment-modal .terminal-footer {
+  background: rgba(255,255,255,0.03) !important;
+  border-top: 1px solid rgba(255,255,255,0.1) !important;
+}
+
+/* Terminal Selection Modal */
+:root.theme-landing #terminal-selection-modal {
+  background: rgba(0,0,0,0.7) !important;
+}
+
+:root.theme-landing #terminal-selection-modal > div {
+  background: #0d1117 !important;
+  border: 1px solid rgba(255,255,255,0.12) !important;
+}
+
+:root.theme-landing #terminal-selection-modal h2 {
+  color: var(--text) !important;
+}
+
+:root.theme-landing #terminal-selection-modal .terminal-option {
+  background: rgba(255,255,255,0.04) !important;
+  border-color: rgba(255,255,255,0.1) !important;
+}
+
+:root.theme-landing #terminal-selection-modal .terminal-option:hover {
+  background: rgba(255,255,255,0.08) !important;
+  border-color: var(--accent) !important;
+}
+
+:root.theme-landing #terminal-selection-modal .terminal-option div {
+  color: var(--text) !important;
 }
 
 /* Modal header and footer borders */
@@ -2185,6 +2275,34 @@ footer::after{ bottom: -6px; }
 .rev-day-details.open{opacity:1}
 .rev-day-details .table{width:100%;margin:0}
 .rev-day-details .table th,.rev-day-details .table td{padding:6px 8px;font-size:13px}
+
+/* Base modal card styling - ensures modals have solid backgrounds */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-backdrop.hidden {
+  display: none;
+}
+
+.modal-card {
+  background: var(--card, #fff);
+  color: var(--text, #1f2937);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  width: min(720px, 94vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 
 .modal-head {
   display: flex;
