@@ -214,11 +214,11 @@ function setupSettings() {
     const defaultBadge = document.getElementById('laborRateDefaultBadge');
     const switchDefaultBtn = document.getElementById('laborRateSwitchDefault');
     const removeBtn = document.getElementById('laborRateRemove');
-    
-    if (!modal || !nameEl) return;
-    
+
+    if (!modal || !nameEl || !removeBtn) return;
+
     nameEl.textContent = `${rate.name} - $${rate.rate}/hr`;
-    
+
     if (rate.is_default) {
       defaultBadge.style.display = 'block';
       switchDefaultBtn.style.display = 'none';
@@ -240,8 +240,16 @@ function setupSettings() {
       removeBtn.disabled = false;
       removeBtn.style.opacity = '1';
       removeBtn.style.cursor = 'pointer';
+
+      // Replace remove button to remove any existing listeners then attach handler
+      const newRemove = removeBtn.cloneNode(true);
+      removeBtn.parentNode.replaceChild(newRemove, removeBtn);
+      newRemove.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await removeLaborRate();
+      });
     }
-    
+
     modal.classList.remove('hidden');
   }
   
@@ -326,13 +334,15 @@ function setupSettings() {
       return;
     }
     
-    const ok = await showConfirm(`Remove labor rate "${currentLaborRate.name}"?`, 'Remove', 'Cancel');
+    const rateNameForPrompt = currentLaborRate?.name || '(unknown)';
+    const ok = await showConfirm(`Remove labor rate "${rateNameForPrompt}"?`, 'Remove', 'Cancel');
     if (!ok) {
       closeLaborRateModal();
       return;
     }
 
-    settings.labor_rates = (settings.labor_rates || []).filter(r => r.name !== currentLaborRate.name);
+    // Defensive filter: guard against null entries in labor_rates
+    settings.labor_rates = (settings.labor_rates || []).filter(r => r && typeof r.name !== 'undefined' && r.name !== currentLaborRate.name);
 
     await saveSettings();
     closeLaborRateModal();
@@ -423,11 +433,12 @@ function setupSettings() {
     const modal = document.getElementById('serviceModal');
     const nameEl = document.getElementById('serviceModalName');
     const priceEl = document.getElementById('serviceModalPrice');
-    
-    if (!modal || !nameEl || !priceEl) return;
-    
+    const removeBtn = document.getElementById('serviceRemove');
+
+    if (!modal || !nameEl || !priceEl || !removeBtn) return;
+
     nameEl.textContent = service.name;
-    
+
     if (service.pricing_type === 'labor_based') {
       const rate = (settings.labor_rates || []).find(r => r.name === service.labor_rate_name);
       const hourlyRate = rate ? rate.rate : 0;
@@ -439,7 +450,15 @@ function setupSettings() {
     } else {
       priceEl.innerHTML = `<span style="color:var(--muted);">Flat price:</span> <strong style="font-size:1.1rem;">$${service.price || 0}</strong>`;
     }
-    
+
+    // Replace remove button to remove prior listeners then attach correct handler
+    const newRemove = removeBtn.cloneNode(true);
+    removeBtn.parentNode.replaceChild(newRemove, removeBtn);
+    newRemove.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await removeService();
+    });
+
     modal.classList.remove('hidden');
   }
   
@@ -528,17 +547,46 @@ function setupSettings() {
   // Remove service
   async function removeService() {
     if (!currentService) return;
-    
-    const ok = await showConfirm(`Remove service "${currentService.name}"?`, 'Remove', 'Cancel');
+
+    const svcNameForPrompt = currentService?.name || '(unknown)';
+
+    // Hide the service modal first so only the confirmation modal appears
+    const svcModalEl = document.getElementById('serviceModal');
+    if (svcModalEl) svcModalEl.classList.add('hidden');
+
+    const ok = await showConfirm(`Remove service "${svcNameForPrompt}"?`, 'Remove', 'Cancel');
     if (!ok) {
-      closeServiceModal();
+      // Re-open the service modal if user cancels
+      if (svcModalEl) svcModalEl.classList.remove('hidden');
       return;
     }
 
-    settings.services = (settings.services || []).filter(s => s.name !== currentService.name);
+    // Defensive filter: guard against null entries in settings.services
+    settings.services = (settings.services || []).filter(s => s && typeof s.name !== 'undefined' && s.name !== currentService?.name);
 
-    await saveSettings();
-    closeServiceModal();
+    // Optimistically update UI: remove the chip for this service immediately
+    try {
+      const svcList = document.getElementById('svcList');
+      if (svcList) {
+        const chip = svcList.querySelector(`[data-service="${CSS.escape(svcNameForPrompt)}"]`);
+        if (chip && chip.parentNode) chip.parentNode.removeChild(chip);
+      }
+    } catch (e) {
+      // ignore UI removal errors
+    }
+
+    try {
+      await saveSettings();
+    } catch (ex) {
+      console.error('Failed to save settings after removing service:', ex);
+      showNotification('Failed to remove service. Please try again.', 'error');
+      // Re-render to restore UI from authoritative `settings` state
+      renderServices();
+      return;
+    }
+
+    // Finalize
+    currentService = null;
     renderServices();
     showSectionNotice('svcSaved', 'svcList', 'Service removed');
   }
