@@ -1585,14 +1585,20 @@ function setupInvoices() {
         const price = priceRaw === '' ? 0 : parseFloat(priceRaw) || 0;
         const typeEl = row.querySelector('.itm-type');
         const type = typeEl ? (typeEl.value || 'part') : 'part';
-        // Try to find a matching prior item to preserve cost_price and metadata
+        // Try to find a matching prior item by id if present, else by name/qty/price/type
         let matched = null;
-        if (priorItems && priorItems.length) {
+        const rowId = row.dataset.itemId || null;
+        if (rowId && priorItems && priorItems.length) {
+          matched = priorItems.find(pi => pi.id === rowId);
+        }
+        if (!matched && priorItems && priorItems.length) {
           matched = priorItems.find(pi => {
-            if ((pi.name || '').toString().trim() === name && Number(pi.qty || 0) === Number(qty) && Number(pi.price || 0) === Number(price)) return true;
-            if ((pi.name || '').toString().trim() === name && Number(pi.price || 0) === Number(price)) return true;
-            if ((pi.name || '').toString().trim() === name) return true;
-            return false;
+            return (
+              (pi.name || '').toString().trim() === name &&
+              Number(pi.qty || 0) === Number(qty) &&
+              Number(pi.price || 0) === Number(price) &&
+              (pi.type || 'part') === type
+            );
           });
         }
 
@@ -1631,8 +1637,13 @@ function setupInvoices() {
           item.price = 0;
         }
 
-        // New items: assign id and mark estimates if appropriate
+        // Always assign a unique id if not present
         if (!item.id) item.id = `item_${Date.now()}_${Math.random().toString(36).substr(2,9)}`;
+
+        // Always preserve the price and details for all items, including new services
+        // Do not overwrite price or drop new service items
+
+        // If this is a new service/labor/part, optionally mark as pending estimate
         if (!matched) {
           const itemType = (type || '').toLowerCase();
           if (itemType !== 'part' && itemType !== 'labor') {

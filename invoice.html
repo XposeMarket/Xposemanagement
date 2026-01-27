@@ -580,6 +580,22 @@ import { getShopData } from './helpers/storage.js';
           }
         }
         
+        // ALSO check reverse: if this item has an 'id', look for any labor items that link TO it
+        // This handles cases where the service is processed before its linked labor
+        if (itm.id && (itm.type === 'service' || itm.pricing_type === 'labor_based')) {
+          const linkedLaborIdx = items.findIndex((item, idx) => 
+            item.linkedItemId === itm.id && !usedIndexes.has(idx) && item.type === 'labor'
+          );
+          
+          if (linkedLaborIdx !== -1) {
+            const laborItem = items[linkedLaborIdx];
+            serviceLaborGroups.push([itm, laborItem]);
+            usedIndexes.add(i);
+            usedIndexes.add(linkedLaborIdx);
+            continue;
+          }
+        }
+        
         // Fallback: Check for sequential Service+Labor ONLY if the service has price=0 (labor-based service)
         // This prevents flat-rate services from being incorrectly grouped with unrelated labor items
         const nameLower = (itm.name || '').toLowerCase().trim();
