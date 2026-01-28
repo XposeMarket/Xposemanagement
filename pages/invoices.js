@@ -81,12 +81,13 @@ import { createShopNotification } from '../helpers/shop-notifications.js';
 function setupInvoices() {
   // Helper to map invoice status to tag class for color
   function getInvoiceStatusClass(status) {
-    // Normalize and map status to a consistent class name for .tag
-    // Accepts different casing like 'Paid', 'PAID', 'paid ' etc.
+    // Only for invoices page: map statuses to tag classes
     const s = (status || '').toString().trim().toLowerCase();
-    if (!s) return 'open';
+    if (!s) return 'open_estimate';
+    if (s === 'open estimate') return 'in_progress'; // Use yellow pill (same as in progress)
+    if (s === 'open' || s === 'open invoice') return 'open'; // Use red pill
     if (s === 'paid') return 'completed';
-    if (s === 'unpaid' || s === 'open') return 'open';
+    if (s === 'unpaid') return 'open';
     // replace spaces with underscores so statuses like "in progress" map to in_progress
     return s.replace(/\s+/g, '_');
   }
@@ -118,8 +119,19 @@ function setupInvoices() {
         case 'view':
           openInvoiceModal(inv);
           break;
-        case 'edit':
-          openInvoiceModal(inv, true);
+        case 'edit': {
+          // Intercept for open invoice status
+          const status = (inv.status || '').toString().trim().toLowerCase();
+          if (status === 'open invoice' || status === 'open_invoice' || status === 'open') {
+            showEditApprovedInvoiceModal(inv);
+          } else {
+            openInvoiceModal(inv, true);
+          }
+          break;
+        }
+        case 'approve':
+          // Show checkout modal, but with Approve button
+          showTerminalPaymentModal(inv, { approveMode: true });
           break;
         case 'checkout':
           showTerminalPaymentModal(inv);
@@ -246,16 +258,30 @@ function setupInvoices() {
       if (!customer) customer = 'Unknown Customer';
       console.log(`[Invoices] Rendering invoice ${inv.id}: customer=${customer}`);
       const tr = document.createElement('tr');
+      // Status display logic: show 'Open Estimate' or 'Open Invoice' as needed
+      let statusText = (inv.status || '').toString().trim().toLowerCase();
+      if (!statusText || statusText === 'open estimate') statusText = 'Open Estimate';
+      else if (statusText === 'open' || statusText === 'open invoice') statusText = 'Open Invoice';
+      else statusText = statusText.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      // Determine action button label and action for estimate/invoice
+      let actionLabel = 'Checkout';
+      let actionType = 'checkout';
+      let actionClass = 'btn-green';
+      if ((inv.status || '').toString().trim().toLowerCase() === 'open estimate') {
+        actionLabel = 'Approve';
+        actionType = 'approve';
+        actionClass = 'btn-green';
+      }
       tr.innerHTML = `
         <td>${inv.number || inv.id}</td>
         <td>${customer}</td>
         <td>$${calcTotal(inv).toFixed(2)}</td>
-  <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1" style="flex:0 0 auto;display:inline-flex">${(inv.status || 'open').replace(/_/g, ' ')}</span></td>
+        <td><span class="tag ${getInvoiceStatusClass(inv.status)}" tabindex="-1" style="flex:0 0 auto;display:inline-flex">${statusText}</span></td>
         <td>${inv.due || ''}</td>
         <td style="text-align:right">
           <div class="appt-actions-grid" style="display:inline-grid;">
             <button class="btn small" data-id="${inv.id}" data-action="view">View</button>
-            <button class="btn small" data-id="${inv.id}" data-action="checkout">Checkout</button>
+            <button class="btn small ${actionClass}" data-id="${inv.id}" data-action="${actionType}">${actionLabel}</button>
             <button class="btn small info" data-id="${inv.id}" data-action="edit">Edit</button>
             <button class="btn small danger" data-id="${inv.id}" data-action="remove" aria-label="Remove invoice"><svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M3 6h18v2H3V6zm2 3h14l-1 12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2l-1-12zM9 4V3a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1h5v2H4V4h5z"/></svg></button>
           </div>
@@ -670,8 +696,8 @@ function setupInvoices() {
             // Update inv.items from DOM so send modal has current data
             inv.items = currentItems;
             inv.appointment_id = aptId;
-            // Open the send invoice modal so user can send/resend
-            showSendInvoiceModal(inv);
+            // Open the send invoice modal so user can send/resend (estimate context)
+            showSendInvoiceModal(inv, { estimate: true });
             return;
           }
           
@@ -693,8 +719,8 @@ function setupInvoices() {
           // Close the invoice modal
           document.getElementById('invModal').classList.add('hidden');
           
-          // NOW: Open the send invoice modal (same as invoice.html)
-          showSendInvoiceModal(inv);
+          // NOW: Open the send invoice modal (same as invoice.html) in estimate context
+          showSendInvoiceModal(inv, { estimate: true });
         };
       }
       // Note: generic Add Item button removed; only Parts and Labor are allowed
@@ -1925,14 +1951,30 @@ function setupInvoices() {
   let currentSendInvoice = null;
 
   // Show send invoice modal after checkout
-  async function showSendInvoiceModal(inv) {
+  async function showSendInvoiceModal(inv, opts = {}) {
     currentSendInvoice = inv;
+    const isEstimate = opts && opts.estimate;
     const modal = document.getElementById('sendInvoiceModal');
     if (!modal) return;
 
-    // Update invoice number display
+    // Update invoice/estimate display
     const invNumberEl = document.getElementById('sendInvNumber');
     if (invNumberEl) invNumberEl.textContent = inv.number || inv.id;
+    // Header and labels
+    const headH3 = modal.querySelector('.modal-head h3');
+    const bodyP = modal.querySelector('.modal-body p');
+    const sendBtnLabel = document.getElementById('sendInvBtn');
+    if (isEstimate) {
+      if (headH3) headH3.textContent = '📤 Send Estimate';
+      if (bodyP) bodyP.textContent = `Send estimate #${inv.number || inv.id} to the customer:`;
+      if (sendBtnLabel) sendBtnLabel.textContent = 'Send Estimate';
+      modal.dataset.estimate = '1';
+    } else {
+      if (headH3) headH3.textContent = '📤 Send Invoice';
+      if (bodyP) bodyP.textContent = `Send invoice #${inv.number || inv.id} to the customer:`;
+      if (sendBtnLabel) sendBtnLabel.textContent = 'Send Invoice';
+      modal.dataset.estimate = '';
+    }
 
     // Try to get customer contact info
     let customerEmail = '';
@@ -2083,6 +2125,8 @@ function setupInvoices() {
       // Same pattern as messages-backend.js
       const API_URL = 'https://xpose-stripe-server.vercel.app';
       
+      const modal = document.getElementById('sendInvoiceModal');
+      const isEstimate = modal && modal.dataset && modal.dataset.estimate === '1';
       const response = await fetch(`${API_URL}/api/send-invoice`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2093,7 +2137,8 @@ function setupInvoices() {
           sendSms,
           customerEmail: modal.dataset.email || null,
           customerPhone: modal.dataset.phone || null,
-          customerName: modal.dataset.customerName || 'Customer'
+          customerName: modal.dataset.customerName || 'Customer',
+          estimate: isEstimate
         })
       });
 
@@ -2377,7 +2422,15 @@ function setupInvoices() {
   }
 
   // Terminal Payment Modal - with multi-terminal selection support
-  async function showTerminalPaymentModal(inv, selectedTerminalId = null) {
+  // Add approveMode option for estimate approval
+  async function showTerminalPaymentModal(inv, optsOrTerminal = null) {
+    let approveMode = false;
+    let selectedTerminalId = null;
+    if (optsOrTerminal && typeof optsOrTerminal === 'object' && optsOrTerminal.approveMode) {
+      approveMode = true;
+    } else if (typeof optsOrTerminal === 'string') {
+      selectedTerminalId = optsOrTerminal;
+    }
     // If no terminal selected yet, check if shop has multiple terminals
     if (!selectedTerminalId && supabase) {
       try {
@@ -2422,6 +2475,12 @@ function setupInvoices() {
       modal.className = 'modal';
       modal.style.display = 'none';
       document.body.appendChild(modal);
+      // Try to get it again after appending
+      modal = document.getElementById('terminal-payment-modal');
+    }
+    if (!modal) {
+      alert('Could not create payment modal. Please reload the page.');
+      return;
     }
 
     // Build invoice summary with same style as invoice.html
@@ -2438,7 +2497,7 @@ function setupInvoices() {
     modal.innerHTML = `
       <div class="terminal-modal">
         <div class="terminal-header">
-          <h2><i class="fas fa-credit-card"></i> Terminal Checkout</h2>
+          <h2><i class="fas fa-credit-card"></i> ${approveMode ? 'Estimate Approval' : 'Terminal Checkout'}</h2>
         </div>
         <div class="terminal-body">
           <div class="invoice-summary">
@@ -2463,15 +2522,17 @@ function setupInvoices() {
             ` : ''}
             <p class="terminal-amount">Total: <span>${total.toFixed(2)}</span></p>
           </div>
+          ${approveMode ? '' : `
           <div class="terminal-status">
             <div class="status-icon">
               <i class="fas fa-spinner fa-spin"></i>
             </div>
             <p>Initializing terminal...</p>
           </div>
+          `}
         </div>
         <div class="terminal-footer">
-          <button class="btn" id="manual-mark-paid-btn">Mark Paid Manually</button>
+          <button class="btn btn-green" id="manual-mark-paid-btn">${approveMode ? 'Approve' : 'Mark Paid Manually'}</button>
           <button class="btn" onclick="document.getElementById('terminal-payment-modal').style.display='none'">Cancel</button>
         </div>
       </div>
@@ -2479,37 +2540,43 @@ function setupInvoices() {
 
     modal.style.display = 'flex';
 
-    // Add manual mark paid handler
+    // Add manual mark paid/approve handler
     const manualBtn = modal.querySelector('#manual-mark-paid-btn');
     manualBtn.onclick = async () => {
       modal.style.display = 'none';
-      await markInvoicePaid(inv);
+      if (approveMode) {
+        // Change status to open invoice, update UI, and re-render
+        inv.status = 'open invoice';
+        if (typeof saveInvoice === 'function') await saveInvoice(inv);
+        if (typeof renderInvoices === 'function') renderInvoices();
+        showNotification('Estimate approved. Invoice is now open.');
+      } else {
+        await markInvoicePaid(inv);
+      }
     };
 
-    // Simulate terminal checkout process (check if terminal is available)
-    setTimeout(() => {
-      const statusIcon = modal.querySelector('.status-icon');
-      const statusText = modal.querySelector('.terminal-status p');
-      
-      // Check if shop has terminal
-      const shopInfo = window.getShopInfo ? window.getShopInfo() : null;
-      const hasTerminal = selectedTerminalId || (shopInfo && shopInfo.terminal_id);
-      
-      if (!hasTerminal) {
-        statusIcon.innerHTML = '<i class="fas fa-info-circle" style="color:#ff9800;"></i>';
-        statusText.textContent = 'No terminal connected. Use manual payment option below.';
-        return;
-      }
-      
-      statusIcon.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
-      statusText.textContent = 'Payment successful!';
-      
-      // Auto-close after 2 seconds and mark invoice as paid
-      setTimeout(async () => {
-        modal.style.display = 'none';
-        await markInvoicePaid(inv);
+    // Only run terminal status simulation if not in approve mode
+    if (!approveMode) {
+      setTimeout(() => {
+        const statusIcon = modal.querySelector('.status-icon');
+        const statusText = modal.querySelector('.terminal-status p');
+        // Check if shop has terminal
+        const shopInfo = window.getShopInfo ? window.getShopInfo() : null;
+        const hasTerminal = selectedTerminalId || (shopInfo && shopInfo.terminal_id);
+        if (!hasTerminal) {
+          if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-info-circle" style="color:#ff9800;"></i>';
+          if (statusText) statusText.textContent = 'No terminal connected. Use manual payment option below.';
+          return;
+        }
+        if (statusIcon) statusIcon.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
+        if (statusText) statusText.textContent = 'Payment successful!';
+        // Auto-close after 2 seconds and mark invoice as paid
+        setTimeout(async () => {
+          modal.style.display = 'none';
+          await markInvoicePaid(inv);
+        }, 2000);
       }, 2000);
-    }, 2000);
+    }
   }
 
   // Terminal Selection Modal - shown when shop has multiple terminals
@@ -2632,9 +2699,49 @@ function setupInvoices() {
   document.getElementById('invTable').onclick = e => {
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
-    const inv = invoices.find(i => i.id === btn.dataset.id);
+    const inv = invoices.find(i => String(i.id) === btn.dataset.id);
     if (!inv) return;
-    if (btn.dataset.action === 'edit') openInvoiceModal(inv);
+    if (btn.dataset.action === 'edit') {
+      // If invoice is approved (open invoice), show confirmation modal
+      const status = (inv.status || '').toString().trim().toLowerCase();
+      if (status === 'open invoice' || status === 'open_invoice' || status === 'open') {
+        showEditApprovedInvoiceModal(inv);
+      } else {
+        openInvoiceModal(inv);
+      }
+    }
+
+// Modal for editing an approved invoice (moved to top-level scope)
+function showEditApprovedInvoiceModal(inv) {
+  let modal = document.getElementById('editApprovedInvoiceModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'editApprovedInvoiceModal';
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-content card" style="max-width:380px;margin:18vh auto;">
+        <h3>Invoice Already Approved</h3>
+        <p style="margin:18px 0;">This invoice has already been approved. Are both parties aware of these changes?</p>
+        <div style="display:flex;gap:12px;justify-content:flex-end;">
+          <button class="btn btn-green" id="proceedEditApprovedBtn">Proceed with edits</button>
+          <button class="btn" id="cancelEditApprovedBtn">Cancel</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
+  modal.classList.remove('hidden');
+  // Button handlers
+  modal.querySelector('#cancelEditApprovedBtn').onclick = () => modal.classList.add('hidden');
+  modal.querySelector('#proceedEditApprovedBtn').onclick = () => {
+    modal.classList.add('hidden');
+    // Revert invoice to open estimate and open modal
+    inv.status = 'open estimate';
+    showNotification('Invoice reverted to Open Estimate for editing.');
+    openInvoiceModal(inv);
+    renderInvoices && renderInvoices();
+  };
+}
     if (btn.dataset.action === 'view') {
       // Route to the standalone invoice view page
       try {
@@ -2647,13 +2754,14 @@ function setupInvoices() {
       }
     }
     if (btn.dataset.action === 'checkout') showTerminalPaymentModal(inv);
+    if (btn.dataset.action === 'approve') showTerminalPaymentModal(inv, { approveMode: true });
     if (btn.dataset.action === 'markPaid') openConfirmPayModal(inv, 'paid');
     if (btn.dataset.action === 'remove') openRemoveInvModal(inv);
   };
   document.getElementById('prevTable').onclick = e => {
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
-    const inv = invoices.find(i => i.id === btn.dataset.id);
+    const inv = invoices.find(i => String(i.id) === btn.dataset.id);
     if (!inv) return;
     if (btn.dataset.action === 'view') {
       try {
@@ -2680,7 +2788,7 @@ function setupInvoices() {
       customer_first: '',
       customer_last: '',
       appointment_id: window.selectedAppointment?.id || '',
-      status: 'open',
+      status: 'open estimate',
       due: '',
       tax_rate: 6,
       discount: 0,

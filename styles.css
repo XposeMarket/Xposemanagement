@@ -1,3 +1,13 @@
+/* Green action button for Approve/Checkout in invoices (matches +Appointments) */
+.btn-green {
+  background: #22c55e !important;
+  color: #fff !important;
+  border: none !important;
+}
+/* Optional: add a hover effect */
+.btn-green:hover {
+  background: #16a34a !important;
+}
 :root.theme-landing .btn.quick-create#btnNewAppt {
   background: #22c55e !important;
   color: #fff !important;

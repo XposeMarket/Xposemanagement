@@ -1535,7 +1535,8 @@ app.post('/api/send-invoice', async (req, res) => {
       customerEmail, 
       customerPhone,
       customerName,
-      googleReviewUrl  // Optional - for paid invoices to include review request
+      googleReviewUrl, // Optional - for paid invoices to include review request
+      estimate // Optional - when true, send estimate wording
     } = req.body;
 
     // Validate required fields
@@ -1693,15 +1694,15 @@ app.post('/api/send-invoice', async (req, res) => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
     <h1 style="color: white; margin: 0; font-size: 28px;">${shopName}</h1>
-    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0;">Invoice #${invoice.number || invoiceId.slice(0, 8)}</p>
+    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0;">${estimate ? 'Estimate' : 'Invoice'} #${invoice.number || invoiceId.slice(0, 8)}</p>
   </div>
   
   <div style="background: #f8f9fa; padding: 30px; border: 1px solid #e9ecef; border-top: none;">
     <p style="font-size: 16px; margin-bottom: 20px;">Hi ${customerName || 'Valued Customer'},</p>
     
-    <p>Please find your invoice attached below. Click the button to view the full details.</p>
+    <p>${estimate ? 'Thank you! Your estimate is ready for viewing.' : 'Please find your invoice attached below. Click the button to view the full details.'}</p>
     
     <div style="background: white; border-radius: 8px; padding: 20px; margin: 20px 0; border: 1px solid #e9ecef;">
       <table style="width: 100%; border-collapse: collapse;">
@@ -1725,7 +1726,7 @@ app.post('/api/send-invoice', async (req, res) => {
     </div>
     
     <div style="text-align: center; margin: 30px 0;">
-      <a href="${invoiceUrl}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">View Invoice</a>
+      <a href="${invoiceUrl}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 40px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">${estimate ? 'View Estimate' : 'View Invoice'}</a>
     </div>
     
     <p style="color: #666; font-size: 14px; margin-top: 30px;">
@@ -1750,7 +1751,7 @@ app.post('/api/send-invoice', async (req, res) => {
             body: JSON.stringify({
               from: `${shopName} <invoices@xpose.management>`,
               to: [customerEmail],
-              subject: `Invoice #${invoice.number || invoiceId.slice(0, 8)} from ${shopName}`,
+              subject: estimate ? `Estimate #${invoice.number || invoiceId.slice(0, 8)} from ${shopName}` : `Invoice #${invoice.number || invoiceId.slice(0, 8)} from ${shopName}`,
               html: emailHtml
             })
           });
@@ -1794,12 +1795,14 @@ app.post('/api/send-invoice', async (req, res) => {
           } else {
             const twilio = require('twilio')(twilioSid, twilioToken);
             
-            // Build invoice SMS message
+            // Build invoice/estimate SMS message
             let smsBody;
             if (isPaid) {
               smsBody = `${shopName}: Your Invoice #${invoice.number || invoiceId.slice(0, 8)} has been paid. Thank you! View your receipt: ${invoiceUrl}`;
+            } else if (estimate) {
+              smsBody = `${shopName}: Your estimate #${invoice.number || invoiceId.slice(0, 8)} is ready. View it here: ${invoiceUrl}`;
             } else {
-              smsBody = `${shopName}: Your invoice #${invoice.number || invoiceId.slice(0, 8)} for $${invoiceTotal.toFixed(2)} is ready: ${invoiceUrl}`;
+              smsBody = `${shopName}: Your invoice #${invoice.number || invoiceId.slice(0, 8)} for $${invoiceTotal.toFixed(2)} is ready. View it here: ${invoiceUrl}`;
             }
             
             console.log('[SendInvoice] SMS body length:', smsBody.length, 'chars');

@@ -46,7 +46,8 @@ module.exports = async function handler(req, res) {
       sendSms, 
       customerEmail, 
       customerPhone,
-      customerName
+      customerName,
+      estimate
     } = req.body;
 
     // Validate required fields
@@ -194,12 +195,13 @@ module.exports = async function handler(req, res) {
             grandTotal: grandTotal.toFixed(2),
             invoiceUrl,
             shopLogo: shop?.logo,
-            isPaid: isPaid
+            isPaid: isPaid,
+            isEstimate: !!estimate
           });
           
           const emailSubject = isPaid 
             ? `Paid Invoice #${invoice.number || invoice.id} - Thank You!`
-            : `Invoice #${invoice.number || invoice.id} from ${shopName}`;
+            : (estimate ? `Estimate #${invoice.number || invoice.id} from ${shopName}` : `Invoice #${invoice.number || invoice.id} from ${shopName}`);
 
           const emailResponse = await fetch('https://api.resend.com/emails', {
             method: 'POST',
@@ -251,7 +253,7 @@ module.exports = async function handler(req, res) {
           if (twilioNumber?.phone_number) {
             const smsBody = isPaid
               ? `${shopName}: Your Invoice #${invoice.number || invoice.id} has been paid, thank you! You can view your paid invoice below: ${invoiceUrl}`
-              : `${shopName}: Your invoice #${invoice.number || invoice.id} for $${grandTotal.toFixed(2)} is ready. View it here: ${invoiceUrl}`;
+              : (estimate ? `${shopName}: Your estimate #${invoice.number || invoice.id} is ready. View it here: ${invoiceUrl}` : `${shopName}: Your invoice #${invoice.number || invoice.id} for $${grandTotal.toFixed(2)} is ready. View it here: ${invoiceUrl}`);
 
             // Format phone number to E.164
             let toPhone = customerPhone.replace(/\D/g, '');
@@ -316,7 +318,7 @@ module.exports = async function handler(req, res) {
 /**
  * Build HTML email content
  */
-function buildEmailHtml({ shopName, customerName, invoiceNumber, grandTotal, invoiceUrl, shopLogo, isPaid = false }) {
+function buildEmailHtml({ shopName, customerName, invoiceNumber, grandTotal, invoiceUrl, shopLogo, isPaid = false, isEstimate = false }) {
   // Shop logo in header (your customer's logo)
   const logoHtml = shopLogo 
     ? `<img src="${shopLogo}" alt="${shopName}" style="max-height: 60px; margin-bottom: 20px;">`
@@ -353,7 +355,7 @@ function buildEmailHtml({ shopName, customerName, invoiceNumber, grandTotal, inv
                 Hi ${customerName},
               </p>
               <p style="margin: 0 0 30px; font-size: 16px; color: #333;">
-                ${isPaid ? 'Your invoice has been paid - thank you for your business!' : 'Thank you for your business! Your invoice is ready for viewing.'}
+                ${isPaid ? 'Your invoice has been paid - thank you for your business!' : (isEstimate ? 'Thank you! Your estimate is ready for viewing.' : 'Thank you for your business! Your invoice is ready for viewing.')}
               </p>
               
               <!-- Invoice Summary Box -->
@@ -384,7 +386,7 @@ function buildEmailHtml({ shopName, customerName, invoiceNumber, grandTotal, inv
                 <tr>
                   <td align="center">
                     <a href="${invoiceUrl}" style="display: inline-block; padding: 16px 40px; background-color: #1e40af; color: #ffffff; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600;">
-                      View Invoice
+                      ${isEstimate ? 'View Estimate' : 'View Invoice'}
                     </a>
                   </td>
                 </tr>

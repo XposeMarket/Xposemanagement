@@ -431,6 +431,22 @@
       invNumberEl.textContent = inv.number || inv.id.slice(0, 8);
     }
 
+    // Detect estimate vs invoice and update modal labels
+    const isEstimate = (inv.status || '').toString().trim().toLowerCase() === 'open estimate';
+    const headH3 = modal.querySelector('.modal-head h3');
+    const bodyP = modal.querySelector('.modal-body p');
+    if (isEstimate) {
+      if (headH3) headH3.textContent = '📤 Send Estimate';
+      if (bodyP) bodyP.textContent = `Send estimate #${inv.number || inv.id} to the customer:`;
+      if (sendBtnModal) sendBtnModal.textContent = 'Send Estimate';
+      modal.dataset.estimate = '1';
+    } else {
+      if (headH3) headH3.textContent = '📤 Send Invoice';
+      if (bodyP) bodyP.textContent = `Send invoice #${inv.number || inv.id} to the customer:`;
+      if (sendBtnModal) sendBtnModal.textContent = 'Send Invoice';
+      modal.dataset.estimate = '';
+    }
+
     // Wire up send button
     if (sendBtnModal) {
       sendBtnModal.onclick = () => sendInvoiceFromModal();
@@ -486,7 +502,8 @@
         sendEmail,
         sendSms,
         customerEmail: modal.dataset.email,
-        customerPhone: modal.dataset.phone
+        customerPhone: modal.dataset.phone,
+        estimate: modal.dataset.estimate === '1'
       });
 
       const response = await fetch(`${API_URL}/api/send-invoice`, {
@@ -499,7 +516,8 @@
           sendSms,
           customerEmail: modal.dataset.email || null,
           customerPhone: modal.dataset.phone || null,
-          customerName: modal.dataset.customerName || 'Customer'
+          customerName: modal.dataset.customerName || 'Customer',
+          estimate: modal.dataset.estimate === '1'
         })
       });
 
@@ -549,7 +567,8 @@
     } finally {
       if (sendBtnModal) {
         sendBtnModal.disabled = false;
-        sendBtnModal.textContent = 'Send Invoice';
+        const isEst = modal?.dataset?.estimate === '1';
+        sendBtnModal.textContent = isEst ? 'Send Estimate' : 'Send Invoice';
       }
     }
   }
