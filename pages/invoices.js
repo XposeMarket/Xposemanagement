@@ -814,7 +814,10 @@ function setupInvoices() {
   // Render invoice items
   function renderItems(items) {
     const itemsDiv = document.getElementById('items');
-    itemsDiv.innerHTML = '';
+      itemsDiv.innerHTML = '';
+      // Create an inner panel for item rows to improve visual grouping
+      const panel = document.createElement('div');
+      panel.className = 'inv-items-panel';
     const laborRates = (settings && settings.labor_rates) || [];
     items.forEach((itm, idx) => {
   // Wrap each item in a block so we can show a meta line above and a separator between items
@@ -1416,8 +1419,10 @@ function setupInvoices() {
       // Build block: meta above, then row
       block.appendChild(meta);
       block.appendChild(row);
-      itemsDiv.appendChild(block);
+      panel.appendChild(block);
     });
+    // Attach the inner panel once all blocks are rendered
+    itemsDiv.appendChild(panel);
     // add a small spacer so the modal can scroll a bit past the last row
     itemsDiv.style.paddingBottom = '36px';
   }
