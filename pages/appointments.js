@@ -6402,6 +6402,73 @@ const closeHandler = (e) => {
   setTimeout(() => document.addEventListener('click', closeHandler), 0);
 };
 
+// Handle Add Service requests originating from the Diagnostics modal (appointments)
+window.addEventListener('openServiceFromDiagnostics', async (e) => {
+  try {
+    let appt = e?.detail?.appt || null;
+    const apptId = e?.detail?.apptId || null;
+    let job = e?.detail?.job || null;
+    const jobId = e?.detail?.jobId || null;
+
+    if (!appt && apptId) appt = allAppointments.find(a => a.id === apptId) || null;
+    if (!job && jobId) job = allJobs.find(j => j.id === jobId) || null;
+
+    console.log('[Appointments] openServiceFromDiagnostics received', { apptId, appt, jobId, job });
+
+    // If a job was provided, reuse jobs flow
+    if (job) {
+      if (window.partsModalHandler) window.partsModalHandler.currentJob = job;
+      else window.partsModalHandler = { currentJob: job };
+      if (typeof openServiceModal === 'function') {
+        openServiceModal();
+        return;
+      } else if (typeof window.openServiceModal === 'function') {
+        window.openServiceModal();
+        return;
+      }
+    }
+
+    // If an appointment was provided, create/find corresponding job then open service modal
+    if (appt) {
+      // Find existing job for appointment or create one
+      let existingJob = allJobs.find(j => j.appointment_id === appt.id);
+      if (!existingJob) {
+        const shopId = getCurrentShopId();
+        existingJob = {
+          id: `job_${Date.now()}_${Math.random().toString(36).substr(2,9)}`,
+          shop_id: shopId,
+          appointment_id: appt.id,
+          customer: appt.customer || '',
+          customer_first: appt.customer_first || '',
+          customer_last: appt.customer_last || '',
+          assigned_to: null,
+          status: 'in_progress',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        allJobs.push(existingJob);
+      }
+
+      // Persist job via saveJobs helper (dynamic import to avoid circular deps)
+      try {
+        const { saveJobs } = await import('./jobs.js');
+        await saveJobs([existingJob]);
+      } catch (err) {
+        console.warn('[Appointments] Failed to save job for appointment before opening service modal:', err);
+      }
+
+      // Set parts handler and open service modal
+      if (window.partsModalHandler) window.partsModalHandler.currentJob = existingJob;
+      else window.partsModalHandler = { currentJob: existingJob };
+
+      if (typeof openServiceModal === 'function') openServiceModal();
+      else if (typeof window.openServiceModal === 'function') window.openServiceModal();
+    }
+  } catch (ex) {
+    console.error('[Appointments] openServiceFromDiagnostics handler failed:', ex);
+  }
+});
+
 // Open Cortex modal with pre-filled search for a specific service
 window.openCortexForService = async function(serviceName) {
   try {

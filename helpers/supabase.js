@@ -21,7 +21,10 @@ function getSupabaseClient() {
   if (typeof window !== 'undefined' && window.supabase && window.supabase.createClient) {
     try {
       const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      // Cache singleton references so accidental direct createClient calls reuse this instance
       window._supabaseClient = client;
+      try { window.supabaseClient = client; } catch(e) {}
+      try { if (window.supabase && typeof window.supabase.createClient === 'function') window.supabase.createClient = () => client; } catch(e) {}
       console.log('✅ Supabase client initialized');
       return client;
     } catch (e) {
@@ -39,7 +42,10 @@ function getSupabaseClient() {
       try {
         if (window.supabase && window.supabase.createClient) {
           const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+          // Cache singleton references
           window._supabaseClient = client;
+          try { window.supabaseClient = client; } catch(e) {}
+          try { if (window.supabase && typeof window.supabase.createClient === 'function') window.supabase.createClient = () => client; } catch(e) {}
           console.log('✅ Supabase client initialized (delayed)');
           clearInterval(window._supabaseInitWatcher);
           window._supabaseInitWatcher = null;

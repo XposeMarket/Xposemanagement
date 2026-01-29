@@ -359,7 +359,7 @@ function showSearchView() {
   body.innerHTML = `
     <div style="max-width: 700px; margin: 0 auto;">
       ${backBtn}${ymmHtml}
-      ${(currentJob && !currentIsStaff) ? `<div style="margin-bottom:12px;"><button id="diagAddServiceBtn" class="btn" onclick="window.dispatchEvent(new CustomEvent('openServiceFromDiagnostics',{detail:{jobId:'${currentJob.id}'}}))" style="background: linear-gradient(135deg, #06b6d4, #0ea5a4); color: white; padding: 10px 16px; font-weight:600;">➕ Add Service to Job</button></div>` : ''}
+      ${((currentJob && !currentIsStaff) || (currentAppt && currentServicesOnly)) ? `<div style="margin-bottom:12px;"><button id="diagAddServiceBtn" class="btn" onclick="window.dispatchEvent(new CustomEvent('openServiceFromDiagnostics',{detail:{${currentJob ? `jobId:'${currentJob.id}'` : `apptId:'${currentAppt.id}'`}}}))" style="background: linear-gradient(135deg, #06b6d4, #0ea5a4); color: white; padding: 10px 16px; font-weight:600;">➕ Add Service to ${currentJob ? 'Job' : 'Appointment'}</button></div>` : ''}
       <div style="margin-bottom: 24px;">
         <label style="font-weight: 600; display: block; margin-bottom: 8px;">🔍 ${currentServicesOnly ? 'Search Services' : 'Search anything...'}</label>
         <div style="display: flex; gap: 8px;">
@@ -413,10 +413,14 @@ window.diagUpdateVehicle = function() {
   if (diagAddBtn) {
     diagAddBtn.addEventListener('click', () => {
       try {
-        console.log('[DiagnosticsModal] dispatching openServiceFromDiagnostics', currentJob);
-        // Dispatch an app-level event so the Jobs page (which owns the service flow)
-        // can open the service modal without creating a circular import.
-        window.dispatchEvent(new CustomEvent('openServiceFromDiagnostics', { detail: { job: currentJob } }));
+        // Dispatch appropriate detail depending on whether a job or appointment is selected
+        if (currentJob && !currentIsStaff) {
+          console.log('[DiagnosticsModal] dispatching openServiceFromDiagnostics (job)', currentJob);
+          window.dispatchEvent(new CustomEvent('openServiceFromDiagnostics', { detail: { job: currentJob } }));
+        } else if (currentAppt && currentServicesOnly) {
+          console.log('[DiagnosticsModal] dispatching openServiceFromDiagnostics (appointment)', currentAppt);
+          window.dispatchEvent(new CustomEvent('openServiceFromDiagnostics', { detail: { appt: currentAppt } }));
+        }
       } catch (e) { console.error('Failed to dispatch openServiceFromDiagnostics:', e); alert('Unable to open Add Service.'); }
     });
   }

@@ -297,18 +297,23 @@ function renderTerminalSection(terminalData, shopId, additionalTerminals = []) {
 
   container.innerHTML = `
     <div class="terminal-panel card ${collapsedClass}" id="terminal-panel">
-      <div class="terminal-panel-header" onclick="toggleTerminalPanel()">
-        <div class="terminal-panel-header-left">
+      <div class="terminal-panel-header" style="display:flex;align-items:center;justify-content:space-between;" onclick="toggleTerminalPanel()">
+        <div class="terminal-panel-header-left" style="display:flex;align-items:center;gap:16px;">
           <h3><i class="fas fa-credit-card"></i> Terminal Status</h3>
           <span class="terminal-status-pill ${getStatusPillClass(terminal.status || overallStatus)}">
             <i class="fas fa-circle"></i>
             ${getStatusText(terminal.status || overallStatus)}
           </span>
         </div>
-        <div class="terminal-panel-toggle">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="6,9 12,15 18,9"></polyline>
-          </svg>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button class="btn btn-primary" id="sendInvoiceFromTerminalBtn" title="Send Invoice" style="font-size:0.95rem;padding:6px 14px;">
+            <i class="fas fa-paper-plane"></i> Send Invoice
+          </button>
+          <div class="terminal-panel-toggle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="6,9 12,15 18,9"></polyline>
+            </svg>
+          </div>
         </div>
       </div>
       
@@ -371,6 +376,28 @@ function renderTerminalSection(terminalData, shopId, additionalTerminals = []) {
   `;
   
   createPurchaseModal();
+
+  // Attach handler for Send Invoice button
+  setTimeout(() => {
+    const btn = document.getElementById('sendInvoiceFromTerminalBtn');
+    if (btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        // Open the shared send invoice modal, passing context if needed
+        if (typeof window.openSendInvoiceModal === 'function') {
+          window.openSendInvoiceModal({
+            source: 'terminal',
+            shopId: shopId,
+            // Add more context as needed (e.g., invoice id, customer info)
+          });
+        } else {
+          // Fallback: show modal if present
+          const modal = document.getElementById('sendInvoiceModal');
+          if (modal) modal.classList.remove('hidden');
+        }
+      });
+    }
+  }, 100);
 }
 
 function renderAdditionalTerminalsSection(terminals, shopId) {

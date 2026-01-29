@@ -2496,8 +2496,12 @@ function setupInvoices() {
 
     modal.innerHTML = `
       <div class="terminal-modal">
-        <div class="terminal-header">
-          <h2><i class="fas fa-credit-card"></i> ${approveMode ? 'Estimate Approval' : 'Terminal Checkout'}</h2>
+        <div class="terminal-header" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <h2 style="margin:0;display:flex;align-items:center;gap:8px;"><i class="fas fa-credit-card"></i> ${approveMode ? 'Estimate Approval' : 'Terminal Checkout'}</h2>
+          <button class="btn btn-primary" id="send-invoice-from-terminal-modal" style="font-size:0.95rem;padding:6px 14px;">
+            <span style="font-size:1.1em;">📋</span>
+            <span style="font-weight:600;">Send Invoice</span>
+          </button>
         </div>
         <div class="terminal-body">
           <div class="invoice-summary">
@@ -2531,7 +2535,7 @@ function setupInvoices() {
           </div>
           `}
         </div>
-        <div class="terminal-footer">
+        <div class="terminal-footer" style="display:flex;gap:8px;justify-content:flex-end;">
           <button class="btn btn-green" id="manual-mark-paid-btn">${approveMode ? 'Approve' : 'Mark Paid Manually'}</button>
           <button class="btn" onclick="document.getElementById('terminal-payment-modal').style.display='none'">Cancel</button>
         </div>
@@ -2554,6 +2558,21 @@ function setupInvoices() {
         await markInvoicePaid(inv);
       }
     };
+
+    // Add Send Invoice button handler
+    const sendBtn = modal.querySelector('#send-invoice-from-terminal-modal');
+    if (sendBtn) {
+      sendBtn.onclick = () => {
+        modal.style.display = 'none';
+        if (typeof window.showSendInvoiceModal === 'function') {
+          window.showSendInvoiceModal(inv);
+        } else {
+          // fallback: show modal if present
+          const sendModal = document.getElementById('sendInvoiceModal');
+          if (sendModal) sendModal.classList.remove('hidden');
+        }
+      };
+    }
 
     // Only run terminal status simulation if not in approve mode
     if (!approveMode) {
