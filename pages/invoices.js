@@ -448,9 +448,27 @@ function setupInvoices() {
 
   // View invoice modal
   function openInvoiceModal(inv) {
-    // Patch: Refresh invoice items from invoices table for real-time status sync
+    // Patch: Refresh invoice items for real-time status sync
+    // CRITICAL: Prefer in-memory invoices array (updated by diagnostics/cortex) over invoices table
+    // The invoices table may be stale if diagnostics added items but saveInvoice wasn't called yet
     (async () => {
       try {
+        // First, check if in-memory invoices array has newer/different items
+        const memoryInv = invoices.find(i => i.id === inv.id);
+        if (memoryInv && Array.isArray(memoryInv.items) && memoryInv.items.length > 0) {
+          // Use in-memory items if they exist (these are updated by diagnostics)
+          // Only override if memory has items and they differ from current
+          const memoryHasNewItems = memoryInv.items.some(mi => {
+            // Check if memory has items not in current inv.items
+            return !inv.items?.some(ci => ci.id === mi.id);
+          });
+          if (memoryHasNewItems || !inv.items?.length) {
+            console.log('[openInvoiceModal] Using in-memory invoice items (updated by diagnostics)');
+            inv.items = JSON.parse(JSON.stringify(memoryInv.items));
+          }
+        }
+        
+        // As fallback, also check invoices table for any newer data
         const supabase = typeof getSupabaseClient === 'function' ? getSupabaseClient() : null;
         if (supabase && typeof supabase.from === 'function' && inv && inv.id) {
           const { data: latestInv, error } = await supabase
@@ -459,11 +477,16 @@ function setupInvoices() {
             .eq('id', inv.id)
             .single();
           if (!error && latestInv && Array.isArray(latestInv.items)) {
-            inv.items = latestInv.items;
+            // Only use invoices table data if it has MORE items than current
+            // This prevents overwriting in-memory updates from diagnostics
+            if (latestInv.items.length > (inv.items?.length || 0)) {
+              console.log('[openInvoiceModal] Using invoices table items (has more items)');
+              inv.items = latestInv.items;
+            }
           }
         }
       } catch (e) {
-        console.warn('[Invoices] Failed to refresh items from invoices table:', e);
+        console.warn('[Invoices] Failed to refresh items:', e);
       }
       // Add Parts/Labor/Service quick buttons (top toolbar)
       const addPartEl = document.getElementById('addPart');
@@ -903,6 +926,10 @@ function setupInvoices() {
 
       const row = document.createElement('div');
       row.className = 'grid cols-3 item-row';
+      // CRITICAL: Store item id on the row so saveInvoice can match items after DOM rebuild
+      if (itm.id) {
+        row.dataset.itemId = itm.id;
+      }
   // temp holder for any initial price we want applied to priceInput (used for custom preset handling)
   let initialPrice;
 
@@ -1187,6 +1214,10 @@ function setupInvoices() {
           const l = items[li] || {};
           const sub = document.createElement('div');
           sub.className = 'inv-labor-subrow grid cols-3 item-row';
+          // CRITICAL: Store labor item id on the sub-row so saveInvoice can match items after DOM rebuild
+          if (l.id) {
+            sub.dataset.itemId = l.id;
+          }
 
           const lname = document.createElement('input');
           lname.className = 'itm-name';
@@ -1530,17 +1561,26 @@ function setupInvoices() {
             priceInput.value = 0;
             priceInput.style.display = 'none';
             
+            // CRITICAL: Assign an id to the service item if it doesn't have one
+            // This is needed so the labor row can link back to it
+            if (!items[idx].id) {
+              items[idx].id = `svc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            }
+            const serviceItemId = items[idx].id;
+            
             // Auto-add the labor row with the correct hours and rate
             const laborHours = svc.labor_hours || 0;
             const rate = laborRates.find(r => r.name === svc.labor_rate_name);
             const hourlyRate = rate ? rate.rate : 0;
             const laborItem = { 
+              id: `labor_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
               name: svc.labor_rate_name || 'Labor', 
               qty: laborHours, 
               price: hourlyRate, 
               type: 'labor', 
               _attached: true,
-              pricing_type: 'labor_based'
+              pricing_type: 'labor_based',
+              linkedItemId: serviceItemId  // Link labor back to service
             };
             // CRITICAL: Update the service item with name and pricing_type BEFORE rendering
             // This ensures the service stays selected in the dropdown after re-render
@@ -1901,6 +1941,14 @@ function setupInvoices() {
           // --- Preserve item_status and approved_at fields ---
           if (matched.item_status) item.item_status = matched.item_status;
           if (matched.approved_at) item.approved_at = matched.approved_at;
+          // --- Preserve diagnostics/cortex metadata ---
+          if (matched.source_id) item.source_id = matched.source_id;
+          if (matched.source_type) item.source_type = matched.source_type;
+          if (matched.from_diagnostics) item.from_diagnostics = matched.from_diagnostics;
+          if (matched.labor_rate) item.labor_rate = matched.labor_rate;
+          if (matched.labor_hours) item.labor_hours = matched.labor_hours;
+          if (matched.labor_rate_name) item.labor_rate_name = matched.labor_rate_name;
+          if (typeof matched.total !== 'undefined') item.total = matched.total;
         }
 
         // If the service select indicates a labor-based pricing type, set it explicitly

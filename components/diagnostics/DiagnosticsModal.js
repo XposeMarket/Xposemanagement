@@ -1510,8 +1510,26 @@ window.diagAddToInvoice = async function(serviceName, laborHours, type, itemId) 
     invoice.updated_at = new Date().toISOString();
     const idx = invoices.findIndex(i => i.id === invoice.id);
     if (idx >= 0) invoices[idx] = invoice;
+    
+    // Save to data table (legacy)
     await supabase.from('data').update({ invoices, updated_at: new Date().toISOString() }).eq('shop_id', shopId);
-    showNotification(`✅ Added "${serviceName}" ($${(laborHours * rate.rate).toFixed(2)})`, 'success');
+    
+    // CRITICAL: Also save to invoices table so edit modal gets correct items
+    try {
+      await supabase.from('invoices').upsert({
+        id: invoice.id,
+        shop_id: shopId,
+        items: invoice.items,
+        subtotal: invoice.subtotal,
+        total: invoice.total,
+        updated_at: invoice.updated_at
+      }, { onConflict: 'id' });
+      console.log('[Diagnostics] ✅ Saved items to invoices table');
+    } catch (invoiceTableErr) {
+      console.warn('[Diagnostics] Could not save to invoices table:', invoiceTableErr);
+    }
+    
+    showNotification(`✅ Added "${serviceName}" (${(laborHours * rate.rate).toFixed(2)})`, 'success');
     window.dispatchEvent(new Event('xm_data_updated'));
   } catch (e) { console.error('Add to invoice failed:', e); showNotification('Failed: ' + e.message, 'error'); }
 };

@@ -690,36 +690,79 @@
               if (fetchError || !invoiceRows || invoiceRows.length === 0) throw new Error('Failed to load invoice data');
               const invoice = invoiceRows[0];
               if (!invoice || !invoice.items) throw new Error('Invoice not found');
+              
+              const now = new Date().toISOString();
               let changed = false;
+              
+              // Approve ALL items (services AND their attached labor)
               invoice.items.forEach(item => {
                 const itemType = (item.type || '').toLowerCase();
-                if (itemType === 'part' || itemType === 'labor') return;
-                // Always set to approved, matching modal flow
-                const now = new Date().toISOString();
+                // Skip parts but include labor (attached to services)
+                if (itemType === 'part') return;
+                
+                // Check if already approved
+                if (item.item_status === 'approved' && item.approved_at) return;
+                
+                // Set ALL approval fields to match invoice modal behavior
                 item.estimate_status = 'approved';
                 item.estimate_approved_at = now;
-                item.approved = true;
-                item.accept = true;
                 item.item_status = 'approved';
                 item.approved_at = now;
+                item.approved = true;
+                item.accept = true;
                 changed = true;
               });
-              // If any changes, set invoice status to open
+              
+              // If any changes, set invoice status to open invoice
               if (changed) {
                 invoice.status = 'open invoice';
               } else {
                 throw new Error('No unapproved items found');
               }
-              // Save
+              
+              // Save to invoices table
               const { error: updateError } = await supabase
                 .from('invoices')
-                .update({ items: invoice.items, status: invoice.status, updated_at: new Date().toISOString() })
+                .update({ 
+                  items: invoice.items, 
+                  status: invoice.status, 
+                  updated_at: now 
+                })
                 .eq('id', invoice.id);
               if (updateError) throw updateError;
+              
+              // Also update the data table for backwards compatibility
+              try {
+                const { data: dataRow } = await supabase
+                  .from('data')
+                  .select('invoices')
+                  .eq('shop_id', window.currentShopId)
+                  .single();
+                
+                if (dataRow && dataRow.invoices) {
+                  const dataInvoices = dataRow.invoices;
+                  const dataInvIdx = dataInvoices.findIndex(inv => inv.id === invoice.id);
+                  if (dataInvIdx !== -1) {
+                    dataInvoices[dataInvIdx].items = invoice.items;
+                    dataInvoices[dataInvIdx].status = invoice.status;
+                    dataInvoices[dataInvIdx].updated_at = now;
+                    await supabase
+                      .from('data')
+                      .update({ invoices: dataInvoices, updated_at: now })
+                      .eq('shop_id', window.currentShopId);
+                    console.log('✅ Also updated data table');
+                  }
+                }
+              } catch (dataErr) {
+                console.warn('Could not update data table (non-critical):', dataErr);
+              }
+              
+              console.log('✅ All items approved successfully');
               btn.textContent = 'Approved!';
               setTimeout(() => { btn.style.display = 'none'; }, 1200);
               if (currentToken) await loadTracking(currentToken, true);
             } catch (err) {
+              console.error('Error in Approve All:', err);
               btn.disabled = false;
               btn.textContent = '✅ Approve All & Open Invoice';
               alert('Failed to approve all: ' + (err.message || err));
@@ -990,18 +1033,75 @@
         if (!invoice || !invoice.items || !invoice.items[itemIdx]) {
           throw new Error('Invoice or item not found');
         }
+        
         const now = new Date().toISOString();
-        invoice.items[itemIdx].estimate_status = 'approved';
-        invoice.items[itemIdx].estimate_approved_at = now;
-        // New status fields for real-time sync
-        invoice.items[itemIdx].item_status = 'approved';
-        invoice.items[itemIdx].approved_at = now;
-        // Save
+        const item = invoice.items[itemIdx];
+        
+        // Set ALL approval fields to match invoice modal behavior
+        item.estimate_status = 'approved';
+        item.estimate_approved_at = now;
+        item.item_status = 'approved';
+        item.approved_at = now;
+        item.approved = true;
+        item.accept = true;
+        
+        // Also approve any attached labor rows for this service
+        if ((item.type || '').toLowerCase() === 'service') {
+          invoice.items.forEach((otherItem, otherIdx) => {
+            if (otherIdx === itemIdx) return;
+            // Check if this is attached labor
+            if ((otherItem.type || '').toLowerCase() === 'labor') {
+              const isAttached = otherItem.linkedItemId === item.id || 
+                                 otherItem._attached || 
+                                 (otherIdx === itemIdx + 1 && otherItem._attached);
+              if (isAttached) {
+                otherItem.estimate_status = 'approved';
+                otherItem.estimate_approved_at = now;
+                otherItem.item_status = 'approved';
+                otherItem.approved_at = now;
+                otherItem.approved = true;
+                otherItem.accept = true;
+                console.log('✅ Also approved attached labor at index', otherIdx);
+              }
+            }
+          });
+        }
+        
+        // Save to invoices table
         const { error: updateError } = await supabase
           .from('invoices')
-          .update({ items: invoice.items, updated_at: new Date().toISOString() })
+          .update({ 
+            items: invoice.items, 
+            updated_at: now 
+          })
           .eq('id', invoice.id);
         if (updateError) throw updateError;
+        
+        // Also update the data table for backwards compatibility
+        try {
+          const { data: dataRow } = await supabase
+            .from('data')
+            .select('invoices')
+            .eq('shop_id', window.currentShopId)
+            .single();
+          
+          if (dataRow && dataRow.invoices) {
+            const dataInvoices = dataRow.invoices;
+            const dataInvIdx = dataInvoices.findIndex(inv => inv.id === invoiceId);
+            if (dataInvIdx !== -1) {
+              dataInvoices[dataInvIdx].items = invoice.items;
+              dataInvoices[dataInvIdx].updated_at = now;
+              await supabase
+                .from('data')
+                .update({ invoices: dataInvoices, updated_at: now })
+                .eq('shop_id', window.currentShopId);
+              console.log('✅ Also updated data table');
+            }
+          }
+        } catch (dataErr) {
+          console.warn('Could not update data table (non-critical):', dataErr);
+        }
+        
         console.log('✅ Item approved successfully');
         if (currentToken) {
           await loadTracking(currentToken, true);
@@ -1039,34 +1139,80 @@
         btn.disabled = true;
         btn.textContent = 'Removing...';
         
-        const { data: shopData, error: fetchError } = await supabase
-          .from('data')
-          .select('invoices')
-          .eq('shop_id', window.currentShopId)
-          .single();
+        const now = new Date().toISOString();
         
-        if (fetchError || !shopData) {
+        // Fetch invoice from invoices table (primary source)
+        const { data: invoiceRows, error: fetchError } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('shop_id', window.currentShopId)
+          .eq('id', invoiceId);
+        
+        if (fetchError || !invoiceRows || invoiceRows.length === 0) {
           throw new Error('Failed to load invoice data');
         }
         
-        const invoices = shopData.invoices || [];
-        const invoice = invoices.find(inv => inv.id === invoiceId);
+        const invoice = invoiceRows[0];
         
         if (!invoice || !invoice.items) {
           throw new Error('Invoice not found');
         }
         
+        // Get the item being declined to check for attached labor
+        const declinedItem = invoice.items[itemIdx];
+        const declinedItemId = declinedItem?.id;
+        
+        // Remove the declined item
         invoice.items.splice(itemIdx, 1);
         
+        // Also remove any attached labor rows for this service
+        if (declinedItemId && (declinedItem.type || '').toLowerCase() === 'service') {
+          invoice.items = invoice.items.filter(item => {
+            if ((item.type || '').toLowerCase() !== 'labor') return true;
+            // Remove if linked to the declined service
+            if (item.linkedItemId === declinedItemId) {
+              console.log('❌ Also removing attached labor');
+              return false;
+            }
+            return true;
+          });
+        }
+        
+        // Save to invoices table
         const { error: updateError } = await supabase
-          .from('data')
+          .from('invoices')
           .update({ 
-            invoices: invoices,
-            updated_at: new Date().toISOString()
+            items: invoice.items,
+            updated_at: now
           })
-          .eq('shop_id', window.currentShopId);
+          .eq('id', invoiceId);
         
         if (updateError) throw updateError;
+        
+        // Also update the data table for backwards compatibility
+        try {
+          const { data: dataRow } = await supabase
+            .from('data')
+            .select('invoices')
+            .eq('shop_id', window.currentShopId)
+            .single();
+          
+          if (dataRow && dataRow.invoices) {
+            const dataInvoices = dataRow.invoices;
+            const dataInvIdx = dataInvoices.findIndex(inv => inv.id === invoiceId);
+            if (dataInvIdx !== -1) {
+              dataInvoices[dataInvIdx].items = invoice.items;
+              dataInvoices[dataInvIdx].updated_at = now;
+              await supabase
+                .from('data')
+                .update({ invoices: dataInvoices, updated_at: now })
+                .eq('shop_id', window.currentShopId);
+              console.log('✅ Also updated data table');
+            }
+          }
+        } catch (dataErr) {
+          console.warn('Could not update data table (non-critical):', dataErr);
+        }
         
         console.log('❌ Item declined and removed');
         
