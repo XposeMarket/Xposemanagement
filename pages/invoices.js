@@ -99,6 +99,7 @@ function setupInvoices() {
   let users = [];
   let jobs = [];
   let settings = {};
+  let editingInvoice = null;
   let terminalOptedOut = false;
   let currentInvoiceForRemove = null;
   // Sorting state for invoices
@@ -447,36 +448,55 @@ function setupInvoices() {
 
   // View invoice modal
   function openInvoiceModal(inv) {
-    // Add Parts/Labor/Service quick buttons (top toolbar)
-    const addPartEl = document.getElementById('addPart');
-    const addLaborEl = document.getElementById('addLabor');
-    const addServiceEl = document.getElementById('addService');
-    if (addPartEl) addPartEl.onclick = () => {
-        const job = (jobs || []).find(j => j.appointment_id === inv.appointment_id) || null;
-        const appt = (appointments || []).find(a => a.id === inv.appointment_id) || null;
-        const vehicleStr = job ? (job.vehicle || job.vehicle_display || null) : (inv.vehicle || appt?.vehicle || appt?.vehicle_display || null);
-        const vehicleObj = job ? { vehicle: job.vehicle || job.vehicle_display || '', jobNumber: job.number || job.job_number || job.jobNo } : { vehicle: inv.vehicle || appt?.vehicle || appt?.vehicle_display || '', jobNumber: null };
-      if (window.partPricingModal) {
-        window.partPricingModal.show({ manual_entry: true, name: '' }, job ? job.id : null, vehicleObj);
-      } else {
-        inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'part' }); renderItems(inv.items); scrollInvoiceModalToBottom();
+    // Patch: Refresh invoice items from invoices table for real-time status sync
+    (async () => {
+      try {
+        const supabase = typeof getSupabaseClient === 'function' ? getSupabaseClient() : null;
+        if (supabase && typeof supabase.from === 'function' && inv && inv.id) {
+          const { data: latestInv, error } = await supabase
+            .from('invoices')
+            .select('items')
+            .eq('id', inv.id)
+            .single();
+          if (!error && latestInv && Array.isArray(latestInv.items)) {
+            inv.items = latestInv.items;
+          }
+        }
+      } catch (e) {
+        console.warn('[Invoices] Failed to refresh items from invoices table:', e);
       }
-    };
-    if (addLaborEl) addLaborEl.onclick = () => { inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'labor' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
-    if (addServiceEl) addServiceEl.onclick = () => { inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'service' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
+      // Add Parts/Labor/Service quick buttons (top toolbar)
+      const addPartEl = document.getElementById('addPart');
+      const addLaborEl = document.getElementById('addLabor');
+      const addServiceEl = document.getElementById('addService');
+      if (addPartEl) addPartEl.onclick = () => {
+          const job = (jobs || []).find(j => j.appointment_id === inv.appointment_id) || null;
+          const appt = (appointments || []).find(a => a.id === inv.appointment_id) || null;
+          const vehicleStr = job ? (job.vehicle || job.vehicle_display || null) : (inv.vehicle || appt?.vehicle || appt?.vehicle_display || null);
+          const vehicleObj = job ? { vehicle: job.vehicle || job.vehicle_display || '', jobNumber: job.number || job.job_number || job.jobNo } : { vehicle: inv.vehicle || appt?.vehicle || appt?.vehicle_display || '', jobNumber: null };
+        if (window.partPricingModal) {
+          window.partPricingModal.show({ manual_entry: true, name: '' }, job ? job.id : null, vehicleObj);
+        } else {
+          inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'part' }); renderItems(inv.items); scrollInvoiceModalToBottom();
+        }
+      };
+      if (addLaborEl) addLaborEl.onclick = () => { inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'labor' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
+      if (addServiceEl) addServiceEl.onclick = () => { inv.items = inv.items || []; inv.items.push({ name: '', qty: 1, price: '', type: 'service' }); renderItems(inv.items); scrollInvoiceModalToBottom(); };
 
-    // Hide platform fee description if user opted out of terminal
-    const platformFeeDesc = document.getElementById('platformFeeDesc');
-    if (platformFeeDesc) {
-      platformFeeDesc.style.display = terminalOptedOut ? 'none' : 'block';
-    }
+      // Hide platform fee description if user opted out of terminal
+      const platformFeeDesc = document.getElementById('platformFeeDesc');
+      if (platformFeeDesc) {
+        platformFeeDesc.style.display = terminalOptedOut ? 'none' : 'block';
+      }
 
-    const modal = document.getElementById('invModal');
-    if (!modal) return;
-    modal.classList.remove('hidden');
-    document.getElementById('invTitle').textContent = `Invoice #${inv.number || inv.id}`;
-    // Prefer job customer if available
-    let job = jobs.find(j => j.appointment_id === inv.appointment_id);
+      const modal = document.getElementById('invModal');
+      if (!modal) return;
+      modal.classList.remove('hidden');
+      document.getElementById('invTitle').textContent = `Invoice #${inv.number || inv.id}`;
+      // Prefer job customer if available
+      let job = jobs.find(j => j.appointment_id === inv.appointment_id);
+      // ...rest of openInvoiceModal logic...
+    })();
     let first = inv.customer_first || '';
     let last = inv.customer_last || '';
     // Try job customer fields
@@ -512,6 +532,8 @@ function setupInvoices() {
     document.getElementById('invTax').value = inv.tax_rate || settings.default_tax_rate || 6;
     document.getElementById('invDisc').value = inv.discount || settings.default_discount || 0;
     document.getElementById('invDue').value = inv.due || '';
+    // Track current invoice for edit handlers and render items
+    editingInvoice = inv;
     // Render existing items
     renderItems(inv.items || []);
     // Expose a modal-scoped addPartToInvoice handler so partPricingModal can add parts
@@ -606,12 +628,14 @@ function setupInvoices() {
       console.log('[InvoiceModal] Save button clicked', inv);
       saveInvoice(inv);
     };
-      // Close button
-      document.getElementById('closeInv').onclick = () => {
+        // Close button
+        document.getElementById('closeInv').onclick = () => {
           document.getElementById('invModal').classList.add('hidden');
           // Cleanup modal-scoped globals
           try { window.addPartToInvoice = null; } catch (e) {}
-      };
+          // clear editing invoice pointer
+          editingInvoice = null;
+        };
       
       // Send Estimate button
       // WORKFLOW: 
@@ -845,7 +869,34 @@ function setupInvoices() {
       const panel = document.createElement('div');
       panel.className = 'inv-items-panel';
     const laborRates = (settings && settings.labor_rates) || [];
+    // Build map of service index -> attached labor item indexes so we can render
+    // labor-based services as a single service row with labor sub-rows.
+    const serviceLaborMap = {};
+    const usedLaborIndexes = new Set();
+    items.forEach((it, i) => {
+      if (!it) return;
+      if (it.type === 'labor') {
+        let svcIdx = -1;
+        if (it.linkedItemId) {
+          svcIdx = items.findIndex(s => s && (s.id === it.linkedItemId || String(s.id) === String(it.linkedItemId)));
+        }
+        if (svcIdx === -1 && it.parent_id) {
+          svcIdx = items.findIndex(s => s && (s.id === it.parent_id || String(s.id) === String(it.parent_id)));
+        }
+        if (svcIdx === -1 && it._attached && items[i - 1] && items[i - 1].type === 'service') {
+          svcIdx = i - 1;
+        }
+        if (svcIdx >= 0) {
+          serviceLaborMap[svcIdx] = serviceLaborMap[svcIdx] || [];
+          serviceLaborMap[svcIdx].push(i);
+          usedLaborIndexes.add(i);
+        }
+      }
+    });
+
     items.forEach((itm, idx) => {
+      // Skip labor items that are being displayed as sub-rows under a service
+      if (usedLaborIndexes.has(idx)) return;
   // Wrap each item in a block so we can show a meta line above and a separator between items
   const block = document.createElement('div');
   block.className = 'inv-item-block';
@@ -1031,6 +1082,151 @@ function setupInvoices() {
       row.appendChild(priceInput);
       row.appendChild(typeInput);
 
+      // Hide the qty input for labor-based services (service is singular)
+      const isLaborService = (itm.type === 'service') && (
+        itm.pricing_type === 'labor_based' ||
+        (serviceSelect && serviceSelect.options && serviceSelect.options[serviceSelect.selectedIndex] && serviceSelect.options[serviceSelect.selectedIndex].dataset && serviceSelect.options[serviceSelect.selectedIndex].dataset.pricingType === 'labor_based') ||
+        (serviceLaborMap[idx] && serviceLaborMap[idx].length)
+      );
+      if (isLaborService) {
+        try { qtyInput.style.display = 'none'; } catch (e) { /* ignore */ }
+      }
+
+      // Ensure service items have an item_status default (pending)
+      if ((itm.type === 'service') && !itm.item_status) {
+        itm.item_status = 'pending';
+      }
+
+      // Status pill and approve control (top-right of row)
+      if (itm.type === 'service') {
+        try {
+          const statusWrap = document.createElement('div');
+          statusWrap.className = 'inv-status-wrap';
+          statusWrap.style.position = 'absolute';
+          statusWrap.style.top = '6px';
+          statusWrap.style.right = '12px';
+          statusWrap.style.display = 'flex';
+          statusWrap.style.gap = '6px';
+
+          const statusPill = document.createElement('span');
+          statusPill.className = `inv-status-pill ${itm.item_status || 'pending'}`;
+          statusPill.textContent = (itm.item_status || 'pending').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+          statusPill.style.padding = '4px 8px';
+          statusPill.style.borderRadius = '12px';
+          statusPill.style.fontSize = '0.85em';
+          statusPill.style.cursor = 'default';
+
+          const approveBtn = document.createElement('button');
+          approveBtn.className = 'btn small success inv-approve-btn';
+          approveBtn.title = 'Approve item';
+          approveBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path fill="white" d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>';
+
+          // If already approved, visually disable approve button
+          if ((itm.item_status || '').toLowerCase() === 'approved') {
+            approveBtn.disabled = true;
+            approveBtn.style.opacity = '0.6';
+          }
+
+          approveBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            // optimistic UI update
+            itm.item_status = 'approved';
+            itm.approved_at = new Date().toISOString();
+            statusPill.textContent = 'Approved';
+            statusPill.className = 'inv-status-pill approved';
+            approveBtn.disabled = true;
+            approveBtn.style.opacity = '0.6';
+
+            // Persist change if we have the editingInvoice context
+            try {
+              if (editingInvoice && typeof saveInvoiceDirectly === 'function') {
+                await saveInvoiceDirectly(editingInvoice);
+              } else {
+                // fallback: dispatch an event so host can handle persistence
+                window.dispatchEvent(new CustomEvent('xm:invoiceItemStatusChanged', { detail: { invoice: editingInvoice, index: idx, status: 'approved' } }));
+              }
+            } catch (err) {
+              // revert optimistic update on failure
+              console.error('Failed to persist item_status:', err);
+              itm.item_status = 'pending';
+              delete itm.approved_at;
+              statusPill.textContent = 'Pending';
+              statusPill.className = 'inv-status-pill pending';
+              approveBtn.disabled = false;
+              approveBtn.style.opacity = '1';
+              showNotification && showNotification('Failed to save status', 'error');
+            }
+          });
+
+          statusWrap.appendChild(statusPill);
+          statusWrap.appendChild(approveBtn);
+          // append to the item block (not the row) so it lines up with the meta line above
+          block.appendChild(statusWrap);
+        } catch (e) { /* silent */ }
+      }
+
+      // If this service has attached labor, show combined price on the service row
+      // and render labor details as indented sub-rows beneath it.
+      if (serviceSelect && serviceLaborMap[idx] && serviceLaborMap[idx].length) {
+        const laborIdxs = serviceLaborMap[idx];
+        const laborTotal = laborIdxs.reduce((sum, li) => {
+          const l = items[li] || {};
+          const lQty = parseFloat(l.qty || 1) || 0;
+          const lPrice = parseFloat(l.price || l.unit_price || 0) || 0;
+          return sum + (lQty * lPrice);
+        }, 0);
+        const svcBase = parseFloat(priceInput.value || 0) || 0;
+        const combined = svcBase + laborTotal;
+        priceInput.value = combined.toFixed(2);
+        priceInput.dataset.basePrice = svcBase;
+
+        // Render labor sub-rows (editable) grouped under the service
+        const laborSub = document.createElement('div');
+        laborSub.className = 'inv-labor-subrows';
+        laborIdxs.forEach(li => {
+          const l = items[li] || {};
+          const sub = document.createElement('div');
+          sub.className = 'inv-labor-subrow grid cols-3 item-row';
+
+          const lname = document.createElement('input');
+          lname.className = 'itm-name';
+          lname.value = l.name || '';
+          lname.placeholder = 'Labor name/description';
+
+          const lqty = document.createElement('input');
+          lqty.type = 'number';
+          lqty.className = 'itm-qty';
+          lqty.value = (l.qty !== undefined && l.qty !== null) ? l.qty : 1;
+          lqty.min = 0;
+
+          const lprice = document.createElement('input');
+          lprice.type = 'number';
+          lprice.step = '0.01';
+          lprice.className = 'itm-price';
+          lprice.value = (l.price === '' || l.price === undefined || l.price === null) ? '' : l.price;
+          lprice.placeholder = 'Rate';
+
+          const ltype = document.createElement('input');
+          ltype.type = 'hidden';
+          ltype.className = 'itm-type';
+          ltype.value = 'labor';
+
+          sub.appendChild(lname);
+          sub.appendChild(lqty);
+          sub.appendChild(lprice);
+          sub.appendChild(ltype);
+
+          // No individual remove button for attached labor subrows — removal
+          // is handled by the parent service's single remove control.
+          sub.style.position = 'relative';
+
+          laborSub.appendChild(sub);
+        });
+        // Store sub-rows on the block and append later so the service row (meta + row)
+        // appears above the labor sub-rows.
+        block._laborSub = laborSub;
+      }
+
       // Controls container (holds small + buttons) placed inline in the row so buttons sit level with inputs
       const controlsDiv = document.createElement('div');
       controlsDiv.className = 'inv-item-controls';
@@ -1066,6 +1262,36 @@ function setupInvoices() {
         if (useLaborModal) {
           removeBtn.addEventListener('click', () => {
             openLaborRemoveChoiceModal(idx, items);
+          });
+        } else if (itm.type === 'service' && serviceLaborMap[idx] && serviceLaborMap[idx].length) {
+          // Single remove button for service that also removes its attached labor rows
+          removeBtn.addEventListener('click', () => {
+            const modal = document.getElementById('confirmItemRemoveModal');
+            const msg = document.getElementById('confirmItemRemoveMessage');
+            const name = itm && itm.name ? itm.name : 'this service';
+            if (msg) msg.textContent = `Remove "${name}" and its attached labor from the invoice?`;
+            if (modal) modal.classList.remove('hidden');
+
+            const confirmBtn = document.getElementById('confirmItemRemoveConfirm');
+            const cancelBtn = document.getElementById('confirmItemRemoveCancel');
+
+            const handler = () => {
+              try {
+                const laborIdxs = serviceLaborMap[idx] || [];
+                const removeSet = new Set([idx, ...laborIdxs]);
+                const newItems = items.filter((_, i) => !removeSet.has(i));
+                // mutate original array in-place
+                items.splice(0, items.length, ...newItems);
+              } catch (e) { console.error('Error removing service+labor', e); }
+              renderItems(items || []);
+              if (modal) modal.classList.add('hidden');
+              // cleanup handlers
+              if (confirmBtn) confirmBtn.onclick = null;
+              if (cancelBtn) cancelBtn.onclick = null;
+            };
+
+            if (confirmBtn) confirmBtn.onclick = handler;
+            if (cancelBtn) cancelBtn.onclick = () => { if (modal) modal.classList.add('hidden'); };
           });
         } else {
           removeBtn.addEventListener('click', () => {
@@ -1424,6 +1650,16 @@ function setupInvoices() {
       const price = Number(itm.price) || Number(priceInput.value) || 0;
       const amt = (qty * price) || 0;
       let partsText = '';
+      // If this is a service with attached labor, show the labor total as the cost
+      let laborTotalForService = 0;
+      if ((itm.type === 'service') && serviceLaborMap[idx] && serviceLaborMap[idx].length) {
+        laborTotalForService = serviceLaborMap[idx].reduce((sum, li) => {
+          const l = items[li] || {};
+          const lQty = parseFloat(l.qty || 1) || 0;
+          const lPrice = parseFloat(l.price || l.unit_price || 0) || 0;
+          return sum + (lQty * lPrice);
+        }, 0);
+      }
       if ((itm.type || '').toLowerCase() === 'part') {
         const qty = Number(itm.qty) || 0;
         const costUnit = Number(itm.cost_price || itm.cost || 0) || 0;
@@ -1435,16 +1671,21 @@ function setupInvoices() {
         }
       }
       const laborText = (itm.type || '').toLowerCase() === 'labor' ? `Labor: $${amt.toFixed(2)}` : '';
-      meta.textContent = [partsText, laborText].filter(Boolean).join(' · ');
-
-      // If no explicit type, but price/qty present, show a small cost summary
-      if (!meta.textContent) {
-        meta.textContent = `Cost: $${amt.toFixed(2)}`;
+      // For labor-based services, show labor total in the cost label
+      if (laborTotalForService && laborTotalForService > 0) {
+        meta.textContent = `Cost: $${laborTotalForService.toFixed(2)}`;
+      } else {
+        meta.textContent = [partsText, laborText].filter(Boolean).join(' · ');
+        // If no explicit type, but price/qty present, show a small cost summary
+        if (!meta.textContent) {
+          meta.textContent = `Cost: $${amt.toFixed(2)}`;
+        }
       }
 
-      // Build block: meta above, then row
+      // Build block: meta above, then row, then labor sub-rows
       block.appendChild(meta);
       block.appendChild(row);
+      if (block._laborSub) block.appendChild(block._laborSub);
       panel.appendChild(block);
     });
     // Attach the inner panel once all blocks are rendered
@@ -1523,7 +1764,7 @@ function setupInvoices() {
     }
     
     // Refresh UI
-    renderTable();
+    renderInvoices();
   }
 
   // Save invoice (upserts to invoices table)
@@ -1647,7 +1888,7 @@ function setupInvoices() {
 
         // Build item while preserving matched metadata when possible
         const item = { name, qty, price, type };
-        // Preserve matched id/cost/estimate fields
+        // Preserve matched id/cost/estimate fields and status fields
         if (matched) {
           if (matched.id) item.id = matched.id;
           if (typeof matched.cost_price !== 'undefined') item.cost_price = Number(matched.cost_price);
@@ -1657,6 +1898,9 @@ function setupInvoices() {
           if (matched.estimate_approved_at) item.estimate_approved_at = matched.estimate_approved_at;
           if (matched.pricing_type) item.pricing_type = matched.pricing_type;
           if (matched.linkedItemId) item.linkedItemId = matched.linkedItemId;
+          // --- Preserve item_status and approved_at fields ---
+          if (matched.item_status) item.item_status = matched.item_status;
+          if (matched.approved_at) item.approved_at = matched.approved_at;
         }
 
         // If the service select indicates a labor-based pricing type, set it explicitly
@@ -2549,11 +2793,19 @@ function setupInvoices() {
     manualBtn.onclick = async () => {
       modal.style.display = 'none';
       if (approveMode) {
+        // Set all items to approved
+        if (Array.isArray(inv.items)) {
+          const now = new Date().toISOString();
+          inv.items.forEach(item => {
+            item.item_status = 'approved';
+            item.approved_at = now;
+          });
+        }
         // Change status to open invoice, update UI, and re-render
         inv.status = 'open invoice';
         if (typeof saveInvoice === 'function') await saveInvoice(inv);
         if (typeof renderInvoices === 'function') renderInvoices();
-        showNotification('Estimate approved. Invoice is now open.');
+        showNotification('Estimate approved. All items marked approved. Invoice is now open.');
       } else {
         await markInvoicePaid(inv);
       }

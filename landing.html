@@ -1,0 +1,788 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Xpose Management — Trust-first shop operations</title>
+
+  <!-- Different fonts (system + serif) -->
+  <style>
+    :root{
+      --bg: #fcfcfb;
+      --ink:#0c1020;
+      --muted:#49566a;
+      --line:#d9dde6;
+      --wash:#f2f4f7;
+      --paper:#ffffff;
+
+      --accent:#0f766e;  /* cortex */
+      --accent2:#1d4ed8; /* links */
+      --warn:#a16207;
+      --ok:#166534;
+
+      --r:20px;
+      --r2:26px;
+
+      --shadow: 0 22px 60px rgba(12,16,32,.08);
+      --shadowSoft: 0 10px 30px rgba(12,16,32,.06);
+
+      --max: 1180px;
+
+      --serif: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      line-height:1.25;
+      overflow-x:hidden;
+    }
+    a{color:inherit; text-decoration:none}
+    .wrap{max-width:var(--max); margin:0 auto; padding: 22px;}
+    .sr-only{position:absolute; left:-9999px}
+
+    /* ====== Background “paper grain” + moving spotlight (very different vibe) ====== */
+    .grain{
+      position:fixed; inset:0; pointer-events:none; z-index:-2;
+      background-image:
+        radial-gradient(circle at 20% 15%, rgba(15,118,110,.10), transparent 45%),
+        radial-gradient(circle at 78% 22%, rgba(29,78,216,.10), transparent 45%),
+        radial-gradient(circle at 50% 78%, rgba(12,16,32,.06), transparent 55%);
+      opacity:.85;
+    }
+    .noise{
+      position:fixed; inset:0; pointer-events:none; z-index:-1;
+      background:
+        repeating-linear-gradient(0deg, rgba(0,0,0,.02) 0, rgba(0,0,0,.02) 1px, transparent 1px, transparent 3px);
+      mix-blend-mode:multiply;
+      opacity:.35;
+    }
+
+    /* ====== Top “ticket” bar (not a normal nav) ====== */
+    .ticket{
+      position:sticky; top:0; z-index:40;
+      background: rgba(252,252,251,.88);
+      backdrop-filter: blur(10px);
+      border-bottom:1px solid var(--line);
+    }
+    .ticketRow{
+      max-width:var(--max);
+      margin:0 auto;
+      padding: 12px 22px;
+      display:flex; align-items:center; justify-content:space-between; gap:14px;
+    }
+    .brand{
+      display:flex; align-items:center; gap:10px;
+      font-weight: 900; letter-spacing:-.2px;
+    }
+    .brand img{
+      width:34px; height:34px; object-fit:contain;
+      background: var(--paper);
+      border:1px solid var(--line);
+      border-radius: 12px;
+      padding:6px;
+    }
+    .stamp{
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing:.8px;
+      text-transform: uppercase;
+      padding: 7px 10px;
+      border: 1px dashed rgba(15,118,110,.45);
+      color: var(--accent);
+      border-radius: 999px;
+      background: rgba(15,118,110,.05);
+      white-space:nowrap;
+    }
+    .ticketActions{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      font-weight: 900;
+      cursor:pointer;
+      transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+      user-select:none;
+    }
+    .btn:hover{transform: translateY(-1px); box-shadow: var(--shadowSoft)}
+    .btn.primary{
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+    }
+    .btn.primary:hover{box-shadow: 0 18px 50px rgba(12,16,32,.18)}
+    .btn.link{
+      background: transparent;
+      border-color: transparent;
+      color: var(--accent2);
+      box-shadow:none;
+      padding: 10px 10px;
+    }
+    .btn.link:hover{background: rgba(29,78,216,.06); transform:none}
+
+    /* ====== Hero poster (editorial layout, no SaaS grid) ====== */
+    .poster{
+      margin-top: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--r2);
+      background: var(--paper);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      position:relative;
+    }
+    .poster::before{
+      content:"";
+      position:absolute; inset:0;
+      background:
+        linear-gradient(90deg, rgba(12,16,32,.04), transparent 35%),
+        radial-gradient(800px 500px at 12% 25%, rgba(15,118,110,.12), transparent 55%),
+        radial-gradient(700px 520px at 88% 18%, rgba(29,78,216,.10), transparent 55%);
+      pointer-events:none;
+    }
+    .posterGrid{
+      position:relative;
+      display:grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 0;
+      min-height: 520px;
+    }
+    @media (max-width: 980px){
+      .posterGrid{grid-template-columns: 1fr; min-height: unset;}
+    }
+
+    .heroLeft{
+      padding: 34px 34px 24px;
+      border-right: 1px solid var(--line);
+    }
+    @media (max-width: 980px){
+      .heroLeft{border-right:none; border-bottom:1px solid var(--line);}
+    }
+
+    .headline{
+      font-family: var(--serif);
+      font-weight: 700;
+      font-size: 58px;
+      letter-spacing: -1.2px;
+      line-height: 0.98;
+      margin: 10px 0 12px;
+    }
+    @media (max-width: 520px){
+      .headline{font-size: 44px;}
+    }
+
+    .lede{
+      font-size: 16px;
+      color: var(--muted);
+      max-width: 62ch;
+      font-weight: 650;
+      margin: 0 0 18px;
+    }
+
+    /* big underline sweep animation */
+    .underline{
+      position:relative;
+      display:inline-block;
+    }
+    .underline::after{
+      content:"";
+      position:absolute;
+      left:-2px; right:-2px;
+      bottom: 6px;
+      height: 10px;
+      background: rgba(15,118,110,.16);
+      transform-origin:left;
+      transform: scaleX(0);
+      animation: sweep 900ms ease forwards;
+      animation-delay: 300ms;
+      border-radius: 999px;
+      z-index:-1;
+    }
+    @keyframes sweep{to{transform: scaleX(1)}}
+
+    /* reveal mask for headline */
+    .mask{
+      display:inline-block;
+      background: linear-gradient(90deg, var(--ink) 0 40%, rgba(12,16,32,.16) 60%, var(--ink) 100%);
+      -webkit-background-clip:text;
+      background-clip:text;
+      color: transparent;
+      background-size: 220% 100%;
+      animation: shimmer 1.3s ease forwards;
+    }
+    @keyframes shimmer{
+      0%{background-position: 120% 0}
+      100%{background-position: 0% 0}
+    }
+
+    /* “proof chips” */
+    .proofRow{
+      display:flex; gap:10px; flex-wrap:wrap;
+      margin: 18px 0 0;
+    }
+    .chip{
+      border:1px solid var(--line);
+      background: var(--wash);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-weight: 900;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .chip strong{color: var(--ink)}
+    .chip.good{background: rgba(22,101,52,.06); border-color: rgba(22,101,52,.18); color: var(--ok)}
+    .chip.warn{background: rgba(161,98,7,.06); border-color: rgba(161,98,7,.18); color: var(--warn)}
+
+    /* Right column = “print-style” panels */
+    .heroRight{
+      padding: 22px;
+      display:flex;
+      flex-direction:column;
+      gap: 12px;
+    }
+    .panel{
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      background: #fff;
+      padding: 14px;
+      position:relative;
+      overflow:hidden;
+    }
+    .panel.inset{
+      background: var(--wash);
+    }
+    .panel h3{
+      margin: 0 0 6px;
+      font-size: 13px;
+      color: var(--muted);
+      letter-spacing:.2px;
+      text-transform: uppercase;
+      font-family: var(--mono);
+    }
+    .panel b{display:block; font-size: 18px; letter-spacing:-.3px}
+    .panel p{margin: 8px 0 0; color: var(--muted); font-weight: 650; font-size: 13px}
+
+    /* ====== Marquee (different vibe) ====== */
+    .marquee{
+      border-top:1px solid var(--line);
+      border-bottom:1px solid var(--line);
+      background: #fff;
+      overflow:hidden;
+    }
+    .marqueeTrack{
+      display:flex; gap:36px;
+      padding: 10px 0;
+      white-space:nowrap;
+      will-change: transform;
+      animation: scroll 18s linear infinite;
+      font-family: var(--mono);
+      color: var(--muted);
+      letter-spacing:.3px;
+      font-size: 12px;
+    }
+    @keyframes scroll{
+      from{transform: translateX(0)}
+      to{transform: translateX(-50%)}
+    }
+
+    /* ====== Big alternating sections (no card grid) ====== */
+    .sections{margin-top: 18px; display:flex; flex-direction:column; gap: 18px;}
+    .slice{
+      border: 1px solid var(--line);
+      border-radius: var(--r2);
+      background: #fff;
+      overflow:hidden;
+      display:grid;
+      grid-template-columns: .9fr 1.1fr;
+      min-height: 420px;
+    }
+    .slice.flip{grid-template-columns: 1.1fr .9fr;}
+    @media (max-width: 980px){
+      .slice, .slice.flip{grid-template-columns: 1fr; min-height: unset;}
+    }
+    .sliceLeft{
+      padding: 26px;
+      background: var(--wash);
+      border-right:1px solid var(--line);
+      position:relative;
+      overflow:hidden;
+    }
+    .slice.flip .sliceLeft{
+      border-right:none;
+      border-left:1px solid var(--line);
+    }
+    @media (max-width: 980px){
+      .sliceLeft{border-right:none; border-bottom:1px solid var(--line);}
+      .slice.flip .sliceLeft{border-left:none; border-bottom:1px solid var(--line);}
+    }
+    .sliceLeft h2{
+      font-family: var(--serif);
+      font-size: 34px;
+      letter-spacing:-.6px;
+      line-height:1.05;
+      margin:0 0 10px;
+    }
+    .sliceLeft p{
+      margin:0 0 12px;
+      color: var(--muted);
+      font-weight: 700;
+      max-width: 68ch;
+    }
+    .bullet{
+      margin-top: 14px;
+      display:flex; flex-direction:column; gap:10px;
+    }
+    .bullet .row{
+      display:flex; gap:10px; align-items:flex-start;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+    }
+    .icon{
+      width: 36px; height: 36px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      display:flex; align-items:center; justify-content:center;
+      font-weight: 1000;
+      color: var(--accent);
+      font-family: var(--mono);
+    }
+    .row b{display:block; font-size: 14px}
+    .row span{display:block; color: var(--muted); font-weight: 650; margin-top:4px; font-size: 13px}
+
+    /* Right side = interactive “sheet” preview */
+    .sliceRight{
+      padding: 22px;
+      background: #fff;
+      position:relative;
+      overflow:hidden;
+    }
+    .sheet{
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: #fff;
+      overflow:hidden;
+      box-shadow: var(--shadowSoft);
+    }
+    .sheetTop{
+      height: 44px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+      display:flex; align-items:center; justify-content:space-between;
+      padding: 0 12px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .sheetDots{display:flex; gap:6px}
+    .sheetDots i{width:10px; height:10px; border-radius:999px; border:1px solid var(--line); background: var(--wash); display:inline-block}
+    .sheetBody{padding: 12px; background: var(--wash);}
+
+    /* timeline rows */
+    .trow{
+      display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;
+      padding: 10px 12px;
+      border:1px solid var(--line);
+      border-radius: 16px;
+      background:#fff;
+      margin-bottom: 10px;
+      transform: translateY(0);
+      transition: transform .2s ease;
+      position:relative;
+      overflow:hidden;
+    }
+    .trow:hover{transform: translateY(-2px)}
+    .trow:last-child{margin-bottom:0}
+    .trow b{font-size:13px}
+    .trow small{display:block; margin-top:3px; color: var(--muted); font-weight:700}
+    .badge{
+      font-family: var(--mono);
+      font-size: 11px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border:1px solid var(--line);
+      background: var(--wash);
+      color: var(--muted);
+      white-space:nowrap;
+      height: fit-content;
+    }
+    .badge.ok{background: rgba(22,101,52,.06); border-color: rgba(22,101,52,.18); color: var(--ok)}
+    .badge.warn{background: rgba(161,98,7,.06); border-color: rgba(161,98,7,.18); color: var(--warn)}
+
+    /* spotlight animation */
+    .spot{
+      position:absolute;
+      width: 260px; height:260px;
+      border-radius: 999px;
+      background: radial-gradient(circle at 30% 30%, rgba(15,118,110,.18), transparent 65%);
+      filter: blur(2px);
+      pointer-events:none;
+      opacity:0;
+      transform: translate(-50%, -50%);
+      transition: opacity .18s ease;
+    }
+
+    /* ====== Bottom CTA block ====== */
+    .ctaBlock{
+      margin-top: 18px;
+      border:1px solid var(--line);
+      border-radius: var(--r2);
+      background:#fff;
+      overflow:hidden;
+      display:grid;
+      grid-template-columns: 1fr 420px;
+    }
+    @media (max-width: 980px){ .ctaBlock{grid-template-columns:1fr;} }
+    .ctaLeft{padding: 24px}
+    .ctaLeft h2{
+      font-family: var(--serif);
+      font-size: 34px;
+      margin: 0 0 8px;
+      letter-spacing:-.6px;
+    }
+    .ctaLeft p{margin:0; color: var(--muted); font-weight: 700; max-width: 70ch}
+    .form{
+      padding: 22px;
+      border-left:1px solid var(--line);
+      background: var(--wash);
+    }
+    @media (max-width: 980px){ .form{border-left:none; border-top:1px solid var(--line);} }
+    .field{
+      display:flex; flex-direction:column; gap:6px;
+      margin-bottom: 10px;
+    }
+    label{font-size: 12px; color: var(--muted); font-weight: 900; font-family: var(--mono); text-transform:uppercase; letter-spacing:.5px}
+    input{
+      padding: 12px 12px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background:#fff;
+      font-weight: 800;
+      outline:none;
+    }
+    input:focus{border-color: rgba(15,118,110,.5); box-shadow: 0 0 0 4px rgba(15,118,110,.10)}
+    .form .btn{width:100%; border-radius: 16px; padding: 12px 14px}
+
+    /* ====== Animations (not basic fade up) ====== */
+    .reveal{
+      opacity:0;
+      transform: translateY(18px);
+      transition: opacity .7s ease, transform .7s ease;
+    }
+    .reveal.on{opacity:1; transform: translateY(0)}
+    .wipe{
+      position:relative;
+      overflow:hidden;
+      display:inline-block;
+    }
+    .wipe:after{
+      content:"";
+      position:absolute; inset:0;
+      background: var(--paper);
+      transform: translateX(0);
+      animation: wipe 900ms ease forwards;
+      border-left:1px solid var(--line);
+    }
+    @keyframes wipe{
+      0%{transform: translateX(0)}
+      100%{transform: translateX(102%)}
+    }
+    @media (prefers-reduced-motion: reduce){
+      .marqueeTrack{animation:none}
+      .underline::after{animation:none; transform: scaleX(1)}
+      .mask{animation:none; background:none; color: var(--ink)}
+      .wipe:after{display:none}
+      .reveal{opacity:1; transform:none}
+    }
+
+    footer{
+      margin: 16px 0 30px;
+      padding-top: 14px;
+      border-top:1px solid var(--line);
+      color: var(--muted);
+      font-weight: 800;
+      font-size: 13px;
+      display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="noise" aria-hidden="true"></div>
+
+  <header class="ticket">
+    <div class="ticketRow">
+      <div class="brand">
+        <img src="XposeMark.png" alt="Xpose" onerror="this.style.display='none'">
+        <div>Xpose Management</div>
+        <span class="stamp">CORTEX INSIDE</span>
+      </div>
+      <div class="ticketActions">
+        <a class="btn link" href="#demo">Contact</a>
+        <a class="btn primary" href="#demo">Book demo</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- HERO POSTER -->
+    <section class="poster reveal">
+      <div class="posterGrid">
+        <div class="heroLeft">
+          <div class="wipe">
+            <div class="headline">
+              <span class="mask">Trust-first</span> shop software<br/>
+              built for <span class="underline">real decisions</span>.
+            </div>
+          </div>
+
+          <p class="lede">
+            Xpose keeps your workflow clean and readable. Cortex helps you confirm fixes, explain them clearly,
+            and prevent guesswork—so customers approve with confidence.
+          </p>
+
+          <div class="ticketActions" style="justify-content:flex-start; margin-top: 8px;">
+            <a class="btn primary" href="#demo">See the workflow</a>
+            <a class="btn" href="#sections">Explore how it works</a>
+          </div>
+
+          <div class="proofRow">
+            <div class="chip"><strong>Mobile</strong> in bright bays</div>
+            <div class="chip good"><strong>Clear approvals</strong> by text</div>
+            <div class="chip warn"><strong>Confirm first</strong> before parts</div>
+          </div>
+        </div>
+
+        <div class="heroRight">
+          <div class="panel">
+            <h3>What you get</h3>
+            <b>Clean workflow</b>
+            <p>Scheduling → in progress → recommendations → approvals → invoice.</p>
+          </div>
+          <div class="panel inset">
+            <h3>Cortex focus</h3>
+            <b>Confirmation + clarity</b>
+            <p>Targeted checks and explainable reasoning that matches real shop time.</p>
+          </div>
+          <div class="panel">
+            <h3>Result</h3>
+            <b>Fewer comebacks</b>
+            <p>Less guesswork. Better explanations. Higher close rate.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="marquee" aria-hidden="true">
+        <div class="marqueeTrack">
+          <span>• Estimates that read clean •</span>
+          <span>• Itemized approvals •</span>
+          <span>• Confirm before replace •</span>
+          <span>• Advisor-friendly •</span>
+          <span>• Customer timeline •</span>
+          <span>• Built for independent shops •</span>
+          <span>• Estimates that read clean •</span>
+          <span>• Itemized approvals •</span>
+          <span>• Confirm before replace •</span>
+          <span>• Advisor-friendly •</span>
+          <span>• Customer timeline •</span>
+          <span>• Built for independent shops •</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- BIG SLICES -->
+    <section id="sections" class="sections">
+      <article class="slice reveal">
+        <div class="sliceLeft">
+          <h2>Estimates that feel like paperwork — not software.</h2>
+          <p>
+            The layout is designed to look familiar: clear line items, simple totals, no “tech product” vibes.
+          </p>
+
+          <div class="bullet">
+            <div class="row">
+              <div class="icon">01</div>
+              <div><b>Service variations</b><span>Front/rear, left/right, bushing-only vs assembly.</span></div>
+            </div>
+            <div class="row">
+              <div class="icon">02</div>
+              <div><b>Parts shortcuts</b><span>Open supplier searches pre-filled per item.</span></div>
+            </div>
+            <div class="row">
+              <div class="icon">03</div>
+              <div><b>Customer-friendly totals</b><span>Readable breakdown that increases approval.</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sliceRight">
+          <div class="sheet" data-spot>
+            <div class="sheetTop">
+              <div class="sheetDots"><i></i><i></i><i></i></div>
+              <div>RO #1042 • Estimate</div>
+              <div class="badge">Draft</div>
+            </div>
+            <div class="sheetBody">
+              <div class="trow">
+                <div>
+                  <b>R&amp;R Spark Plugs</b>
+                  <small>Labor 1.0h • Parts quick links ready</small>
+                </div>
+                <div class="badge ok">HIGH CONF</div>
+              </div>
+              <div class="trow">
+                <div>
+                  <b>Ignition Coil Confirmation</b>
+                  <small>Swap test before replacement</small>
+                </div>
+                <div class="badge warn">CONFIRM</div>
+              </div>
+              <div class="trow">
+                <div>
+                  <b>Air Filter</b>
+                  <small>Optional based on inspection</small>
+                </div>
+                <div class="badge">OPTIONAL</div>
+              </div>
+            </div>
+            <div class="spot"></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="slice flip reveal">
+        <div class="sliceRight">
+          <div class="sheet" data-spot>
+            <div class="sheetTop">
+              <div class="sheetDots"><i></i><i></i><i></i></div>
+              <div>Cortex • Guidance</div>
+              <div class="badge ok">EXPLAINABLE</div>
+            </div>
+            <div class="sheetBody">
+              <div class="trow">
+                <div>
+                  <b>Targeted question</b>
+                  <small>Misfire only at idle or also under load?</small>
+                </div>
+                <div class="badge">ASK</div>
+              </div>
+              <div class="trow">
+                <div>
+                  <b>Confirmation step</b>
+                  <small>Swap coil cyl 2 ↔ 3, recheck misfire</small>
+                </div>
+                <div class="badge warn">STEP 2</div>
+              </div>
+              <div class="trow">
+                <div>
+                  <b>Decision</b>
+                  <small>If misfire follows → coil; if not → compression test</small>
+                </div>
+                <div class="badge ok">TREE</div>
+              </div>
+            </div>
+            <div class="spot"></div>
+          </div>
+        </div>
+
+        <div class="sliceLeft">
+          <h2>Diagnostics that don’t sound like a robot.</h2>
+          <p>
+            Cortex is meant to help you **confirm** and **communicate** — not dump a wall of text.
+          </p>
+
+          <div class="bullet">
+            <div class="row">
+              <div class="icon">A</div>
+              <div><b>Targeted questions</b><span>Short prompts that speed diagnosis.</span></div>
+            </div>
+            <div class="row">
+              <div class="icon">B</div>
+              <div><b>Explainable reasoning</b><span>Clear “why” that customers understand.</span></div>
+            </div>
+            <div class="row">
+              <div class="icon">C</div>
+              <div><b>Confirm-first logic</b><span>Reduce parts throwing and comebacks.</span></div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- CTA -->
+    <section class="ctaBlock reveal" id="demo">
+      <div class="ctaLeft">
+        <h2>Want a demo built around your shop?</h2>
+        <p>
+          I’ll walk you through the workflow and set up a sandbox that matches your process.
+          No pressure — just a quick, clear walkthrough.
+        </p>
+      </div>
+
+      <div class="form">
+        <form onsubmit="event.preventDefault(); alert('Captured! Hook this to your backend/scheduler.');">
+          <div class="field">
+            <label>Shop name</label>
+            <input required placeholder="e.g., Urbana Auto Care"/>
+          </div>
+          <div class="field">
+            <label>Email</label>
+            <input required type="email" placeholder="you@shop.com"/>
+          </div>
+          <div class="field">
+            <label>Phone (optional)</label>
+            <input placeholder="(555) 555-5555"/>
+          </div>
+          <button class="btn primary" type="submit" style="border-radius:16px;">Request demo</button>
+          <div style="margin-top:10px; color:var(--muted); font-weight:800; font-size:12px;">
+            Built for independent shops • Trust-first messaging • Clean workflow
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <footer>
+      <div>© <span id="yr"></span> Xpose Management</div>
+      <div style="display:flex; gap:12px; flex-wrap:wrap;">
+        <a href="#">Privacy</a><a href="#">Terms</a><a href="#">Contact</a>
+      </div>
+    </footer>
+  </main>
+
+  <script>
+    document.getElementById('yr').textContent = new Date().getFullYear();
+
+    // Reveal on scroll
+    const io = new IntersectionObserver((entries)=>{
+      for(const e of entries){
+        if(e.isIntersecting) e.target.classList.add('on');
+      }
+    }, {threshold:.12});
+    document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+    // Spotlight follows cursor inside each “sheet”
+    document.querySelectorAll('[data-spot]').forEach(sheet=>{
+      const spot = sheet.querySelector('.spot');
+      sheet.addEventListener('mousemove', (e)=>{
+        const r = sheet.getBoundingClientRect();
+        const x = e.clientX - r.left;
+        const y = e.clientY - r.top;
+        spot.style.left = x + 'px';
+        spot.style.top = y + 'px';
+        spot.style.opacity = 1;
+      });
+      sheet.addEventListener('mouseleave', ()=> spot.style.opacity = 0);
+    });
+  </script>
+</body>
+</html>

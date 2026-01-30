@@ -4,6 +4,43 @@
   color: #fff !important;
   border: none !important;
 }
+
+/* Invoice modal: grouped labor sub-rows under service rows */
+.inv-items-panel .inv-item-block { position: relative; padding-bottom: 6px; }
+.inv-labor-subrows { margin-left: 12px; margin-top: 6px; border-left: 2px dashed var(--line); padding-left: 12px; }
+.inv-labor-subrow { font-size: 0.95em; opacity: 0.95; background: transparent; margin: 6px 0; }
+.inv-labor-subrow .itm-name { font-size: 0.95em; }
+.inv-labor-subrow .itm-price, .inv-labor-subrow .itm-qty { width: auto; max-width: 120px; }
+.inv-labor-subrow .inv-abs-remove { right: 6px; }
+
+/* Status pill + approve button in invoice edit modal */
+.inv-status-wrap { align-items: center; }
+.inv-status-pill { background: var(--line); color: var(--text); border: 1px solid var(--line); }
+.inv-status-pill.pending { background: #fff7ed; color: #92400e; border-color: #f59e0b; padding: 2px 6px; font-size: 0.75em; border-radius: 10px; }
+.inv-status-pill.approved { background: #dcfce7; color: #065f46; border-color: #10b981; }
+.inv-status-pill.declined { background: #fee2e2; color: #991b1b; border-color: #ef4444; }
+.inv-approve-btn { background: #10b981 !important; border: none; color: #fff !important; padding: 6px 8px !important; border-radius: 8px !important; display:inline-flex; align-items:center; justify-content:center; box-shadow: 0 1px 0 rgba(0,0,0,0.12); }
+.inv-approve-btn svg { display:block; }
+.inv-approve-btn:disabled { opacity: 0.6; pointer-events: none; }
+
+/* Increase spacing inside invoice modal for better readability */
+.inv-items-panel { padding: 14px 20px; }
+.inv-items-panel .inv-item-block { margin-bottom: 16px; padding: 10px 12px; border-radius: 6px; }
+.inv-items-panel .item-row { gap: 12px; padding: 12px 0; align-items: center; }
+.inv-item-meta { margin-bottom: 10px; font-size: 0.95em; color: var(--muted); }
+.inv-labor-subrows { margin-top: 10px; padding-left: 14px; }
+.inv-labor-subrow { margin: 8px 0; }
+.inv-item-block .inv-status-wrap { top: 8px; right: 12px; }
+
+/* Reserve right-side space in item rows so status controls don't overlap inputs */
+.inv-item-block { position: relative; }
+.inv-item-block .item-row { padding-right: 140px; }
+
+/* Smaller reserve on narrow screens */
+@media (max-width: 700px) {
+  .inv-item-block .item-row { padding-right: 100px; }
+  .inv-status-wrap { right: 8px !important; }
+}
 /* Optional: add a hover effect */
 .btn-green:hover {
   background: #16a34a !important;

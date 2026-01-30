@@ -416,6 +416,7 @@
         <span>Total:</span>
         <span class="total-amount" id="invoiceTotal">$0.00</span>
       </div>
+      <button id="approveAllBtn" style="display:none;margin-top:18px;width:100%;background:#10b981;color:white;padding:14px 0;font-size:1.1rem;font-weight:700;border:none;border-radius:8px;cursor:pointer;box-shadow:0 2px 8px rgba(16,185,129,0.15);">✅ Approve All & Open Invoice</button>
     </div>
     
     <div class="powered-by">
@@ -509,21 +510,23 @@
         window.currentShopId = shop_id;
         window.currentShortCode = short_code;
 
-        // Fetch appointment data
-        const { data: shopData, error: dataError } = await supabase
+
+        // Fetch appointment directly from appointments table (if needed)
+        // For now, keep using the data table for appointments, but fetch invoice from invoices table
+        const { data: dataRow, error: dataError } = await supabase
           .from('data')
-          .select('appointments, invoices')
+          .select('appointments')
           .eq('shop_id', shop_id)
           .single();
 
-        if (dataError || !shopData) {
+        if (dataError || !dataRow) {
           if (!silentRefresh) {
             showError('Unable to load appointment data.');
           }
           return;
         }
 
-        const appointment = (shopData.appointments || []).find(apt => apt.id === appointment_id);
+        const appointment = (dataRow.appointments || []).find(apt => apt.id === appointment_id);
 
         if (!appointment) {
           if (!silentRefresh) {
@@ -532,8 +535,20 @@
           return;
         }
 
-        // Find related invoice
-        const invoice = (shopData.invoices || []).find(inv => inv.appointment_id === appointment_id);
+        // Fetch invoice directly from invoices table
+        const { data: invoiceRows, error: invoiceError } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('shop_id', shop_id)
+          .eq('appointment_id', appointment_id);
+
+        if (invoiceError || !invoiceRows || invoiceRows.length === 0) {
+          if (!silentRefresh) {
+            showError('Invoice not found.');
+          }
+          return;
+        }
+        const invoice = invoiceRows[0];
 
         // Render tracking
         renderTracking(appointment, short_code, invoice);
@@ -564,6 +579,10 @@
       const vehicleDisplay = appointment.vehicle || 'Vehicle';
       document.getElementById('vehicleInfo').textContent = vehicleDisplay;
       document.getElementById('displayCode').textContent = code || '';
+      // Store invoice id globally for Approve All
+      if (invoice && invoice.id) {
+        window.currentInvoiceId = invoice.id;
+      }
 
       // Status
       const status = (appointment.status || 'scheduled').toLowerCase();
@@ -584,26 +603,57 @@
 
       // === SERVICES SECTION ===
       const servicesList = document.getElementById('servicesList');
-      const service = appointment.service || 'Service';
-      
       let servicesHtml = '';
-      
       // Check invoice for pending/approved estimates
       let pendingEstimates = [];
       let approvedItems = [];
-      
+      let hasUnapproved = false;
+      let mainServiceItem = null;
+      // --- Labor-based service grouping (match invoices page logic) ---
+      let usedLaborIndexes = new Set();
+      let serviceLaborMap = {};
       if (invoice && invoice.items) {
+        invoice.items.forEach((item, idx) => {
+          if ((item.type || '').toLowerCase() === 'labor' && (item._attached || item.linkedItemId)) {
+            // Find the service this labor is attached to
+            let svcIdx = -1;
+            if (item.linkedItemId) {
+              svcIdx = invoice.items.findIndex(svc => svc.id === item.linkedItemId);
+            } else if (idx > 0 && invoice.items[idx-1].type === 'service' && invoice.items[idx-1]._hasAttachedLabor) {
+              svcIdx = idx-1;
+            }
+            if (svcIdx >= 0) {
+              serviceLaborMap[svcIdx] = serviceLaborMap[svcIdx] || [];
+              serviceLaborMap[svcIdx].push({item, idx});
+              usedLaborIndexes.add(idx);
+            }
+          }
+        });
+        // Find the originally booked service in invoice items (by name, or use a better identifier if available)
+        if (appointment.service) {
+          mainServiceItem = invoice.items.find(item => {
+            if (item.service_id && appointment.service_id) {
+              return item.service_id === appointment.service_id;
+            }
+            return (item.name || '').trim().toLowerCase() === appointment.service.trim().toLowerCase();
+          });
+        }
+        // Only show accept/decline for items that are not approved
         pendingEstimates = invoice.items.filter(item => {
           const itemType = (item.type || '').toLowerCase();
           if (itemType === 'part' || itemType === 'labor') return false;
-          return item.estimate_status === 'pending' || !item.estimate_status;
+          // Use new item_status logic for pending
+          if (item.item_status === 'approved' || item.approved_at) return false;
+          // Fallback to legacy logic for backward compatibility
+          return item.estimate_status === 'pending' || item.estimate_status === undefined || item.estimate_status === null || item.accept === false || (item.approved !== true && item.accept !== true);
         });
-        
+        // Only show in approved section if explicitly approved/accepted (new logic)
         approvedItems = invoice.items.filter(item => {
           const itemType = (item.type || '').toLowerCase();
           if (itemType === 'part' || itemType === 'labor') return false;
-          return item.estimate_status === 'approved';
+          return item.item_status === 'approved' || !!item.approved_at || item.estimate_status === 'approved' || item.approved === true || item.accept === true;
         });
+        hasUnapproved = pendingEstimates.length > 0;
       }
       
       // Show notification banner for pending estimates
@@ -614,20 +664,89 @@
       } else {
         document.getElementById('notificationBanner').style.display = 'none';
       }
+
+      // Show/hide Approve All button
+      const approveAllBtn = document.getElementById('approveAllBtn');
+      if (approveAllBtn) {
+        if (hasUnapproved) {
+          approveAllBtn.style.display = 'block';
+          approveAllBtn.disabled = false;
+        } else {
+          approveAllBtn.style.display = 'none';
+        }
+      }
+          // Approve All logic
+          document.getElementById('approveAllBtn').onclick = async function() {
+            const btn = this;
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
+            try {
+              // Fetch latest invoice data from invoices table
+              const { data: invoiceRows, error: fetchError } = await supabase
+                .from('invoices')
+                .select('*')
+                .eq('shop_id', window.currentShopId)
+                .eq('id', window.currentInvoiceId || window.lastInvoiceId || '');
+              if (fetchError || !invoiceRows || invoiceRows.length === 0) throw new Error('Failed to load invoice data');
+              const invoice = invoiceRows[0];
+              if (!invoice || !invoice.items) throw new Error('Invoice not found');
+              let changed = false;
+              invoice.items.forEach(item => {
+                const itemType = (item.type || '').toLowerCase();
+                if (itemType === 'part' || itemType === 'labor') return;
+                // Always set to approved, matching modal flow
+                const now = new Date().toISOString();
+                item.estimate_status = 'approved';
+                item.estimate_approved_at = now;
+                item.approved = true;
+                item.accept = true;
+                item.item_status = 'approved';
+                item.approved_at = now;
+                changed = true;
+              });
+              // If any changes, set invoice status to open
+              if (changed) {
+                invoice.status = 'open invoice';
+              } else {
+                throw new Error('No unapproved items found');
+              }
+              // Save
+              const { error: updateError } = await supabase
+                .from('invoices')
+                .update({ items: invoice.items, status: invoice.status, updated_at: new Date().toISOString() })
+                .eq('id', invoice.id);
+              if (updateError) throw updateError;
+              btn.textContent = 'Approved!';
+              setTimeout(() => { btn.style.display = 'none'; }, 1200);
+              if (currentToken) await loadTracking(currentToken, true);
+            } catch (err) {
+              btn.disabled = false;
+              btn.textContent = '✅ Approve All & Open Invoice';
+              alert('Failed to approve all: ' + (err.message || err));
+            }
+          };
       
-      // 1. PENDING ESTIMATES FIRST
+      // 1. PENDING ESTIMATES FIRST (combine labor if present)
       pendingEstimates.forEach((item) => {
+        const idx = invoice.items.indexOf(item);
         const qty = parseFloat(item.qty || 1) || 1;
-        const price = parseFloat(item.price || item.unit_price || 0) || 0;
-        const itemTotal = qty * price;
-        const itemIdx = invoice.items.indexOf(item);
-        
+        let price = parseFloat(item.price || item.unit_price || 0) || 0;
+        let laborTotal = 0;
+        // If labor-based, sum attached labor
+        if (item.pricing_type === 'labor_based' || serviceLaborMap[idx]) {
+          (serviceLaborMap[idx] || []).forEach(({item: laborItem, idx: laborIdx}) => {
+            laborTotal += parseFloat(laborItem.price || laborItem.unit_price || 0) || 0;
+            usedLaborIndexes.add(laborIdx);
+          });
+        }
+        const itemTotal = qty * (price + laborTotal);
+        const itemIdx = idx;
         servicesHtml += `
           <div class="service-item" style="background:#fef3c7;border-left:4px solid #f59e0b;padding:16px;border-radius:8px;margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;">
             <span class="service-icon" style="color:#f59e0b;font-size:1.5rem;">⏳</span>
             <div style="flex:1;min-width:200px;">
               <div style="font-weight:600;font-size:1.1rem;">${item.name || '-'}</div>
-              <div style="font-size:0.875rem;color:#78716c;">${qty > 1 ? qty + ' x ' : ''}$${price.toFixed(2)} = <strong>$${itemTotal.toFixed(2)}</strong></div>
+              <div style="font-size:0.875rem;color:#78716c;">${qty > 1 ? qty + ' x ' : ''}$${(price + laborTotal).toFixed(2)} = <strong>$${itemTotal.toFixed(2)}</strong></div>
             </div>
             <div style="display:flex;gap:8px;margin-top:8px;width:100%;">
               <button onclick="approveEstimate('${invoice.id}', ${itemIdx})" style="flex:1;background:#10b981;color:white;padding:12px 24px;font-weight:600;border:none;border-radius:8px;cursor:pointer;font-size:1rem;">✓ Accept</button>
@@ -636,58 +755,84 @@
           </div>
         `;
       });
-      
-      // 2. Original appointment service
-      let mainIcon = '✓';
-      let mainStatus = 'Approved';
-      let mainColor = '#10b981';
-      
-      if (status === 'completed') {
-        mainStatus = 'Complete';
-      } else if (status === 'in-progress' || status === 'in_progress') {
-        mainIcon = '🔧';
-        mainStatus = 'In Progress';
-        mainColor = '#3b82f6';
+
+      // 2. Original appointment service (only if it exists in invoice, combine labor if present)
+      // Only auto-approve the originally booked service if it exists. If deleted, do not auto-approve any other service.
+      if (mainServiceItem) {
+        let mainIcon = '✓';
+        let mainStatus = 'Approved';
+        let mainColor = '#10b981';
+        if (status === 'completed') {
+          mainStatus = 'Complete';
+        } else if (status === 'in-progress' || status === 'in_progress') {
+          mainIcon = '🔧';
+          mainStatus = 'In Progress';
+          mainColor = '#3b82f6';
+        }
+        const idx = invoice.items.indexOf(mainServiceItem);
+        let price = parseFloat(mainServiceItem.price || mainServiceItem.unit_price || 0) || 0;
+        let laborTotal = 0;
+        if (mainServiceItem.pricing_type === 'labor_based' || serviceLaborMap[idx]) {
+          (serviceLaborMap[idx] || []).forEach(({item: laborItem, idx: laborIdx}) => {
+            laborTotal += parseFloat(laborItem.price || laborItem.unit_price || 0) || 0;
+            usedLaborIndexes.add(laborIdx);
+          });
+        }
+        const qty = parseFloat(mainServiceItem.qty || 1) || 1;
+        const itemTotal = qty * (price + laborTotal);
+        servicesHtml += `
+          <div class="service-item" style="background:#f0fdf4;border-left:4px solid #10b981;padding:12px;border-radius:8px;margin-bottom:12px;display:flex;align-items:center;">
+            <span class="service-icon">${mainIcon}</span>
+            <span class="service-name" style="flex:1;font-weight:600;">${mainServiceItem.name || appointment.service}</span>
+            <span style="color:${mainColor};font-weight:600;">$${itemTotal.toFixed(2)} ${mainStatus}</span>
+          </div>
+        `;
       }
-      
-      servicesHtml += `
-        <div class="service-item" style="background:#f0fdf4;border-left:4px solid #10b981;padding:12px;border-radius:8px;margin-bottom:12px;display:flex;align-items:center;">
-          <span class="service-icon">${mainIcon}</span>
-          <span class="service-name" style="flex:1;font-weight:600;">${service}</span>
-          <span style="color:${mainColor};font-weight:600;">${mainStatus}</span>
-        </div>
-      `;
-      
-      // 3. Other approved estimate items
+
+      // 3. Other approved estimate items (excluding mainServiceItem if present, combine labor if present)
       approvedItems.forEach(item => {
+        // Only skip mainServiceItem if it exists; do not auto-approve any other service if mainServiceItem is deleted
+        if (mainServiceItem && item === mainServiceItem) return;
+        const idx = invoice.items.indexOf(item);
         const qty = parseFloat(item.qty || 1) || 1;
-        const price = parseFloat(item.price || item.unit_price || 0) || 0;
-        const itemTotal = qty * price;
-        
+        let price = parseFloat(item.price || item.unit_price || 0) || 0;
+        let laborTotal = 0;
+        if (item.pricing_type === 'labor_based' || serviceLaborMap[idx]) {
+          (serviceLaborMap[idx] || []).forEach(({item: laborItem, idx: laborIdx}) => {
+            laborTotal += parseFloat(laborItem.price || laborItem.unit_price || 0) || 0;
+            usedLaborIndexes.add(laborIdx);
+          });
+        }
+        const itemTotal = qty * (price + laborTotal);
         servicesHtml += `
           <div class="service-item" style="background:#f0fdf4;border-left:4px solid #10b981;padding:12px;border-radius:8px;margin-bottom:12px;display:flex;align-items:center;">
             <span class="service-icon">✓</span>
             <div style="flex:1;">
               <div style="font-weight:600;">${item.name || '-'}</div>
-              <div style="font-size:0.875rem;color:#78716c;">${qty > 1 ? qty + ' x ' : ''}$${price.toFixed(2)} = $${itemTotal.toFixed(2)}</div>
+              <div style="font-size:0.875rem;color:#78716c;">${qty > 1 ? qty + ' x ' : ''}$${(price + laborTotal).toFixed(2)} = $${itemTotal.toFixed(2)}</div>
             </div>
             <span style="color:#10b981;font-weight:600;">Approved</span>
           </div>
         `;
       });
-      
+
+      // If no services, show a message
+      if (!pendingEstimates.length && !approvedItems.length && !mainServiceItem) {
+        servicesHtml = '<div style="color:#64748b;text-align:center;padding:24px 0;">No services on this invoice yet.</div>';
+      }
+
       servicesList.innerHTML = servicesHtml;
       
       // Render Misc Parts & Labor section
       const miscSection = document.getElementById('miscSection');
       const miscTotal = document.getElementById('miscTotal');
-      
       if (invoice && invoice.items) {
-        const miscItems = invoice.items.filter(item => {
+        // Exclude labor items that are associated with a service (usedLaborIndexes)
+        const miscItems = invoice.items.filter((item, idx) => {
           const itemType = (item.type || '').toLowerCase();
+          if (itemType === 'labor' && usedLaborIndexes.has(idx)) return false;
           return itemType === 'part' || itemType === 'labor' || itemType === 'inventory';
         });
-        
         if (miscItems.length > 0) {
           let miscSum = 0;
           miscItems.forEach(item => {
@@ -695,7 +840,6 @@
             const price = parseFloat(item.price || item.unit_price || 0) || 0;
             miscSum += qty * price;
           });
-          
           miscTotal.textContent = '$' + miscSum.toFixed(2);
           miscSection.style.display = 'block';
         } else {
@@ -714,21 +858,34 @@
         const filteredItems = (invoice.items || []).filter(item => {
           const itemType = (item.type || '').toLowerCase();
           if (itemType === 'part' || itemType === 'labor') return false;
-          if (item.estimate_status === 'pending') return false;
-          return true;
+          // Only show if approved (new logic)
+          if (item.item_status === 'approved' || item.approved_at) return true;
+          // Fallback to legacy logic for backward compatibility
+          if (item.estimate_status === 'approved' || item.approved === true || item.accept === true) return true;
+          return false;
         });
         
         if (filteredItems.length > 0) {
           let invoiceHtml = '';
           let subtotal = 0;
-          
-          filteredItems.forEach(item => {
-            const qty = parseFloat(item.qty || 1) || 1;
-            const price = parseFloat(item.price || item.unit_price || 0) || 0;
-            const itemTotal = qty * price;
-            subtotal += itemTotal;
-            
+          filteredItems.forEach((item, idx) => {
+            // Always use index from invoice.items for labor lookup
+            const origIdx = invoice.items.indexOf(item);
+            let qty = parseFloat(item.qty || 1) || 1;
+            let price = parseFloat(item.price || item.unit_price || 0) || 0;
+            let laborTotal = 0;
+            if ((item.type || '').toLowerCase() === 'service' && (item.pricing_type === 'labor_based' || serviceLaborMap[origIdx])) {
+              (serviceLaborMap[origIdx] || []).forEach(({item: laborItem, idx: laborIdx}) => {
+                const laborQty = parseFloat(laborItem.qty || 1) || 1;
+                const laborPrice = parseFloat(laborItem.price || laborItem.unit_price || 0) || 0;
+                laborTotal += laborQty * laborPrice;
+              });
+            }
+            // Exclude labor rows that are attached to a service
+            if ((item.type || '').toLowerCase() === 'labor' && usedLaborIndexes.has(origIdx)) return;
             const itemType = (item.type || '').toLowerCase() === 'service' ? 'Service' : 'Item';
+            const itemTotal = qty * (price + laborTotal);
+            subtotal += itemTotal;
             invoiceHtml += `
               <div class="invoice-item">
                 <div class="invoice-description">
@@ -737,7 +894,7 @@
                 </div>
                 <div style="text-align: right;">
                   <div style="font-size: 0.875rem; color: var(--muted); margin-bottom: 4px;">
-                    ${qty > 1 ? qty + ' x ' : ''}$${price.toFixed(2)}
+                    ${qty > 1 ? qty + ' x ' : ''}$${(price + laborTotal).toFixed(2)}
                   </div>
                   <div class="invoice-amount">$${itemTotal.toFixed(2)}</div>
                 </div>
@@ -752,8 +909,9 @@
           let discount = 0;
           
           // Add misc to subtotal
-          const miscItems = (invoice.items || []).filter(item => {
+          const miscItems = (invoice.items || []).filter((item, idx) => {
             const itemType = (item.type || '').toLowerCase();
+            if (itemType === 'labor' && usedLaborIndexes.has(idx)) return false;
             return itemType === 'part' || itemType === 'labor' || itemType === 'inventory';
           });
           let miscSum = 0;
@@ -819,38 +977,32 @@
         btn.disabled = true;
         btn.textContent = 'Processing...';
         
-        const { data: shopData, error: fetchError } = await supabase
-          .from('data')
-          .select('invoices')
+        // Fetch invoice directly from invoices table
+        const { data: invoiceRows, error: fetchError } = await supabase
+          .from('invoices')
+          .select('*')
           .eq('shop_id', window.currentShopId)
-          .single();
-        
-        if (fetchError || !shopData) {
+          .eq('id', invoiceId);
+        if (fetchError || !invoiceRows || invoiceRows.length === 0) {
           throw new Error('Failed to load invoice data');
         }
-        
-        const invoices = shopData.invoices || [];
-        const invoice = invoices.find(inv => inv.id === invoiceId);
-        
+        const invoice = invoiceRows[0];
         if (!invoice || !invoice.items || !invoice.items[itemIdx]) {
           throw new Error('Invoice or item not found');
         }
-        
+        const now = new Date().toISOString();
         invoice.items[itemIdx].estimate_status = 'approved';
-        invoice.items[itemIdx].estimate_approved_at = new Date().toISOString();
-        
+        invoice.items[itemIdx].estimate_approved_at = now;
+        // New status fields for real-time sync
+        invoice.items[itemIdx].item_status = 'approved';
+        invoice.items[itemIdx].approved_at = now;
+        // Save
         const { error: updateError } = await supabase
-          .from('data')
-          .update({ 
-            invoices: invoices,
-            updated_at: new Date().toISOString()
-          })
-          .eq('shop_id', window.currentShopId);
-        
+          .from('invoices')
+          .update({ items: invoice.items, updated_at: new Date().toISOString() })
+          .eq('id', invoice.id);
         if (updateError) throw updateError;
-        
         console.log('✅ Item approved successfully');
-        
         if (currentToken) {
           await loadTracking(currentToken, true);
         }

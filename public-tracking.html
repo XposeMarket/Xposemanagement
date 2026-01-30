@@ -350,6 +350,9 @@
           <span id="invoiceStatusBadge" class="invoice-status"></span>
         </div>
         <a id="viewInvoiceLink" href="#" class="view-invoice-btn" style="display: none;">View Full Invoice</a>
+        <button id="approveAllBtn" class="btn btn-green" style="display:none;margin-top:18px;width:100%;font-size:1.1em;">
+          Approve All
+        </button>
       </div>
 
       <!-- Timeline -->
@@ -533,22 +536,23 @@
       // Services
       const servicesList = document.getElementById('servicesList');
       const services = appointment.services || [];
-      
+      let hasUnapproved = false;
       if (services.length === 0) {
         servicesList.innerHTML = '<p style="color: var(--muted); text-align: center;">No services listed</p>';
       } else {
         servicesList.innerHTML = services.map(service => {
           let icon = '⏳';
           let serviceStatus = 'Pending';
-          
-          if (status === 'completed') {
+          // Check for various approval fields
+          const isApproved = (typeof service.approved !== 'undefined' ? service.approved :
+                              typeof service.accept !== 'undefined' ? service.accept :
+                              typeof service.decline !== 'undefined' ? false : false);
+          if (isApproved === true) {
             icon = '✓';
-            serviceStatus = 'Complete';
-          } else if (status === 'in-progress') {
-            icon = '🔧';
-            serviceStatus = 'In Progress';
+            serviceStatus = 'Approved';
+          } else {
+            hasUnapproved = true;
           }
-          
           return `
             <div class="service-item">
               <span class="service-icon">${icon}</span>
@@ -557,6 +561,23 @@
             </div>
           `;
         }).join('');
+      }
+      // Show Approve All button in invoice panel if there are unapproved services and invoice is estimate
+      const approveAllBtn = document.getElementById('approveAllBtn');
+      if (approveAllBtn) {
+        if (hasUnapproved && invoice && (invoice.status||'').toLowerCase().includes('estimate')) {
+          approveAllBtn.style.display = 'block';
+          approveAllBtn.onclick = async function() {
+            approveAllBtn.disabled = true;
+            approveAllBtn.textContent = 'Approving...';
+            // TODO: Implement approval logic (API call)
+            alert('Approve All clicked! (logic not yet implemented)');
+            approveAllBtn.disabled = false;
+            approveAllBtn.textContent = 'Approve All';
+          };
+        } else {
+          approveAllBtn.style.display = 'none';
+        }
       }
 
       // Invoice section
