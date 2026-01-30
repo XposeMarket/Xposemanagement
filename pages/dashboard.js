@@ -402,8 +402,14 @@ async function setupDashboard() {
     openInv.forEach(inv => {
       const row = document.createElement("div");
       row.style.cssText = "padding:8px;border:1px solid var(--line);border-radius:8px;cursor:pointer;transition:all 0.2s ease;background:var(--card)";
-      row.innerHTML = `<div style="display:flex;justify-content:space-between;font-size:13px"><div><b>${getCustomerName(inv)}</b><br><span class="notice">${inv.due || ""}</span></div><div style="text-align:right;font-weight:700">$${fmtMoney(calcInvTotal(inv))}</div></div>`;
-      
+      // Status badge logic
+      let status = (inv.status || '').toLowerCase();
+      let statusLabel = '';
+      let statusColor = '#f59e0b';
+      if (status === 'open estimate') { statusLabel = 'Open Estimate'; statusColor = '#f59e0b'; }
+      else if (status === 'open' || status === 'open invoice') { statusLabel = 'Open Invoice'; statusColor = '#ef4444'; }
+      else { statusLabel = status.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase()); statusColor = '#888'; }
+      row.innerHTML = `<div style="display:flex;justify-content:space-between;font-size:13px;align-items:center"><div><b>${getCustomerName(inv)}</b><br><span class="notice">${inv.due || ""}</span></div><div style="display:flex;flex-direction:column;align-items:flex-end"><span style="font-size:12px;font-weight:600;padding:2px 8px;border-radius:8px;background:${statusColor};color:#fff;margin-bottom:2px;min-width:90px;text-align:center">${statusLabel}</span><span style="font-weight:700">$${fmtMoney(calcInvTotal(inv))}</span></div></div>`;
       row.addEventListener("click", () => {
         try {
           localStorage.setItem('openInvoiceId', inv.id);
@@ -411,17 +417,14 @@ async function setupDashboard() {
         // Navigate to invoices page; invoices.js will read openInvoiceId and open modal
         location.href = 'invoices.html';
       });
-      
       row.addEventListener("mouseenter", () => {
         row.style.background = "var(--line)";
         row.style.transform = "translateX(4px)";
       });
-      
       row.addEventListener("mouseleave", () => {
         row.style.background = "var(--card)";
         row.style.transform = "translateX(0)";
       });
-      
       openInvList.appendChild(row);
     });
   }

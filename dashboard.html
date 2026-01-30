@@ -34,7 +34,7 @@
   <div class="sidebar left-sidebar">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <h3 style="margin:0"><a href="invoices.html" style="color:inherit">Open Invoices</a></h3>
+        <h3 style="margin:0"><a href="invoices.html" style="color:inherit">Open Estimates/Open Invoices</a></h3>
         <div id="openInvTotal" style="font-size:18px;font-weight:700;color:var(--accent)">$0</div>
       </div>
       <select id="invSortFilter" style="margin-bottom:12px;width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--text);font-size:12px;cursor:pointer">
@@ -43,6 +43,7 @@
         <option value="amount-low">Amount (Low to High)</option>
         <option value="name-az">Customer A-Z</option>
         <option value="name-za">Customer Z-A</option>
+        <option value="open-estimates-invoices">Open Estimates/Open Invoices</option>
       </select>
       <div id="openInvoicesList" style="display:flex;flex-direction:column;gap:8px;">
         <p class="notice" id="invoicesEmpty">No open invoices</p>
