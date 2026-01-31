@@ -8,30 +8,31 @@
 
   <style>
     :root{
-      --bg:#f7f8fc;
-      --bg2:#eef2ff;
-      --card:rgba(255,255,255,0.78);
-      --card2:rgba(255,255,255,0.86);
-      --line:rgba(15,23,42,0.14);
-      --text:#0b1220;
-      --muted:rgba(11,18,32,0.72);
-      --muted2:rgba(11,18,32,0.56);
+      --bg:#070b12;
+      --bg2:#0b1020;
+      --card:rgba(255,255,255,0.06);
+      --card2:rgba(255,255,255,0.08);
+      --line:rgba(255,255,255,0.10);
+      --text:#eaf0ff;
+      --muted:rgba(234,240,255,0.72);
+      --muted2:rgba(234,240,255,0.56);
       --brand:#22c55e;
-      --accent:#2563eb;
-      --amber:#d97706;
-      --shadow: 0 18px 60px rgba(2,6,23,0.10);
+      --accent:#60a5fa;
+      --amber:#f59e0b;
+      --shadow: 0 18px 60px rgba(0,0,0,0.40);
       --radius:18px;
       --radius2:26px;
       --max:1180px;
     }
 
     *{box-sizing:border-box}
-    html,body{
+    html,body{margin:0;padding:0}
+    body{
       font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       background:
-        radial-gradient(900px 520px at 18% 10%, rgba(37,99,235,0.12), rgba(0,0,0,0) 65%),
-        radial-gradient(900px 520px at 82% 18%, rgba(34,197,94,0.10), rgba(0,0,0,0) 70%),
-        radial-gradient(900px 520px at 60% 92%, rgba(217,119,6,0.10), rgba(0,0,0,0) 65%),
+        radial-gradient(900px 500px at 18% 12%, rgba(96,165,250,0.18), rgba(0,0,0,0) 65%),
+        radial-gradient(900px 500px at 82% 18%, rgba(34,197,94,0.16), rgba(0,0,0,0) 70%),
+        radial-gradient(900px 500px at 60% 92%, rgba(245,158,11,0.10), rgba(0,0,0,0) 65%),
         linear-gradient(180deg, var(--bg), var(--bg2));
       color:var(--text);
       overflow-x:hidden;
@@ -360,177 +361,7 @@
       .terminal-sub{font-size: 12px}
       .modal-content{max-height: 85vh}
     }
-  
-    /* ===== Light theme overrides ===== */
-    .topbar{
-      background: rgba(247,248,252,0.85);
-      border-bottom:1px solid var(--line);
-    }
-    .nav a{color:var(--muted)}
-    .nav a:hover{
-      background:rgba(37,99,235,0.08);
-      border-color:var(--line);
-      color:var(--text);
-    }
-
-    .btn{
-      background:rgba(255,255,255,0.85);
-      color:var(--text);
-      border:1px solid var(--line);
-      box-shadow:0 10px 30px rgba(2,6,23,0.10);
-    }
-    .btn.primary{
-      background:linear-gradient(135deg, rgba(34,197,94,0.95), rgba(37,99,235,0.90));
-      color:#ffffff;
-      border:none;
-    }
-    .btn.ghost{background:rgba(255,255,255,0.65);}
-
-    .pill{
-      background:rgba(255,255,255,0.82);
-      border-color:var(--line);
-      color:var(--muted);
-    }
-
-    .panel,
-    .pricing-card,
-    .miniCard{
-      background:rgba(255,255,255,0.82);
-      border-color:var(--line);
-      box-shadow:var(--shadow);
-    }
-    .pricing-card:hover{
-      border-color: rgba(37,99,235,0.22);
-      background: rgba(255,255,255,0.90);
-    }
-    .pricing-card.popular{
-      border-color: rgba(37,99,235,0.28);
-      background: rgba(37,99,235,0.07);
-    }
-
-    .topStrip{
-      border-bottom: 1px solid rgba(15,23,42,0.10);
-      background:
-        radial-gradient(900px 260px at 20% 10%, rgba(37,99,235,0.10), rgba(0,0,0,0) 62%),
-        radial-gradient(900px 260px at 82% 40%, rgba(34,197,94,0.08), rgba(0,0,0,0) 64%),
-        rgba(255,255,255,0.60);
-    }
-    .stripNote{color:var(--muted);}
-
-    .pricing-tab{
-      border-color: var(--line);
-      background: rgba(255,255,255,0.70);
-      color: var(--muted);
-    }
-    .pricing-tab.active{
-      background: rgba(37,99,235,0.10);
-      color: var(--text);
-      border-color: rgba(37,99,235,0.22);
-    }
-
-    .strike{color: rgba(11,18,32,0.55); text-decoration-color: rgba(34,197,94,0.75);}
-    .unit{color: rgba(11,18,32,0.60);}
-
-    .plan-btn{
-      background: rgba(255,255,255,0.78);
-      color: var(--text);
-      border: 1px solid var(--line);
-      box-shadow: 0 14px 44px rgba(2,6,23,0.10);
-    }
-    .pricing-card.popular .plan-btn{
-      background: linear-gradient(135deg, rgba(34,197,94,0.95), rgba(37,99,235,0.90));
-      color:#ffffff;
-      border:none;
-    }
-    .plan-btn:hover{
-      border-color: rgba(37,99,235,0.22);
-      box-shadow: 0 18px 60px rgba(2,6,23,0.14);
-    }
-
-    /* Modal (keep dark overlay, make modal surface light for readability) */
-    .modal-overlay{ background: rgba(2,6,23,0.62); }
-    .modal-content{
-      background: rgba(255,255,255,0.96);
-      border-color: rgba(15,23,42,0.18);
-      box-shadow: 0 22px 80px rgba(2,6,23,0.24);
-    }
-    .modal-head{
-      border-bottom: 1px solid rgba(15,23,42,0.12);
-    }
-    .btn-close{
-      background: rgba(255,255,255,0.92);
-      color: var(--text);
-      border-color: rgba(15,23,42,0.18);
-      box-shadow: 0 18px 54px rgba(2,6,23,0.14);
-    }
-    .modal-body{
-      color: var(--text);
-    }
-    .modal-body > div:first-child{ color: rgba(11,18,32,0.75) !important; }
-    .modal-body > div:nth-child(2){ color: rgba(11,18,32,0.58) !important; }
-
-    .terminal-option{
-      background: rgba(255,255,255,0.86);
-      border-color: rgba(15,23,42,0.14);
-      box-shadow: 0 16px 50px rgba(2,6,23,0.10);
-    }
-    .terminal-option:hover{ border-color: rgba(37,99,235,0.22); }
-    .terminal-option.selected{ border-color: rgba(34,197,94,0.35); background: rgba(34,197,94,0.10); }
-    .terminal-option img{ background: rgba(2,6,23,0.03); border-color: rgba(15,23,42,0.10); }
-
-    .terminal-sub{ color: rgba(11,18,32,0.65); }
-    .badge-now,.badge-pop{
-      background: rgba(2,6,23,0.06);
-      color: var(--text);
-      border-color: rgba(15,23,42,0.14);
-    }
-    .badge-pop{ background: rgba(37,99,235,0.12); border-color: rgba(37,99,235,0.22); }
-
-    .modal-foot{
-      background: rgba(255,255,255,0.98);
-      border-top: 1px solid rgba(15,23,42,0.12);
-    }
-    #terminalOptOut{
-      background: rgba(255,255,255,0.86);
-      border-color: rgba(15,23,42,0.14);
-      color: var(--text);
-    }
-    #terminalModalConfirm{
-      background: linear-gradient(135deg, rgba(34,197,94,0.95), rgba(37,99,235,0.90));
-      color:#ffffff;
-      border:none;
-    }
-
-    .terminal-upgrade-overlay{
-      background: rgba(255,255,255,0.92);
-      border: 1px solid rgba(15,23,42,0.12);
-      box-shadow: 0 18px 60px rgba(2,6,23,0.12);
-    }
-    .terminal-upgrade-overlay h4{ color: var(--text); }
-    .terminal-upgrade-overlay p{ color: rgba(11,18,32,0.70); }
-
-    .mobile-menu{
-      background:rgba(255,255,255,0.95);
-      border-color:var(--line);
-      box-shadow:0 18px 60px rgba(2,6,23,0.14);
-    }
-
-    footer{
-      color: var(--muted2);
-    }
-    .footRow{
-      border-top: 1px solid var(--line);
-    }
-    .footLinks a{color: rgba(11,18,32,0.60);}
-    .footLinks a:hover{color: var(--text);}
-
-    /* Focus rings (helps modal + keyboard) */
-    button:focus-visible, a:focus-visible, .terminal-option:focus-visible, .pricing-tab:focus-visible{
-      outline: 3px solid rgba(37,99,235,0.35);
-      outline-offset: 2px;
-    }
-
-</style>
+  </style>
 </head>
 
 <body>
@@ -911,18 +742,6 @@
     let selectedTerminal = 'reader_m2';
 
     // Select terminal option
-    function setupTerminalOptionKeys(){
-      document.querySelectorAll('.terminal-option').forEach(function(opt){
-        opt.addEventListener('keydown', function(e){
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            var t = opt.getAttribute('data-terminal');
-            if (t) window.selectTerminal(t);
-          }
-        });
-      });
-    }
-    
     window.selectTerminal = function(terminal) {
       // For annual plans, only allow the free M2 terminal
       if (pricingPeriod === 'annually' && terminal !== 'reader_m2') {
@@ -963,17 +782,11 @@
     document.getElementById('terminalModalClose').onclick = hideTerminalModal;
 
     // Close modal when clicking overlay background
-    document.addEventListener('keydown', function(e){
-      if (e.key === 'Escape') hideTerminalModal();
-    });
-
     document.getElementById('terminalModal').addEventListener('click', function(e) {
       if (e.target === this) {
         hideTerminalModal();
       }
     });
-
-    setupTerminalOptionKeys();
 
     // Plan button click handler
     document.querySelectorAll('.plan-btn').forEach((btn) => {
@@ -1118,19 +931,6 @@
         tabs[0].classList.remove('active');
         tabs[1].classList.add('active');
         pricingPeriod = 'annually';
-      }
-
-      // If modal is open, update upgrade overlay immediately
-      var modal = document.getElementById('terminalModal');
-      var overlay = document.getElementById('terminalUpgradeOverlay');
-      if (modal && overlay && !modal.classList.contains('hidden')) {
-        if (pricingPeriod === 'annually') {
-          overlay.classList.remove('hidden');
-          // force free terminal selection
-          window.selectTerminal('reader_m2');
-        } else {
-          overlay.classList.add('hidden');
-        }
       }
     }
 

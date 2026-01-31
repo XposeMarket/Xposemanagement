@@ -8,29 +8,29 @@
 
   <style>
     :root{
-      --bg:#f7f8fc;
-      --bg2:#eef2ff;
-      --card:rgba(255,255,255,0.78);
-      --line:rgba(15,23,42,0.14);
-      --text:#0b1220;
-      --muted:rgba(11,18,32,0.72);
-      --muted2:rgba(11,18,32,0.56);
+      --bg:#070b12;
+      --bg2:#0b1020;
+      --card:rgba(255,255,255,0.06);
+      --line:rgba(255,255,255,0.10);
+      --text:#eaf0ff;
+      --muted:rgba(234,240,255,0.72);
+      --muted2:rgba(234,240,255,0.56);
       --brand:#22c55e;
-      --accent:#2563eb;
-      --amber:#d97706;
-      --shadow: 0 18px 60px rgba(2,6,23,0.10);
+      --accent:#60a5fa;
+      --amber:#f59e0b;
+      --shadow: 0 18px 60px rgba(0,0,0,0.40);
       --radius:18px;
       --radius2:26px;
       --max:1180px;
     }
 
     *{box-sizing:border-box}
-    html,body{
+    html,body{margin:0;padding:0}
+    body{
       font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       background:
-        radial-gradient(900px 520px at 18% 10%, rgba(37,99,235,0.12), rgba(0,0,0,0) 65%),
-        radial-gradient(900px 520px at 82% 18%, rgba(34,197,94,0.10), rgba(0,0,0,0) 70%),
-        radial-gradient(900px 520px at 60% 92%, rgba(217,119,6,0.10), rgba(0,0,0,0) 65%),
+        radial-gradient(900px 500px at 20% 12%, rgba(96,165,250,0.18), rgba(0,0,0,0) 65%),
+        radial-gradient(900px 500px at 80% 20%, rgba(34,197,94,0.16), rgba(0,0,0,0) 70%),
         linear-gradient(180deg, var(--bg), var(--bg2));
       color:var(--text);
       overflow-x:hidden;
@@ -259,47 +259,7 @@
       .grid3{grid-template-columns:1fr}
       h1{font-size:36px}
     }
-  
-    /* ===== Light theme overrides ===== */
-    .topbar{
-      background: rgba(247,248,252,0.85);
-      border-bottom:1px solid var(--line);
-    }
-    .nav a{color:var(--muted)}
-    .nav a:hover{
-      background:rgba(37,99,235,0.08);
-      color:var(--text);
-    }
-    .btn{
-      background:rgba(255,255,255,0.85);
-      color:var(--text);
-      border:1px solid var(--line);
-      box-shadow:0 10px 30px rgba(2,6,23,0.10);
-    }
-    .btn.primary{
-      background:linear-gradient(135deg, rgba(34,197,94,0.95), rgba(37,99,235,0.9));
-      color:#ffffff;
-      border:none;
-    }
-    .mobile-menu{
-      background:rgba(255,255,255,0.95);
-      border-color:var(--line);
-      box-shadow:0 18px 60px rgba(2,6,23,0.14);
-    }
-    .panel,
-    .logoPanel,
-    .card,
-    .imageBox{
-      background:rgba(255,255,255,0.8);
-      border-color:var(--line);
-      box-shadow:var(--shadow);
-    }
-    footer{
-      border-top:1px solid var(--line);
-      color:var(--muted2);
-    }
-
-</style>
+  </style>
 </head>
 
 <body>
@@ -510,47 +470,7 @@
               gap: 16px !important;
             }
           }
-        
-    /* ===== Light theme overrides ===== */
-    .topbar{
-      background: rgba(247,248,252,0.85);
-      border-bottom:1px solid var(--line);
-    }
-    .nav a{color:var(--muted)}
-    .nav a:hover{
-      background:rgba(37,99,235,0.08);
-      color:var(--text);
-    }
-    .btn{
-      background:rgba(255,255,255,0.85);
-      color:var(--text);
-      border:1px solid var(--line);
-      box-shadow:0 10px 30px rgba(2,6,23,0.10);
-    }
-    .btn.primary{
-      background:linear-gradient(135deg, rgba(34,197,94,0.95), rgba(37,99,235,0.9));
-      color:#ffffff;
-      border:none;
-    }
-    .mobile-menu{
-      background:rgba(255,255,255,0.95);
-      border-color:var(--line);
-      box-shadow:0 18px 60px rgba(2,6,23,0.14);
-    }
-    .panel,
-    .logoPanel,
-    .card,
-    .imageBox{
-      background:rgba(255,255,255,0.8);
-      border-color:var(--line);
-      box-shadow:var(--shadow);
-    }
-    footer{
-      border-top:1px solid var(--line);
-      color:var(--muted2);
-    }
-
-</style>
+        </style>
       <div class="card">
         <h3>Massive coverage</h3>
         <p>

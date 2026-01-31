@@ -4,35 +4,36 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Xpose Management | Shop Operating System</title>
-  <meta name="description" content="Run your auto shop like a system. Scheduling, jobs, messaging, payments, and built in repair intelligence with Cortex." />
+  <meta name="description" content="Run" your auto shop like a system. Scheduling, jobs, messaging, payments, and built in repair intelligence with Cortex. />
 
   <style>
     :root{
-      --bg:#070b12;
-      --bg2:#0b1020;
-      --card:rgba(255,255,255,0.06);
-      --card2:rgba(255,255,255,0.08);
-      --line:rgba(255,255,255,0.10);
-      --text:#eaf0ff;
-      --muted:rgba(234,240,255,0.72);
-      --muted2:rgba(234,240,255,0.56);
-      --brand:#22c55e;
-      --accent:#60a5fa;
-      --amber:#f59e0b;
-      --shadow: 0 18px 60px rgba(0,0,0,0.40);
+      --bg:#f7f8fc;
+      --bg2:#eef2ff;
+      --card:rgba(255,255,255,0.78);
+      --card2:rgba(255,255,255,0.92);
+      --line:rgba(15,23,42,0.14);
+      --text:#0b1220;
+      --muted:rgba(11,18,32,0.72);
+      --muted2:rgba(11,18,32,0.56);
+      --brand:#16a34a;
+      --accent:#2563eb;
+      --amber:#d97706;
+      --shadow: 0 18px 60px rgba(2,6,23,0.10);
       --radius:18px;
       --radius2:26px;
       --max:1180px;
     }
+
 
     *{box-sizing:border-box}
     html,body{margin:0;padding:0}
     body{
       font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       background:
-        radial-gradient(900px 500px at 18% 12%, rgba(96,165,250,0.18), rgba(0,0,0,0) 65%),
-        radial-gradient(900px 500px at 82% 18%, rgba(34,197,94,0.16), rgba(0,0,0,0) 70%),
-        radial-gradient(900px 500px at 60% 92%, rgba(245,158,11,0.10), rgba(0,0,0,0) 65%),
+        radial-gradient(900px 520px at 18% 10%, rgba(37,99,235,0.12), rgba(0,0,0,0) 65%),
+        radial-gradient(900px 520px at 82% 18%, rgba(22,163,74,0.10), rgba(0,0,0,0) 70%),
+        radial-gradient(900px 520px at 60% 92%, rgba(217,119,6,0.10), rgba(0,0,0,0) 65%),
         linear-gradient(180deg, var(--bg), var(--bg2));
       color:var(--text);
       overflow-x:hidden;
@@ -179,7 +180,9 @@
     }
 
     .hero{
-      padding: 44px 0 26px 0;
+      padding: 64px 0 36px 0;
+      position: relative;
+      overflow: hidden;
     }
     .heroGrid{
       display:grid;
@@ -227,6 +230,7 @@
       line-height: 1.55;
       color: var(--muted);
       max-width: 62ch;
+      font-weight: 700;
     }
 
     .heroCtas{
@@ -275,7 +279,7 @@
       overflow:hidden;
     }
     .heroCard::before{
-      content:"";
+      content:;
       position:absolute;
       inset:-2px;
       background: linear-gradient(135deg, rgba(96,165,250,0.35), rgba(34,197,94,0.25), rgba(245,158,11,0.20));
@@ -390,7 +394,19 @@
     }
 
     section.block{
-      padding: 28px 0;
+      padding: 54px 0;
+    }
+
+    .divider{
+      height:1px;
+      background: linear-gradient(90deg, rgba(15,23,42,0), rgba(15,23,42,0.12), rgba(15,23,42,0));
+      margin: 0;
+    }
+
+    .band{
+      background: rgba(255,255,255,0.35);
+      border-top: 1px solid rgba(15,23,42,0.10);
+      border-bottom: 1px solid rgba(15,23,42,0.10);
     }
 
     .sectionTitle{
@@ -447,7 +463,7 @@
       margin-bottom: 10px;
       box-shadow: 0 16px 50px rgba(0,0,0,0.25);
     }
-    .icon svg{width:20px;height:20px;opacity: 0.95}
+    .icon svg{width:20px;height:20px;opacity: 1; color: #000000}
 
     .flow{
       margin-top: 18px;
@@ -490,7 +506,7 @@
       line-height: 1.35;
     }
     .node::after{
-      content:"";
+      content:;
       position:absolute;
       inset:-40%;
       background: radial-gradient(circle at 30% 30%, rgba(34,197,94,0.22), rgba(0,0,0,0) 60%);
@@ -669,6 +685,534 @@
       .btn{width:auto}
       .actions .btn.ghost{display:none}
     }
+  
+    /* ="====" Light theme tuning (borders + surfaces) ="====" */
+    .topbar{
+      background: rgba(247,248,252,0.80);
+      border-bottom: 1px solid var(--line);
+    }
+    .mobile-menu{
+      background: rgba(255,255,255,0.94);
+      border-color: var(--line);
+      box-shadow: 0 18px 60px rgba(2,6,23,0.14);
+    }
+
+    .nav a{ color: var(--muted); }
+    .nav a:hover{
+      background: rgba(37,99,235,0.08);
+      border-color: var(--line);
+      color: var(--text);
+    }
+
+    .pill{
+      border-color: var(--line);
+      background: rgba(255,255,255,0.72);
+      color: var(--muted);
+    }
+    .microTrust span{
+      border-color: var(--line);
+      background: rgba(255,255,255,0.70);
+      color: var(--muted);
+    }
+
+    .btn{
+      border-color: var(--line);
+      background: rgba(255,255,255,0.78);
+      color: var(--text);
+      box-shadow: 0 10px 30px rgba(2,6,23,0.10);
+    }
+    .btn:hover{
+      border-color: rgba(37,99,235,0.22);
+      box-shadow: 0 16px 44px rgba(2,6,23,0.14);
+    }
+    .btn.primary{
+      background: linear-gradient(135deg, rgba(22,163,74,0.92), rgba(37,99,235,0.86));
+      border-color: rgba(37,99,235,0.18);
+      color: #ffffff;
+    }
+    .btn.ghost{ background: rgba(255,255,255,0.60); }
+
+    .heroCard,
+    .flow,
+    .spotlight,
+    .pricing,
+    .closing{
+      border-color: var(--line);
+      background: rgba(255,255,255,0.72);
+      box-shadow: var(--shadow);
+    }
+    .heroCard::before{ opacity: 0.10; }
+
+    .card,
+    .mini,
+    .node,
+    .icon,
+    .bullets li,
+    .pricing .list li,
+    .bullets .bicon{
+      border-color: var(--line);
+      background: rgba(255,255,255,0.74);
+      box-shadow: 0 14px 44px rgba(2,6,23,0.08);
+    }
+    .card:hover{
+      border-color: rgba(37,99,235,0.22);
+      background: rgba(255,255,255,0.86);
+    }
+
+    .mini .bar{
+      background: rgba(2,6,23,0.05);
+      border-color: var(--line);
+    }
+
+    footer{ color: var(--muted2); }
+    .footRow{
+      border-top: 1px solid var(--line);
+    }
+    .footLinks a{ color: rgba(11,18,32,0.66); }
+    .footLinks a:hover{ color: var(--text); }
+
+
+    .logos{
+      margin-top: 18px;
+      border-radius: var(--radius2);
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      box-shadow: var(--shadow);
+      padding: 16px;
+      overflow:hidden;
+    }
+    .logosRow{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:space-between;
+    }
+    .logosRow .chip{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding: 10px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.74);
+      color: var(--muted);
+      font-weight: 900;
+      font-size: 12px;
+      white-space:nowrap;
+    }
+    .logosRow .chip b{color:var(--text); font-weight:950}
+    .logosRow .chip i{
+      width:10px;height:10px;border-radius:999px;background: var(--brand);
+      box-shadow: 0 0 0 6px rgba(34,197,94,0.12);
+      flex:0 0 10px;
+    }
+    .logosRow .chip i.blue{background:var(--accent); box-shadow: 0 0 0 6px rgba(37,99,235,0.12);}
+    .logosRow .chip i.amber{background:var(--amber); box-shadow: 0 0 0 6px rgba(217,119,6,0.12);}
+
+    .statsGrid{
+      margin-top: 18px;
+      display:grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .stat{
+      border-radius: var(--radius2);
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.74);
+      box-shadow: 0 14px 44px rgba(2,6,23,0.08);
+      padding: 16px;
+    }
+    .stat .k{
+      font-size: 28px;
+      font-weight: 980;
+      letter-spacing: -0.6px;
+      margin:0;
+    }
+    .stat .d{
+      margin-top: 6px;
+      color: var(--muted);
+      font-weight: 750;
+      line-height: 1.45;
+      font-size: 13px;
+    }
+
+    .splitTall{
+      display:grid;
+      grid-template-columns: 0.95fr 1.05fr;
+      gap: 14px;
+      align-items: stretch;
+      margin-top: 18px;
+    }
+    .steps{
+      border-radius: var(--radius2);
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+    .step{
+      display:flex;
+      gap:12px;
+      align-items:flex-start;
+      padding: 12px;
+      border-radius: 16px;
+      border: 1px solid rgba(15,23,42,0.10);
+      background: rgba(255,255,255,0.70);
+      margin-top: 10px;
+    }
+    .step:first-child{margin-top:0}
+    .step .n{
+      width:30px;height:30px;border-radius: 12px;
+      display:grid;place-items:center;
+      font-weight: 950;
+      border: 1px solid rgba(37,99,235,0.18);
+      background: rgba(37,99,235,0.10);
+      color: var(--text);
+      flex:0 0 30px;
+    }
+    .step b{display:block;font-weight: 950; font-size: 13px; margin-bottom: 2px}
+    .step span{display:block; color: var(--muted); font-weight: 650; font-size: 13px; line-height: 1.45}
+
+    .testimonials{
+      margin-top: 18px;
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .quote{
+      border-radius: var(--radius2);
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.74);
+      box-shadow: 0 14px 44px rgba(2,6,23,0.08);
+      padding: 16px;
+      position:relative;
+      overflow:hidden;
+    }
+    .quote::before{
+      content:“;
+      position:absolute;
+      top:-14px; left:12px;
+      font-size: 74px;
+      opacity: 0.12;
+      font-weight: 1000;
+    }
+    .stars{
+      position:absolute;
+      top:12px;
+      right:12px;
+      color:#f59e0b;
+      font-size:14px;
+      line-height:1;
+    }
+    .quote p{
+      margin:0;
+      color: var(--muted);
+      font-weight: 700;
+      line-height: 1.55;
+      font-size: 14px;
+      margin-top: 20px;
+    }
+    .who{
+      margin-top: 12px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 12px;
+      border-top: 1px solid rgba(15,23,42,0.10);
+      padding-top: 12px;
+      color: rgba(11,18,32,0.72);
+      font-weight: 900;
+      font-size: 13px;
+    }
+    .who span{color: rgba(11,18,32,0.55); font-weight: 800}
+
+    .compare{
+      margin-top: 18px;
+      border-radius: var(--radius2);
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    table.comp{
+      width:100%;
+      border-collapse: collapse;
+    }
+    table.comp th, table.comp td{
+      padding: 14px 14px;
+      border-bottom: 1px solid rgba(15,23,42,0.10);
+      text-align:left;
+      vertical-align: top;
+    }
+    table.comp th{
+      font-size: 13px;
+      color: rgba(11,18,32,0.60);
+      font-weight: 950;
+      background: rgba(37,99,235,0.06);
+    }
+    table.comp td{
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .good{color: rgba(22,101,52,0.95); font-weight: 950}
+    .meh{color: rgba(11,18,32,0.62); font-weight: 850}
+
+    .faq{
+      margin-top: 18px;
+      border-radius: var(--radius2);
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .faqItem{ border-bottom: 1px solid rgba(15,23,42,0.10); }
+    .faqQ{
+      width:100%;
+      text-align:left;
+      background: transparent;
+      border: none;
+      padding: 16px 16px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 12px;
+      cursor:pointer;
+      font-weight: 950;
+      color: var(--text);
+      font-size: 14px;
+    }
+    .faqQ .chev{ transition: transform .18s ease; color: rgba(11,18,32,0.60); font-weight: 1000; }
+    .faqA{
+      padding: 0 16px 16px 16px;
+      color: var(--muted);
+      font-weight: 700;
+      line-height: 1.55;
+      font-size: 14px;
+      display:none;
+    }
+    .faqItem.open .faqA{display:block}
+    .faqItem.open .faqQ .chev{transform: rotate(180deg)}
+    .faqItem:last-child{border-bottom:none}
+
+    @media (max-width: 980px){
+      .statsGrid{grid-template-columns: 1fr 1fr}
+      .splitTall{grid-template-columns: 1fr}
+      .testimonials{grid-template-columns: 1fr}
+    }
+    @media (max-width: 520px){
+      .statsGrid{grid-template-columns: 1fr}
+    }
+
+    /* Hero canvas animation */
+    #heroCanvas{
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+/* === FLOATING PILLS === */
+.float-chip{
+  position:absolute;
+  padding: 10px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 12px 24px rgba(0,0,0,0.06);
+  font-size: 12px;
+  color: #374151;
+  display:flex;
+  gap: 8px;
+  align-items:center;
+  backdrop-filter: blur(6px);
+  animation: chipFloat 6.5s ease-in-out infinite;
+  cursor: pointer;
+  transition: box-shadow .2s ease, transform .2s ease;
+  z-index: 3;
+}
+
+.float-chip:hover{
+  box-shadow: 0 18px 36px rgba(0,0,0,0.12);
+  transform: translateY(-2px) scale(1.03);
+}
+
+.float-chip b{ font-weight: 600; }
+
+/* Chip positions (adjust freely) */
+.chip-1{ top: 20px; left: 22px; }
+.chip-2{ bottom: 26px; left: 34px; }
+.chip-3{ top: 44px; right: 28px; }
+
+@keyframes chipFloat{
+  0%,100%{ transform: translateY(0); }
+  50%{ transform: translateY(-10px); }
+}
+
+/* === POPOVER PANEL === */
+.chip-pop{
+  position:fixed;
+  min-width: 240px;
+  max-width: 280px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.12);
+  font-size: 13px;
+  line-height: 1.5;
+  color: #374151;
+  opacity: 0;
+  transform: translateY(6px) scale(0.98);
+  pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
+  z-index: 100;
+}
+
+.chip-pop.active{
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.chip-pop h4{
+  margin: 0 0 6px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.chip-pop p{
+  margin: 0;
+  color: #6b7280;
+}
+
+/* === IMAGE MODAL === */
+.image-modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  position: relative;
+  margin: auto;
+  display: block;
+  max-width: 90%;
+  max-height: 90%;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.modal-content img {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+}
+
+.modal-close {
+  position: absolute;
+  top: -40px;
+  right: 0;
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: color 0.3s ease;
+}
+
+.modal-close:hover {
+  color: #cccccc;
+}
+
+/* === HERO VISUAL CONTAINER === */
+.hero-visual{
+  position: relative;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  background: #f3f4f6;
+  border-radius: 20px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+}
+
+/* MULTICOLOR AMBIENT GLOW */
+.hero-visual::before {
+  content: "";
+  position: absolute;
+  inset: -40px;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(99,102,241,0.18), transparent 55%),
+    radial-gradient(circle at 80% 20%, rgba(16,185,129,0.18), transparent 55%),
+    radial-gradient(circle at 70% 80%, rgba(245,158,11,0.16), transparent 55%);
+  filter: blur(2px);
+  animation: blobFloat 14s ease-in-out infinite;
+  z-index: 0;
+}
+
+.device{
+  position: relative;
+  width: min(440px, 92%);
+  aspect-ratio: 16 / 10;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  box-shadow:
+    0 20px 40px rgba(0,0,0,0.06),
+    0 0 0 1px rgba(255,255,255,0.6) inset;
+  z-index: 1;
+}
+
+/* Multicolor glow on the image */
+.device::after {
+  content: "";
+  position: absolute;
+  inset: -20px;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(99,102,241,0.12), transparent 60%),
+    radial-gradient(circle at 70% 70%, rgba(16,185,129,0.12), transparent 60%);
+  filter: blur(20px);
+  z-index: -1;
+}
+
+.screen{
+  position: absolute;
+  inset: 10px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #0b1220;
+}
+
+.screen img{
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@keyframes blobFloat {
+  0%   { transform: translate(0,0) scale(1); }
+  50%  { transform: translate(-18px,12px) scale(1.03); }
+  100% { transform: translate(0,0) scale(1); }
+}
+
   </style>
 </head>
 
@@ -688,20 +1232,20 @@
         </nav>
 
         <div class="actions">
-          <button class="menu-toggle" id="menuToggle" aria-label="Open menu">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 12h18"></path>
-              <path d="M3 6h18"></path>
-              <path d="M3 18h18"></path>
+          <button class="menu-toggle id"="menuToggle" aria-label="Open" menu>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3" 12h18></path>
+              <path d="M3" 6h18></path>
+              <path d="M3" 18h18></path>
             </svg>
           </button>
           <a class="btn ghost" href="features.html">Explore Features</a>
           <a class="btn primary" href="paywall.html">Join Now</a>
-          <a class="btn" href="login.html">Sign In</a>
+          <a class="btn href"="login.html">Sign In</a>
         </div>
         
         <!-- Mobile dropdown menu -->
-        <div class="mobile-menu" id="mobileMenu">
+        <div class="mobile-menu id"="mobileMenu">
           <a href="index.html">Home</a>
           <a href="features.html">Features</a>
           <a href="cortex-page.html">Cortex</a>
@@ -713,6 +1257,7 @@
 
   <main>
     <section class="hero">
+      <canvas id="heroCanvas"></canvas>
       <div class="wrap heroGrid">
         <div class="reveal">
           <div class="pillRow">
@@ -735,35 +1280,35 @@
             <a class="btn ghost" href="features.html">See How It Works</a>
           </div>
 
-          <div class="microTrust" aria-label="Trust Highlights">
+          <div class="microTrust aria-label"="Trust" Highlights>
             <span>
-              <span class="tick" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 6L9 17l-5-5"></path>
+              <span class="tick">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20" 6L9 17l-5-5></path>
                 </svg>
               </span>
               No feature gates
             </span>
             <span>
-              <span class="tick" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 6L9 17l-5-5"></path>
+              <span class="tick">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20" 6L9 17l-5-5></path>
                 </svg>
               </span>
               Built for real shops
             </span>
             <span>
-              <span class="tick" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 6L9 17l-5-5"></path>
+              <span class="tick">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20" 6L9 17l-5-5></path>
                 </svg>
               </span>
               Clean and fast UI
             </span>
             <span>
-              <span class="tick" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 6L9 17l-5-5"></path>
+              <span class="tick">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20" 6L9 17l-5-5></path>
                 </svg>
               </span>
               Support when you need it
@@ -771,69 +1316,105 @@
           </div>
         </div>
 
-        <aside class="heroCard reveal" aria-label="Preview Panel">
-          <div class="cardTop">
-            <div class="tag">Xpose Management with Cortex inside</div>
-            <div class="markRow">
-              <img src="assets/Integration-logos/cortex-mark.png" alt="Cortex mark" />
-              <div class="markName">
-                <b>Cortex</b>
-                <span>Repair intelligence layer</span>
-              </div>
+        <!-- HERO VISUAL / PANEL CONTAINER -->
+        <div class="hero-visual">
+
+          <!-- IMAGE THAT CHANGES ON CLICK -->
+          <div class="device">
+            <div class="screen">
+              <img
+                id="heroImage"
+                src="assets/Dashboard Page.png"
+                alt="Dashboard preview"
+              />
             </div>
           </div>
 
-          <div class="miniDash">
-            <div class="mini">
-              <h4>Today</h4>
-              <div class="big">7 Active Jobs</div>
-              <div class="small">5 in progress, 2 awaiting parts</div>
-              <div class="bar"><i></i></div>
-            </div>
+          <!-- CLICKABLE PILLS -->
+          <div class="float-chip chip-1" data-integration="twilio">
+            <b>Twilio</b> 2-way SMS
+          </div>
 
-            <div class="mini">
-              <h4>Open Invoices</h4>
-              <div class="big">$3,420</div>
-              <div class="small"> 4 Total open invoices</div>
-              <div class="bar orange"><i></i></div>
-            </div>
+          <div class="float-chip chip-2" data-integration="stripe">
+            <b>Stripe</b> Payments
+          </div>
 
-            <div class="mini miniWide">
-              <div class="left">
-                <h4>Cortex Smart-Diagnosis</h4>
-                <div class="big" style="font-size:18px">Is the cooling fan operating when the vehicle is idling?</div>
-                <div class="small">💡 A malfunctioning cooling fan is a common cause of overheating at idle, as it fails to provide adequate airflow through the radiator when the vehicle is not moving.</div>
-                <div class="kbdRow">
-                  <span class="kbd">Yes</span>
-                  <span class="kbd">No</span>
-                  <span class="kbd">Not Sure</span>
-                </div>
-              </div>
-              <div class="tag" style="align-self:flex-start;background:rgba(34,197,94,0.12);border-color:rgba(8, 27, 15, 0.3)">
-                Question 1 of 3
-              </div>
+          <div class="float-chip chip-3" data-integration="cortex">
+            <b>Cortex</b> Diagnostics
+          </div>
+
+          <!-- POPOVER PANEL -->
+          <div id="chipPop" class="chip-pop"></div>
+
+          <!-- IMAGE MODAL -->
+          <div id="imageModal" class="image-modal">
+            <div class="modal-content">
+              <span class="modal-close">&times;</span>
+              <img id="modalImage" src="" alt="Full size preview">
             </div>
           </div>
-        </aside>
+
+        </div>
       </div>
     </section>
+
+    <div class="divider"></div>
+
+    <section class="block band" id="proof">
+      <div class="wrap">
+        <div class="reveal">
+          <h2 class="sectionTitle">Modern workflow. Real shop priorities.</h2>
+          
+        </div>
+
+        <div class="logos reveal" aria-label="Core" capabilities>
+          <div class="logosRow">
+            <div class="chip"><i class="blue"></i> <b>Digital workflow</b> tickets → invoices → payments</div>
+            <div class="chip"><i></i> <b>Customer comms</b> messaging + reminders</div>
+            <div class="chip"><i class="amber"></i> <b>Inspections</b> photos + notes + approvals</div>
+            <div class="chip"><i class="blue"></i> <b>Reporting</b> revenue + trends + margins</div>
+            <div class="chip"><i></i> <b>Cortex</b> repair intelligence built-in</div>
+          </div>
+        </div>
+
+        <div class="statsGrid">
+          <div class="stat reveal">
+            <p class="k">Fewer clicks</p>
+            <div class="d">Less hunting for info. Jobs, parts, and messages stay linked.</div>
+          </div>
+          <div class="stat reveal">
+            <p class="k">Cleaner approvals</p>
+            <div class="d">Make recommendations make sense. Customers approve faster.</div>
+          </div>
+          <div class="stat reveal">
+            <p class="k">Faster front desk</p>
+            <div class="d">Mobile-first screens that the team actually uses.</div>
+          </div>
+          <div class="stat reveal">
+            <p class="k">One system</p>
+            <div class="d">Scheduling, jobs, messaging, payments, and history in one place.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
 
     <section id="how" class="block">
       <div class="wrap">
         <div class="reveal">
           <h2 class="sectionTitle">More Than a CRM. This Is Your Shop Operating System.</h2>
-          <p class="sectionSub">
-            Most shop software handles one piece of the workflow. Xpose connects the whole job so nothing gets lost, delayed, or forgotten.
-            From booking to payment to review, every step lives in one system.
-          </p>
+          
         </div>
 
         <div class="grid3">
           <div class="card reveal">
-            <div class="icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 12h18"></path>
-                <path d="M12 3v18"></path>
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M16 3h5v5"></path>
+                <path d="M3 16v5h5"></path>
+                <path d="M21 3l-7 7"></path>
+                <path d="M3 21l7-7"></path>
               </svg>
             </div>
             <h3>Everything Connected</h3>
@@ -841,10 +1422,12 @@
           </div>
 
           <div class="card reveal">
-            <div class="icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 20l9-5-9-5-9 5 9 5z"></path>
-                <path d="M12 12l9-5-9-5-9 5 9 5z"></path>
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 21V8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v13"></path>
+                <path d="M13 21V11a1 1 0 0 0-1-1h-2a1 1 0 0 0-1 1v10"></path>
+                <path d="M7 21h10"></path>
+                <path d="M9 8V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"></path>
               </svg>
             </div>
             <h3>Built for Real Shops</h3>
@@ -852,9 +1435,10 @@
           </div>
 
           <div class="card reveal">
-            <div class="icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 7l-8 10L4 12"></path>
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22,4 12,14.01 9,11.01"></polyline>
               </svg>
             </div>
             <h3>One Price, Everything Included</h3>
@@ -862,7 +1446,7 @@
           </div>
         </div>
 
-        <div class="flow reveal" aria-label="Connected Workflow">
+        <div class="flow reveal" aria-label="Connected" Workflow>
           <div class="flowRow">
             <div class="node blue">
               <b>Appointments</b>
@@ -902,7 +1486,7 @@
         <div class="spotlight reveal">
           <div class="spotHeader">
             <div class="titleRow">
-              <img src="assets/Integration-logos/cortex-mark.png" alt="Cortex mark" />
+              <img src="assets/Integration-logos/cortex-mark.png" alt="Cortex" mark />
               <div>
                 <h3>Built In Repair & Diagnostics Intelligence with Cortex</h3>
                 <p>Cortex is the intelligence layer inside Xpose Management</p>
@@ -913,12 +1497,12 @@
 
           <ul class="bullets">
             <li>
-              <div class="bicon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 2v6"></path><path d="M12 16v6"></path>
-                  <path d="M4.93 4.93l4.24 4.24"></path><path d="M14.83 14.83l4.24 4.24"></path>
-                  <path d="M2 12h6"></path><path d="M16 12h6"></path>
-                  <path d="M4.93 19.07l4.24-4.24"></path><path d="M14.83 9.17l4.24-4.24"></path>
+              <div class="bicon >
+                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12" 2v6></path><path d="M12" 16v6></path>
+                  <path d="M4.93" 4.93l4.24 4.24></path><path d="M14.83" 14.83l4.24 4.24></path>
+                  <path d="M2" 12h6></path><path d="M16" 12h6></path>
+                  <path d="M4.93" 19.07l4.24-4.24></path><path d="M14.83" 9.17l4.24-4.24></path>
                 </svg>
               </div>
               <div>
@@ -928,10 +1512,10 @@
             </li>
 
             <li>
-              <div class="bicon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M3 7h18"></path><path d="M3 12h18"></path><path d="M3 17h18"></path>
-                  <path d="M7 7v10"></path>
+              <div class="bicon >
+                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3" 7h18></path><path d="M3" 12h18></path><path d="M3" 17h18></path>
+                  <path d="M7" 7v10></path>
                 </svg>
               </div>
               <div>
@@ -941,10 +1525,10 @@
             </li>
 
             <li>
-              <div class="bicon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path>
-                  <path d="M7 9h10"></path><path d="M7 13h6"></path>
+              <div class="bicon >
+                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21" 15a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z></path>
+                  <path d="M7" 9h10></path><path d="M7" 13h6></path>
                 </svg>
               </div>
               <div>
@@ -954,21 +1538,21 @@
             </li>
       <a
         href="cortex-page.html"
-        target="_blank"
-        rel="noopener noreferrer"
+        target="_blank
+"        rel="noopener" noreferrer
         class="btn primary"
-        style="white-space:nowrap;"
-      >
+        style="white-space:nowrap;
+"      >
         Explore Cortex
       </a>
           </ul>
         </div>
 
-        <div class="pricing reveal" aria-label="One Price Panel">
+        <div class="pricing reveal" aria-label="One" Price Panel>
           <div class="top">
             <div>
-              <h2 class="sectionTitle" style="margin:0">Everything Included</h2>
-              <p class="sectionSub" style="margin-top:8px">
+              <h2 class="sectionTitle style"="margin:0">Everything Included</h2>
+              <p class="sectionSub style"="margin-top:8px">
                 Your shop should not pay extra for basic tools. Xpose includes the full platform and grows with you.
               </p>
             </div>
@@ -984,48 +1568,48 @@
 
           <ul class="list">
             <li>
-              <span class="tick" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 6L9 17l-5-5"></path>
+              <span class="tick">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20" 6L9 17l-5-5></path>
                 </svg>
               </span>
               Appointments, job tracking, and calendar views
             </li>
             <li>
-              <span class="tick" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 6L9 17l-5-5"></path>
+              <span class="tick">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20" 6L9 17l-5-5></path>
                 </svg>
               </span>
               Invoices and estimates with clean totals
             </li>
             <li>
-              <span class="tick" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 6L9 17l-5-5"></path>
+              <span class="tick">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20" 6L9 17l-5-5></path>
                 </svg>
               </span>
               Customer history, vehicles, and repeat work tracking
             </li>
             <li>
-              <span class="tick" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 6L9 17l-5-5"></path>
+              <span class="tick">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20" 6L9 17l-5-5></path>
                 </svg>
               </span>
               Messaging and notifications that keep jobs moving
             </li>
             <li>
-              <span class="tick" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 6L9 17l-5-5"></path>
+              <span class="tick">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20" 6L9 17l-5-5></path>
                 </svg>
               </span>
               Cortex backed diagnostics and labor guidance
             </li>
           </ul>
 
-          <div class="ctaRow" style="margin-top:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+          <div class="ctaRow style"="margin-top:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
             <a class="btn primary" href="paywall.html">Join Now</a>
             <a class="btn ghost" href="features.html">View Full Feature List</a>
           </div>
@@ -1037,17 +1621,17 @@
       <div class="wrap">
         <div class="reveal">
           <h2 class="sectionTitle">Everything You Need to Run Your Shop</h2>
-          <p class="sectionSub">
-            A complete toolkit that feels premium, stays organized, and helps your team move faster without extra complexity.
-          </p>
+          
         </div>
 
         <div class="grid3">
           <div class="card reveal">
-            <div class="icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M8 7V3h8v4"></path>
-                <path d="M5 7h14l-1 14H6L5 7z"></path>
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
               </svg>
             </div>
             <h3>Appointments and Scheduling</h3>
@@ -1055,10 +1639,9 @@
           </div>
 
           <div class="card reveal">
-            <div class="icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path>
-                <path d="M7 9h10"></path><path d="M7 13h6"></path>
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
               </svg>
             </div>
             <h3>Messaging</h3>
@@ -1066,10 +1649,10 @@
           </div>
 
           <div class="card reveal">
-            <div class="icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 1v22"></path>
-                <path d="M17 5H9a4 4 0 0 0 0 8h6a4 4 0 0 1 0 8H6"></path>
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="1" x2="12" y2="23"></line>
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
               </svg>
             </div>
             <h3>Invoices and Payments</h3>
@@ -1077,8 +1660,8 @@
           </div>
 
           <div class="card reveal">
-            <div class="icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                 <circle cx="12" cy="7" r="4"></circle>
               </svg>
@@ -1088,11 +1671,10 @@
           </div>
 
           <div class="card reveal">
-            <div class="icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 7h-9"></path><path d="M14 17H5"></path>
-                <circle cx="17" cy="17" r="3"></circle>
-                <circle cx="7" cy="7" r="3"></circle>
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
               </svg>
             </div>
             <h3>Parts and Inventory</h3>
@@ -1100,10 +1682,12 @@
           </div>
 
           <div class="card reveal">
-            <div class="icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 3v18h18"></path>
-                <path d="M19 9l-5 5-4-4-3 3"></path>
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10"></line>
+                <line x1="12" y1="20" x2="12" y2="4"></line>
+                <line x1="6" y1="20" x2="6" y2="14"></line>
+                <line x1="2" y1="20" x2="22" y2="20"></line>
               </svg>
             </div>
             <h3>Revenue and Insights</h3>
@@ -1120,7 +1704,183 @@
           <div class="ctaRow">
             <a class="btn primary" href="paywall.html">Start Running Smarter</a>
             <a class="btn ghost" href="features.html">Explore Features</a>
-            <a class="btn" href="login.html">Sign In</a>
+            <a class="btn href"="login.html">Sign In</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+    <div class="divider"></div>
+
+    <section class="block id"="onboarding">
+      <div class="wrap">
+        <div class="reveal">
+          <h2 class="sectionTitle">Switching should feel easy, not risky.</h2>
+          
+        </div>
+
+        <div class="splitTall">
+          <div class="steps reveal" aria-label="Onboarding" steps>
+            <div class="step">
+              <div class="n">1</div>
+              <div>
+                <b>Setup your shop basics</b>
+                <span>Labor rates, services, tech roles, and your workflow preferences in minutes.</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="n">2</div>
+              <div>
+                <b>Import customers and vehicles</b>
+                <span>Bring history over so every returning customer starts with context.</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="n">3</div>
+              <div>
+                <b>Connect messaging and payments</b>
+                <span>Use your shop number and accept card, Apple Pay, and online checkout.</span>
+              </div>
+            </div>
+            <div class="step">
+              <div class="n">4</div>
+              <div>
+                <b>Go live and tighten the loop</b>
+                <span>Track what slows you down, then tune templates, reminders, and roles.</span>
+              </div>
+            </div>
+
+            <div style="margin-top:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+              <a class="btn primary" href="paywall.html">See Pricing</a>
+              <a class="btn ghost" href="features.html">Browse Features</a>
+              <a class="btn href"="cortex-page.html">Cortex Details</a>
+            </div>
+          </div>
+
+          <div class="compare reveal" aria-label="Comparison" table>
+            <table class="comp">
+              <thead>
+                <tr>
+                  <th style="width:42%">Common setups</th>
+                  <th style="width:29%">What it feels like</th>
+                  <th style="width:29%">Xpose outcome</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><b>Spreadsheets + texting + invoices</b></td>
+                  <td class="meh">Scattered info, missed updates, “where’s that photo?”</td>
+                  <td class="good">Everything attached to the job. Searchable. Logged.</td>
+                </tr>
+                <tr>
+                  <td><b>Multiple tools for one job</b></td>
+                  <td class="meh">Extra logins, duplicate entry, slow handoffs</td>
+                  <td class="good">Appointments → jobs → parts → invoice, all connected</td>
+                </tr>
+                <tr>
+                  <td><b>Software that’s “too enterprise”</b></td>
+                  <td class="meh">Cluttered screens, long training, low adoption</td>
+                  <td class="good">Fast UI, mobile-first workflows, clear roles</td>
+                </tr>
+                <tr>
+                  <td><b>Guesswork estimates</b></td>
+                  <td class="meh">Inconsistent labor, stalled approvals</td>
+                  <td class="good">Cortex helps standardize diagnosis + labor logic</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <section class="block band" id="testimonials">
+      <div class="wrap">
+        <div class="reveal">
+          <h2 class="sectionTitle">What Our Customers Say</h2>
+          
+        </div>
+
+        <div class="testimonials">
+          <div class="quote reveal"><div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+            <p>
+              “Xpose has transformed how we run our shop. Everything is connected - from appointments to invoices. No more lost information or chasing down details. The team loves how organized it keeps us.”
+            </p>
+            <div class="who">
+              <div>Mike Johnson</div>
+              <span>Owner, Riverside Auto Repair</span>
+            </div>
+          </div>
+
+          <div class="quote reveal"><div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+            <p>
+              “The mobile app is incredible. My technicians can update jobs on the go, and customers get instant notifications. No more writing notes on paper and retyping them later - everything syncs perfectly.”
+            </p>
+            <div class="who">
+              <div>Sarah Chen</div>
+              <span>Service Advisor, Downtown Motors</span>
+            </div>
+          </div>
+
+          <div class="quote reveal"><div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+            <p>
+              “Clean approvals = better trust. Customers understand what we’re recommending without long explanations.”
+            </p>
+            <div class="who">
+              <div>David Rodriguez</div>
+              <span>Manager, Rodriguez Auto Group</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <section class="block id"="faq">
+      <div class="wrap">
+        <div class="reveal">
+          <h2 class="sectionTitle">FAQ</h2>
+          
+        </div>
+
+        <div class="faq reveal" aria-label="Frequently" asked questions>
+          <div class="faqItem">
+            <button class="faqQ type"="button">Do you lock features behind tiers? <span class="chev">▾</span></button>
+            <div class="faqA">
+              No. The goal is one price with the full platform included so you’re not forced to upgrade just to use basics.
+            </div>
+          </div>
+
+          <div class="faqItem">
+            <button class="faqQ type"="button">Can my team use it on phones? <span class="chev">▾</span></button>
+            <div class="faqA">
+              Yes — the UI is designed to work cleanly on mobile so techs and advisors can move without being stuck at a desk.
+            </div>
+          </div>
+
+          <div class="faqItem">
+            <button class="faqQ type"="button">How do payments work? <span class="chev">▾</span></button>
+            <div class="faqA">
+              The platform supports online checkout and card payments. Receipts and payment status stay attached to the invoice.
+            </div>
+          </div>
+
+          <div class="faqItem">
+            <button class="faqQ type"="button">What is Cortex, exactly? <span class="chev">▾</span></button>
+            <div class="faqA">
+              Cortex is the repair intelligence layer inside Xpose. It helps connect symptoms and outcomes to clearer diagnostic paths, service steps, and labor logic.
+            </div>
+          </div>
+
+          <div class="faqItem">
+            <button class="faqQ type"="button">Will you help me migrate? <span class="chev">▾</span></button>
+            <div class="faqA">
+              That’s the plan — onboarding should be guided and fast. Customers, vehicles, services, and workflow basics should come over without chaos.
+            </div>
           </div>
         </div>
       </div>
@@ -1130,10 +1890,10 @@
       <div class="wrap">
         <div class="footRow">
           <div style="display:flex;align-items:center;gap:10px">
-            <img src="assets/logo.png" alt="Xpose logo" style="height:28px;width:auto;opacity:0.9" />
+            <img src="assets/logo.png" alt="Xpose" logo style="height:28px;width:auto;opacity:0.9" />
             <span>© <span id="year"></span> Xpose Management</span>
           </div>
-          <div class="footLinks" aria-label="Footer Links">
+          <div class="footLinks aria-label"="Footer" Links>
             <a href="faq.html">FAQ</a>
             <a href="privacy.html">Privacy Policy</a>
             <a href="terms.html">Terms of Service</a>
@@ -1184,7 +1944,124 @@
           });
         });
       }
+
+
+      // FAQ accordion
+      var faqItems = Array.prototype.slice.call(document.querySelectorAll('.faqItem'));
+      faqItems.forEach(function(item){
+        var q = item.querySelector('.faqQ');
+        if (!q) return;
+        q.addEventListener('click', function(){
+          faqItems.forEach(function(other){
+            if (other !== item) other.classList.remove('open');
+          });
+          item.classList.toggle('open');
+        });
+      });
+
     })();
   </script>
+  <script src="hero-animation.js"></script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  <script>
+/* === DATA FOR EACH PILL === */
+const chipData = {
+  twilio: {
+    title: 'Twilio SMS Integration',
+    text: 'Send and receive real-time text messages for approvals, status updates, and customer communication  all logged automatically to the job.',
+    image: 'assets/index-previews/twilio.png'
+  },
+  stripe: {
+    title: 'Stripe Payments',
+    text: 'Accept online payments, send checkout links, and track invoices with automatic reconciliation and receipts.',
+    image: 'assets/index-previews/stripe.png'
+  },
+  cortex: {
+    title: 'Cortex Diagnostics',
+    text: 'AI-assisted diagnostic guidance that helps eliminate guesswork and recommend only what\'s necessary.',
+    image: 'assets/cortex-diagnosis.png'
+  }
+};
+
+/* === ELEMENT REFERENCES === */
+const chips = document.querySelectorAll('.float-chip');
+const pop = document.getElementById('chipPop');
+const heroImg = document.getElementById('heroImage');
+
+/* === CLICK HANDLER === */
+chips.forEach(chip => {
+  chip.addEventListener('click', (e) => {
+    const key = chip.dataset.integration;
+    const data = chipData[key];
+    if (!data) return;
+
+    /* Swap image */
+    if (heroImg && data.image) {
+      heroImg.src = data.image;
+    }
+
+    /* Populate popover */
+    pop.innerHTML = `
+      <h4>${data.title}</h4>
+      <p>${data.text}</p>
+    `;
+
+    /* Position popover next to chip */
+    const chipRect = chip.getBoundingClientRect();
+
+    pop.style.left = (chipRect.left + chipRect.width + 12) + 'px';
+    pop.style.top  = chipRect.top + 'px';
+
+    pop.classList.add('active');
+    e.stopPropagation();
+  });
+});
+
+/* === CLOSE WHEN CLICKING OUTSIDE === */
+document.addEventListener('click', () => {
+  pop.classList.remove('active');
+  // Reset to default dashboard image
+  if (heroImg) {
+    heroImg.src = 'assets/Dashboard Page.png';
+  }
+});
+
+/* === IMAGE MODAL FUNCTIONALITY === */
+const modal = document.getElementById('imageModal');
+const modalImg = document.getElementById('modalImage');
+const modalClose = document.querySelector('.modal-close');
+
+heroImg.addEventListener('click', () => {
+  modal.style.display = 'block';
+  modalImg.src = heroImg.src;
+});
+
+modalClose.addEventListener('click', () => {
+  modal.style.display = 'none';
+});
+
+modal.addEventListener('click', (e) => {
+  if (e.target === modal) {
+    modal.style.display = 'none';
+  }
+});
+  </script>
+
+
+
+
