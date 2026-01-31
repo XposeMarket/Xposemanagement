@@ -279,7 +279,7 @@
       overflow:hidden;
     }
     .heroCard::before{
-      content:;
+      content: '';
       position:absolute;
       inset:-2px;
       background: linear-gradient(135deg, rgba(96,165,250,0.35), rgba(34,197,94,0.25), rgba(245,158,11,0.20));
@@ -506,7 +506,7 @@
       line-height: 1.35;
     }
     .node::after{
-      content:;
+      content: '';
       position:absolute;
       inset:-40%;
       background: radial-gradient(circle at 30% 30%, rgba(34,197,94,0.22), rgba(0,0,0,0) 60%);
@@ -1448,31 +1448,31 @@
 
         <div class="flow reveal" aria-label="Connected" Workflow>
           <div class="flowRow">
-            <div class="node blue">
+            <div class="node" style="background:linear-gradient(120deg, rgba(255,255,255,0.38) 60%, rgba(37,99,235,0.13) 100%);border-color:rgba(37,99,235,0.22);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.10);border:1px solid rgba(255,255,255,0.18);">
               <b>Appointments</b>
               <span>Book and track instantly</span>
             </div>
-            <div class="node">
+            <div class="node" style="background:linear-gradient(120deg, rgba(255,255,255,0.38) 60%, rgba(34,197,94,0.13) 100%);border-color:rgba(34,197,94,0.22);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.10);border:1px solid rgba(255,255,255,0.18);">
               <b>Active Jobs</b>
               <span>Status, notes, and progress</span>
             </div>
-            <div class="node amber">
+            <div class="node" style="background:linear-gradient(120deg, rgba(255,255,255,0.38) 60%, rgba(245,158,11,0.13) 100%);border-color:rgba(245,158,11,0.22);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.10);border:1px solid rgba(255,255,255,0.18);">
               <b>Cortex</b>
               <span>Diagnostics and labor logic</span>
             </div>
-            <div class="node">
+            <div class="node" style="background:linear-gradient(120deg, rgba(255,255,255,0.38) 60%, rgba(16,185,129,0.13) 100%);border-color:rgba(16,185,129,0.22);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.10);border:1px solid rgba(255,255,255,0.18);">
               <b>Parts and Inventory</b>
               <span>Keep jobs moving</span>
             </div>
-            <div class="node blue">
+            <div class="node" style="background:linear-gradient(120deg, rgba(255,255,255,0.38) 60%, rgba(96,165,250,0.13) 100%);border-color:rgba(96,165,250,0.22);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.10);border:1px solid rgba(255,255,255,0.18);">
               <b>Invoice</b>
               <span>Clean totals with less effort</span>
             </div>
-            <div class="node">
+            <div class="node" style="background:linear-gradient(120deg, rgba(255,255,255,0.38) 60%, rgba(124,58,237,0.13) 100%);border-color:rgba(124,58,237,0.22);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.10);border:1px solid rgba(255,255,255,0.18);">
               <b>Payments</b>
               <span>Receipts and tracking</span>
             </div>
-            <div class="node amber">
+            <div class="node" style="background:linear-gradient(120deg, rgba(255,255,255,0.38) 60%, rgba(253,224,71,0.13) 100%);border-color:rgba(253,224,71,0.22);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.10);border:1px solid rgba(255,255,255,0.18);">
               <b>Reviews</b>
               <span>Trust that compounds</span>
             </div>
@@ -1497,12 +1497,10 @@
 
           <ul class="bullets">
             <li>
-              <div class="bicon >
-                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12" 2v6></path><path d="M12" 16v6></path>
-                  <path d="M4.93" 4.93l4.24 4.24></path><path d="M14.83" 14.83l4.24 4.24></path>
-                  <path d="M2" 12h6></path><path d="M16" 12h6></path>
-                  <path d="M4.93" 19.07l4.24-4.24></path><path d="M14.83" 9.17l4.24-4.24></path>
+              <div class="bicon">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 7v14" />
+                  <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z" />
                 </svg>
               </div>
               <div>
@@ -1512,10 +1510,14 @@
             </li>
 
             <li>
-              <div class="bicon >
-                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M3" 7h18></path><path d="M3" 12h18></path><path d="M3" 17h18></path>
-                  <path d="M7" 7v10></path>
+              <div class="bicon">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
+                  <path d="M14 2v5a1 1 0 0 0 1 1h5" />
+                  <path d="M8 12h8" />
+                  <path d="M10 11v2" />
+                  <path d="M8 17h8" />
+                  <path d="M14 16v2" />
                 </svg>
               </div>
               <div>
@@ -1525,10 +1527,12 @@
             </li>
 
             <li>
-              <div class="bicon >
-                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21" 15a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z></path>
-                  <path d="M7" 9h10></path><path d="M7" 13h6></path>
+              <div class="bicon">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="5" r="1" />
+                  <path d="m9 20 3-6 3 6" />
+                  <path d="m6 8 6 2 6-2" />
+                  <path d="M12 10v4" />
                 </svg>
               </div>
               <div>
@@ -1568,41 +1572,41 @@
 
           <ul class="list">
             <li>
-              <span class="tick">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20" 6L9 17l-5-5></path>
+              <span class="tick" style="background:#dcfce7;border-color:#10b981;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                  <path d="M20 6L9 17l-5-5"></path>
                 </svg>
               </span>
               Appointments, job tracking, and calendar views
             </li>
             <li>
-              <span class="tick">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20" 6L9 17l-5-5></path>
+              <span class="tick" style="background:#dcfce7;border-color:#10b981;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                  <path d="M20 6L9 17l-5-5"></path>
                 </svg>
               </span>
               Invoices and estimates with clean totals
             </li>
             <li>
-              <span class="tick">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20" 6L9 17l-5-5></path>
+              <span class="tick" style="background:#dcfce7;border-color:#10b981;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                  <path d="M20 6L9 17l-5-5"></path>
                 </svg>
               </span>
               Customer history, vehicles, and repeat work tracking
             </li>
             <li>
-              <span class="tick">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20" 6L9 17l-5-5></path>
+              <span class="tick" style="background:#dcfce7;border-color:#10b981;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                  <path d="M20 6L9 17l-5-5"></path>
                 </svg>
               </span>
               Messaging and notifications that keep jobs moving
             </li>
             <li>
-              <span class="tick">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20" 6L9 17l-5-5></path>
+              <span class="tick" style="background:#dcfce7;border-color:#10b981;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+                  <path d="M20 6L9 17l-5-5"></path>
                 </svg>
               </span>
               Cortex backed diagnostics and labor guidance
@@ -1849,37 +1853,37 @@
 
         <div class="faq reveal" aria-label="Frequently" asked questions>
           <div class="faqItem">
-            <button class="faqQ type"="button">Do you lock features behind tiers? <span class="chev">▾</span></button>
+            <button class="faqQ type"="button">How does Stripe integration work? <span class="chev">▾</span></button>
             <div class="faqA">
-              No. The goal is one price with the full platform included so you’re not forced to upgrade just to use basics.
+              Every account comes with built-in Stripe integration for payments. You get a free Stripe terminal for in-person payments, with the option to upgrade or add more as your shop grows. Online checkout and card payments are fully supported, and receipts stay attached to the invoice.
             </div>
           </div>
 
           <div class="faqItem">
-            <button class="faqQ type"="button">Can my team use it on phones? <span class="chev">▾</span></button>
+            <button class="faqQ type"="button">What does my team get for mobile use? <span class="chev">▾</span></button>
             <div class="faqA">
-              Yes — the UI is designed to work cleanly on mobile so techs and advisors can move without being stuck at a desk.
+              The platform is designed for teams on the move. Staff, foreman, advisors, and admins all have different permissions, so everyone sees just what they need. Mobile-first screens make it easy to work from phones or tablets, not just at a desk.
             </div>
           </div>
 
           <div class="faqItem">
-            <button class="faqQ type"="button">How do payments work? <span class="chev">▾</span></button>
+            <button class="faqQ type"="button">Are features locked behind tiers? <span class="chev">▾</span></button>
             <div class="faqA">
-              The platform supports online checkout and card payments. Receipts and payment status stay attached to the invoice.
+              No feature gates or surprise tiers. The only additional cost is for extra Stripe terminals if you want more than the free one included. The full platform is available to every shop from day one.
             </div>
           </div>
 
           <div class="faqItem">
-            <button class="faqQ type"="button">What is Cortex, exactly? <span class="chev">▾</span></button>
+            <button class="faqQ type"="button">How do permissions work for different roles? <span class="chev">▾</span></button>
             <div class="faqA">
-              Cortex is the repair intelligence layer inside Xpose. It helps connect symptoms and outcomes to clearer diagnostic paths, service steps, and labor logic.
+              Staff, foreman, advisors, and admins each have their own permission sets. This keeps the workflow clean and secure, so each team member can focus on their tasks without confusion or risk.
             </div>
           </div>
 
           <div class="faqItem">
             <button class="faqQ type"="button">Will you help me migrate? <span class="chev">▾</span></button>
             <div class="faqA">
-              That’s the plan — onboarding should be guided and fast. Customers, vehicles, services, and workflow basics should come over without chaos.
+              Absolutely. Onboarding is guided and fast. Customers, vehicles, services, and workflow basics can be imported to get you up and running without chaos.
             </div>
           </div>
         </div>
