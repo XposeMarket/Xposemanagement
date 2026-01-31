@@ -6403,71 +6403,256 @@ const closeHandler = (e) => {
 };
 
 // Handle Add Service requests originating from the Diagnostics modal (appointments)
+// Opens the service modal to add services to an appointment's invoice WITHOUT creating a job
 window.addEventListener('openServiceFromDiagnostics', async (e) => {
-  try {
-    let appt = e?.detail?.appt || null;
-    const apptId = e?.detail?.apptId || null;
-    let job = e?.detail?.job || null;
-    const jobId = e?.detail?.jobId || null;
-
-    if (!appt && apptId) appt = allAppointments.find(a => a.id === apptId) || null;
-    if (!job && jobId) job = allJobs.find(j => j.id === jobId) || null;
-
-    console.log('[Appointments] openServiceFromDiagnostics received', { apptId, appt, jobId, job });
-
-    // If a job was provided, reuse jobs flow
-    if (job) {
-      if (window.partsModalHandler) window.partsModalHandler.currentJob = job;
-      else window.partsModalHandler = { currentJob: job };
-      if (typeof openServiceModal === 'function') {
-        openServiceModal();
-        return;
-      } else if (typeof window.openServiceModal === 'function') {
-        window.openServiceModal();
-        return;
-      }
-    }
-
-    // If an appointment was provided, create/find corresponding job then open service modal
-    if (appt) {
-      // Find existing job for appointment or create one
-      let existingJob = allJobs.find(j => j.appointment_id === appt.id);
-      if (!existingJob) {
-        const shopId = getCurrentShopId();
-        existingJob = {
-          id: `job_${Date.now()}_${Math.random().toString(36).substr(2,9)}`,
-          shop_id: shopId,
-          appointment_id: appt.id,
-          customer: appt.customer || '',
-          customer_first: appt.customer_first || '',
-          customer_last: appt.customer_last || '',
-          assigned_to: null,
-          status: 'in_progress',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-        allJobs.push(existingJob);
-      }
-
-      // Persist job via saveJobs helper (dynamic import to avoid circular deps)
-      try {
-        const { saveJobs } = await import('./jobs.js');
-        await saveJobs([existingJob]);
-      } catch (err) {
-        console.warn('[Appointments] Failed to save job for appointment before opening service modal:', err);
-      }
-
-      // Set parts handler and open service modal
-      if (window.partsModalHandler) window.partsModalHandler.currentJob = existingJob;
-      else window.partsModalHandler = { currentJob: existingJob };
-
-      if (typeof openServiceModal === 'function') openServiceModal();
-      else if (typeof window.openServiceModal === 'function') window.openServiceModal();
-    }
-  } catch (ex) {
-    console.error('[Appointments] openServiceFromDiagnostics handler failed:', ex);
+  const appt = e?.detail?.appt || null;
+  const apptId = e?.detail?.apptId || null;
+  const job = e?.detail?.job || null;
+  const jobId = e?.detail?.jobId || null;
+  
+  console.log('[Appointments] openServiceFromDiagnostics received', { apptId, appt, jobId, job });
+  
+  // If this is for a job (not appointment), ignore - let jobs.js handle it
+  if (job || jobId) {
+    console.log('[Appointments] Ignoring job-related event - jobs.js will handle');
+    return;
   }
+  
+  // Find the appointment - check passed appt, then local array, then fetch from Supabase
+  let targetAppt = appt;
+  if (!targetAppt && apptId) {
+    targetAppt = allAppointments.find(a => a.id === apptId);
+    
+    // If still not found, fetch from Supabase
+    if (!targetAppt) {
+      try {
+        const supabase = getSupabaseClient();
+        const { data } = await supabase.from('appointments').select('*').eq('id', apptId).single();
+        if (data) targetAppt = data;
+      } catch (e) {
+        console.warn('[Appointments] Could not fetch appointment from Supabase:', e);
+      }
+    }
+  }
+  
+  if (!targetAppt) {
+    console.warn('[Appointments] No appointment found for service modal, apptId:', apptId);
+    showNotification('Could not find appointment', 'error');
+    return;
+  }
+  
+  // Store current appointment for service selection
+  window._currentApptForService = targetAppt;
+  
+  // Open the service modal
+  openAppointmentServiceModal(targetAppt);
 });
+
+/**
+ * Open service modal for appointments - adds services to invoice WITHOUT creating jobs
+ */
+async function openAppointmentServiceModal(appointment) {
+  // Check if modal exists, if not create it
+  let serviceModal = document.getElementById('apptServiceModal');
+  if (!serviceModal) {
+    serviceModal = document.createElement('div');
+    serviceModal.id = 'apptServiceModal';
+    serviceModal.className = 'modal-overlay hidden';
+    serviceModal.style.cssText = 'z-index: 10200;'; // Higher than Cortex modal (10100)
+    serviceModal.innerHTML = `
+      <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-head">
+          <h3>Add Service</h3>
+          <button class="btn-close" onclick="document.getElementById('apptServiceModal').classList.add('hidden')">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p style="color: var(--muted); margin-bottom: 16px;">Select a service to add to this appointment's estimate:</p>
+          <div id="apptServiceOptionsContainer" style="display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto;"></div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(serviceModal);
+  }
+  
+  const serviceContainer = document.getElementById('apptServiceOptionsContainer');
+  if (!serviceContainer) return;
+  
+  // Get available services and labor rates from shop settings
+  const supabase = getSupabaseClient();
+  const shopId = getCurrentShopId();
+  let services = [];
+  let laborRates = [];
+  
+  try {
+    if (supabase && shopId) {
+      const { data } = await supabase.from('data').select('settings').eq('shop_id', shopId).single();
+      if (data?.settings?.services && Array.isArray(data.settings.services)) {
+        services = data.settings.services;
+      }
+      if (data?.settings?.labor_rates && Array.isArray(data.settings.labor_rates)) {
+        laborRates = data.settings.labor_rates;
+      }
+    }
+  } catch (e) {
+    const localData = JSON.parse(localStorage.getItem('xm_data') || '{}');
+    services = (localData.settings?.services) || [];
+    laborRates = (localData.settings?.labor_rates) || [];
+  }
+  
+  serviceContainer.innerHTML = '';
+  
+  if (services.length === 0) {
+    serviceContainer.innerHTML = '<p style="color: var(--muted); font-size: 0.9rem;">No services configured. Go to Settings → Services to add them.</p>';
+    serviceModal.classList.remove('hidden');
+    return;
+  }
+  
+  services.forEach(service => {
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.type = 'button';
+    btn.style.cssText = 'text-align: left; display: flex; justify-content: space-between; align-items: center;';
+    
+    const serviceName = service.name || service;
+    const isLaborBased = service.pricing_type === 'labor_based';
+    
+    let priceDisplay = '';
+    if (isLaborBased) {
+      const rate = laborRates.find(r => r.name === service.labor_rate_name);
+      const hourlyRate = rate ? rate.rate : 0;
+      const calculatedPrice = (service.labor_hours || 0) * hourlyRate;
+      priceDisplay = `${service.labor_hours}hr • ${calculatedPrice.toFixed(2)}`;
+    } else {
+      priceDisplay = `${parseFloat(service.price || 0).toFixed(2)}`;
+    }
+    
+    const typeIcon = isLaborBased ? '⏱️' : '💵';
+    btn.innerHTML = `<span>${typeIcon} ${serviceName}</span><span style="font-size: 0.9rem; color: var(--muted);">${priceDisplay}</span>`;
+    
+    btn.addEventListener('click', () => handleAppointmentServiceSelection(service, appointment, laborRates));
+    serviceContainer.appendChild(btn);
+  });
+  
+  serviceModal.classList.remove('hidden');
+}
+
+/**
+ * Handle service selection for appointment - adds to invoice WITHOUT creating job
+ */
+async function handleAppointmentServiceSelection(service, appointment, laborRates = []) {
+  try {
+    const supabase = getSupabaseClient();
+    const shopId = getCurrentShopId();
+    if (!supabase || !shopId) throw new Error('No connection');
+    
+    const serviceName = service.name || service;
+    const isLaborBased = service.pricing_type === 'labor_based';
+    
+    // Get or create invoice for this appointment (NO job_id)
+    const { data: freshData, error: dataError } = await supabase.from('data').select('*').eq('shop_id', shopId).single();
+    if (dataError) throw dataError;
+    
+    const invoices = freshData.invoices || [];
+    let invoice = invoices.find(i => i.appointment_id === appointment.id && !i.job_id);
+    
+    if (!invoice) {
+      const maxNum = invoices.reduce((m, i) => Math.max(m, parseInt(i.number) || 0), 1000);
+      invoice = {
+        id: `inv_${Date.now()}`,
+        number: maxNum + 1,
+        shop_id: shopId,
+        appointment_id: appointment.id,
+        job_id: null, // NO job!
+        status: 'draft',
+        items: [],
+        subtotal: 0,
+        tax: 0,
+        total: 0,
+        created_at: new Date().toISOString()
+      };
+      invoices.push(invoice);
+    }
+    
+    // Add service to invoice
+    const serviceId = `svc_${Date.now()}_${Math.random().toString(36).substr(2,5)}`;
+    
+    if (isLaborBased) {
+      const rate = laborRates.find(r => r.name === service.labor_rate_name);
+      const hourlyRate = rate ? rate.rate : 0;
+      const laborId = `labor_${Date.now()}_${Math.random().toString(36).substr(2,5)}`;
+      
+      // Service row (price 0, labor-based)
+      invoice.items.push({
+        id: serviceId,
+        type: 'service',
+        name: serviceName,
+        qty: 1,
+        price: 0,
+        pricing_type: 'labor_based',
+        linkedItemId: laborId
+      });
+      
+      // Labor row
+      invoice.items.push({
+        id: laborId,
+        type: 'labor',
+        name: rate?.name || 'Labor',
+        qty: service.labor_hours || 1,
+        price: hourlyRate,
+        labor_hours: service.labor_hours,
+        labor_rate_name: service.labor_rate_name,
+        labor_rate: hourlyRate,
+        total: (service.labor_hours || 1) * hourlyRate,
+        linkedItemId: serviceId
+      });
+    } else {
+      // Flat price service
+      invoice.items.push({
+        id: serviceId,
+        type: 'service',
+        name: serviceName,
+        qty: 1,
+        price: parseFloat(service.price) || 0,
+        pricing_type: 'flat'
+      });
+    }
+    
+    // Recalculate totals
+    invoice.subtotal = invoice.items.reduce((s, i) => s + ((i.qty || 1) * (i.price || 0)), 0);
+    invoice.total = invoice.subtotal + (invoice.tax || 0);
+    invoice.updated_at = new Date().toISOString();
+    
+    // Save to data table
+    const idx = invoices.findIndex(i => i.id === invoice.id);
+    if (idx >= 0) invoices[idx] = invoice;
+    await supabase.from('data').update({ invoices, updated_at: new Date().toISOString() }).eq('shop_id', shopId);
+    
+    // Also save to invoices table
+    try {
+      await supabase.from('invoices').upsert({
+        id: invoice.id,
+        shop_id: shopId,
+        appointment_id: invoice.appointment_id,
+        items: invoice.items,
+        subtotal: invoice.subtotal,
+        total: invoice.total,
+        status: invoice.status,
+        updated_at: invoice.updated_at
+      }, { onConflict: 'id' });
+    } catch (e) {
+      console.warn('[Appointments] Could not save to invoices table:', e);
+    }
+    
+    // Close modal and notify
+    document.getElementById('apptServiceModal')?.classList.add('hidden');
+    showNotification(`✅ Added "${serviceName}" to estimate`, 'success');
+    window.dispatchEvent(new Event('xm_data_updated'));
+    
+  } catch (err) {
+    console.error('[Appointments] handleAppointmentServiceSelection failed:', err);
+    showNotification('Failed to add service: ' + err.message, 'error');
+  }
+}
 
 // Open Cortex modal with pre-filled search for a specific service
 window.openCortexForService = async function(serviceName) {

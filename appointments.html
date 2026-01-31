@@ -1296,5 +1296,31 @@ import { upsertCustomerToSupabase } from './pages/appointments.js?v=1767390869';
 })();
 </script>
 
+<!-- Service Selection Modal (for adding services to appointments) -->
+<div id="serviceModal" class="modal-overlay hidden" onclick="closeServiceModal()" style="z-index: 200010;">
+  <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 500px;">
+    <div class="modal-head">
+      <h3>Add Service to Appointment</h3>
+      <button onclick="closeServiceModal()" class="btn-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div style="margin-bottom: 20px;">
+        <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 12px;">Select a service to add to this appointment's estimate:</p>
+        <div id="serviceOptionsContainer" style="display: flex; flex-direction: column; gap: 8px;">
+          <!-- Service options will be populated here -->
+        </div>
+        <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:12px;display:flex;gap:8px;align-items:center;">
+          <input id="otherServiceInput" placeholder="Other service name" style="flex:1;padding:8px;border:1px solid var(--line);border-radius:6px;">
+          <input id="otherServiceRate" type="number" step="0.01" placeholder="Rate" style="width:110px;padding:8px;border:1px solid var(--line);border-radius:6px;">
+          <button id="otherServiceConfirm" class="btn info" type="button" title="Add">✓</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button onclick="closeServiceModal()" class="btn">Cancel</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
